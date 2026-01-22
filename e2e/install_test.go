@@ -75,7 +75,7 @@ bundles:
 	_ = bundleResolver // Not directly used, bundle.NewResolver is used
 
 	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := install.NewInstaller(manifestStore, env.ConfigRepo)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	// Resolve bundle assets manually for the test
@@ -157,7 +157,7 @@ bundles:
 	sources, _ := loader.LoadAll(taiConfig.Sources)
 
 	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := install.NewInstaller(manifestStore, env.ConfigRepo)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	// First install
@@ -229,7 +229,7 @@ bundles:
 	sources, _ := loader.LoadAll(taiConfig.Sources)
 
 	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := install.NewInstaller(manifestStore, env.ConfigRepo)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	asset, _ := sources["local"].ResolveAsset("personas/templated.md")
@@ -281,7 +281,7 @@ bundles:
 	sources, _ := loader.LoadAll(taiConfig.Sources)
 
 	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := install.NewInstaller(manifestStore, env.ConfigRepo)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	asset, _ := sources["local"].ResolveAsset("docs/CLAUDE.md")
@@ -345,7 +345,7 @@ bundles:
 	sources, _ := loader.LoadAll(taiConfig.Sources)
 
 	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := install.NewInstaller(manifestStore, env.ConfigRepo)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	asset, _ := sources["local"].ResolveAsset("skills/my-skill")
@@ -360,5 +360,171 @@ bundles:
 	}
 	if !env.TargetFileExists("skills/my-skill/helper.sh") {
 		t.Error("helper.sh not copied")
+	}
+}
+
+// TestE2EInstallSkillWithIncludes tests installing a skill with tai.yaml includes.
+func TestE2EInstallSkillWithIncludes(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	// Create a secondary source with files to include
+	radSource := filepath.Join(env.Root, "rad-source")
+	if err := os.MkdirAll(radSource, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(radSource, "SYNTAX.md"), []byte("# Rad Syntax Reference"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create examples subdirectory
+	examplesDir := filepath.Join(radSource, "examples")
+	if err := os.MkdirAll(examplesDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(examplesDir, "hello.rad"), []byte("print 'Hello, World!'"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+  - name: rad
+    path: ` + radSource + `
+`)
+
+	// Create a skill directory with tai.yaml manifest
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "rad")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: rad
+description: Write and debug Rad scripts
+---
+# Rad Skill
+`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create tai.yaml manifest with includes
+	manifestContent := `include:
+  - from: rad
+    path: SYNTAX.md
+    dest: references/
+  - from: rad
+    path: examples
+    dest: scripts/
+`
+	if err := os.WriteFile(filepath.Join(skillDir, "tai.yaml"), []byte(manifestContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	env.SetupBundle("test", `name: test
+assets:
+  - skills/rad
+`)
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adapter := claude.New(env.TargetDir)
+
+	asset, _ := sources["local"].ResolveAsset("skills/rad")
+	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	// Verify base skill files were copied
+	if !env.TargetFileExists("skills/rad/SKILL.md") {
+		t.Error("SKILL.md not copied")
+	}
+
+	// Verify tai.yaml was NOT copied (it's a build-time artifact)
+	if env.TargetFileExists("skills/rad/tai.yaml") {
+		t.Error("tai.yaml should NOT be copied to target")
+	}
+
+	// Verify source-based include was resolved
+	if !env.TargetFileExists("skills/rad/references/SYNTAX.md") {
+		t.Error("SYNTAX.md include not resolved")
+	}
+	syntaxContent := env.ReadTargetFile("skills/rad/references/SYNTAX.md")
+	if syntaxContent != "# Rad Syntax Reference" {
+		t.Errorf("SYNTAX.md content = %q, want '# Rad Syntax Reference'", syntaxContent)
+	}
+
+	// Verify directory include was resolved
+	if !env.TargetFileExists("skills/rad/scripts/examples/hello.rad") {
+		t.Error("examples directory include not resolved")
+	}
+	helloContent := env.ReadTargetFile("skills/rad/scripts/examples/hello.rad")
+	if helloContent != "print 'Hello, World!'" {
+		t.Errorf("hello.rad content = %q, want \"print 'Hello, World!'\"", helloContent)
+	}
+}
+
+// TestE2EInstallSkillWithIncludesMissingSource tests error handling for missing include source.
+func TestE2EInstallSkillWithIncludesMissingSource(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	// Create a skill directory with tai.yaml that references non-existent source
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "bad-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# Bad Skill"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create tai.yaml manifest referencing non-existent source
+	manifestContent := `include:
+  - from: nonexistent
+    path: file.md
+    dest: docs/
+`
+	if err := os.WriteFile(filepath.Join(skillDir, "tai.yaml"), []byte(manifestContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	env.SetupBundle("test", `name: test
+assets:
+  - skills/bad-skill
+`)
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adapter := claude.New(env.TargetDir)
+
+	asset, _ := sources["local"].ResolveAsset("skills/bad-skill")
+	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
+
+	// Should fail due to missing source
+	if err == nil {
+		t.Error("Install should fail when include references non-existent source")
 	}
 }

@@ -16,7 +16,7 @@ func setupInstallTest(t *testing.T) (*testutil.TestEnv, *Installer, *claude.Adap
 	env := testutil.NewTestEnv(t)
 
 	manifestStore := NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := NewInstaller(manifestStore, env.ConfigRepo)
+	installer := NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	return env, installer, adapter

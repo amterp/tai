@@ -125,7 +125,11 @@ This repo uses `kan` for task tracking (file-based kanban). Leave `.kan/` change
 
 - **AGENTS.md** (this file) - Architecture and development guidance for AI agents
 - **README.md** - User-facing documentation, installation, and usage
-- **SPEC.md** - Complete specification (735 lines) covering all features and design rationale
+- **SPEC.md** - Complete specification covering all features and design rationale
+
+### The Tai Skill
+
+The `assets/skills/tai/` directory contains a skill for AI agents to use tai effectively. This skill documents CLI usage, config file formats, and skill creation. **Keep this skill updated when making changes** to tai's user-facing behavior—it's the primary reference AI agents use when working with tai configurations.
 
 ### Keeping Docs Updated
 
@@ -133,10 +137,11 @@ When making changes, update the relevant documentation:
 
 | Change Type | Update |
 |-------------|--------|
-| New/changed CLI commands | SPEC.md (command reference), README.md (usage examples) |
-| New concepts or terminology | SPEC.md (definitions), AGENTS.md (core concepts table) |
+| New/changed CLI commands | SPEC.md (command reference), README.md (usage examples), tai skill |
+| New concepts or terminology | SPEC.md (definitions), AGENTS.md (core concepts table), tai skill |
 | Architecture changes | AGENTS.md (package structure, design decisions), SPEC.md |
 | New adapters or targets | AGENTS.md (adapter interface section), SPEC.md |
-| User-facing behavior | README.md, SPEC.md |
+| User-facing behavior | README.md, SPEC.md, tai skill |
+| Skill creation/includes | SPEC.md, tai skill |
 
 Documentation should be updated in the same commit as the code change, not deferred.

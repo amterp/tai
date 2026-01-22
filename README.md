@@ -313,6 +313,7 @@ skills are directories containing a `SKILL.md` with YAML frontmatter:
 ```
 assets/skills/my-skill/
 ├── SKILL.md            # Required: YAML frontmatter + description
+├── tai.yaml            # Optional: declare external file dependencies
 └── ...                 # Additional files as needed
 ```
 
@@ -322,6 +323,23 @@ Reference skills in bundles by directory name:
 assets:
   - skills/my-skill
 ```
+
+### Skill Includes
+
+Skills can pull in external files at install time via a `tai.yaml` manifest:
+
+```yaml
+# assets/skills/my-skill/tai.yaml
+include:
+  - from: my-source      # Named source from config's tai.yaml
+    path: docs/guide.md
+    dest: references/    # Trailing "/" preserves filename
+
+  - url: https://example.com/file.md
+    dest: docs/remote.md
+```
+
+This keeps skills portable -- reference source names instead of machine-specific paths. See [SPEC.md](SPEC.md) for full details.
 
 ## Design Principles
 

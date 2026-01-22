@@ -757,6 +757,87 @@ When installed to a file that already contains content, the result includes the 
 
 This ensures users don't lose their customizations when uninstalling tai.
 
+## Skill Includes
+
+Skills can declare external file dependencies via a `tai.yaml` manifest in the skill directory. At install time, tai resolves these includes and assembles them into the installed skill. The `tai.yaml` file itself is not installed—it's a build-time artifact.
+
+### Use Cases
+
+- **Reference documentation**: Include syntax guides, API docs from external sources
+- **Shared scripts**: Pull helper scripts from a common repository
+- **Examples**: Fetch examples from upstream projects
+- **Machine-specific paths**: Define sources in the config repo's `tai.yaml` so paths can vary per machine
+
+### Manifest Format
+
+```yaml
+# assets/skills/my-skill/tai.yaml
+include:
+  # From a named source (defined in config repo's tai.yaml)
+  - from: rad                    # Source name
+    path: SYNTAX.md              # Path within source
+    dest: references/            # Trailing "/" preserves filename
+
+  # From a URL
+  - url: https://raw.githubusercontent.com/example/repo/main/file.md
+    dest: examples/example.md    # Explicit destination path
+
+  # Directory copy
+  - from: shared-scripts
+    path: helpers/               # Copy entire directory
+    dest: scripts/               # Into skill's scripts/ directory
+```
+
+### Include Fields
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `from` | Yes* | Named source (mutually exclusive with `url`) |
+| `path` | Yes* | Path within source |
+| `url` | Yes* | URL to fetch (mutually exclusive with `from`) |
+| `dest` | Yes | Destination within skill directory |
+
+*Either `from`+`path` OR `url` must be specified.
+
+### Destination Semantics
+
+- **Trailing `/`**: Preserve original filename/dirname (e.g., `dest: references/` + `path: SYNTAX.md` → `references/SYNTAX.md`)
+- **No trailing `/`**: Use as exact target path (e.g., `dest: docs/syntax.md`)
+
+### Source Resolution
+
+Sources referenced by `from` must be defined in the config repo's `tai.yaml`:
+
+```yaml
+# my-tai-config/tai.yaml
+sources:
+  - name: rad
+    path: ~/src/rad              # Machine-specific path
+  - name: shared-scripts
+    path: ~/work/common-scripts
+```
+
+This keeps skills portable—the same skill definition works on any machine by having each machine define its sources with local paths.
+
+### Security
+
+Skill includes implement several security measures:
+
+- **Path traversal prevention**: Source and destination paths cannot escape their directories (e.g., `../../../etc/passwd` is rejected)
+- **Symlink rejection**: Symlinks in source directories are skipped to prevent escaping
+- **URL scheme validation**: Only `http://` and `https://` URLs are allowed
+- **Size limits**: URL downloads are limited to 10MB per file
+- **HTTP timeout**: URL fetches timeout after 30 seconds
+- **Redirect validation**: Redirects to non-HTTP schemes are blocked
+
+### Error Handling
+
+Includes follow tai's fail-fast philosophy:
+- Missing source → installation fails
+- Missing file in source → installation fails
+- URL fetch failure → installation fails
+- Path traversal attempt → installation fails
+
 ### Merge Strategies (Future)
 
 For special files like docs that may need merging rather than replacing:
@@ -862,6 +943,7 @@ bundles:
 - [x] Diamond dependency deduplication
 - [x] Claude adapter with file-copy installation and terminology mapping
 - [x] Skills handling per agentskills.io standard (SKILL.md with YAML frontmatter)
+- [x] Skill includes via `tai.yaml` manifest (external dependencies from sources or URLs)
 - [x] Installation manifest tracking with backup support
 - [x] Basic CLI: config, list, install, uninstall, status, locate
 - [x] `--dry-run` flag for install preview
@@ -925,10 +1007,10 @@ Items considered during design but explicitly deferred. These inform future deve
 **Why deferred:** All current targets (Claude Code, Cursor) are file-based. Premature abstraction.
 **Future scope:** Refactor adapter interface when first non-file-based target emerges.
 
-### Skill Manifests
-**What:** Extended skill metadata beyond the agentskills.io SKILL.md standard.
-**Why deferred:** The agentskills.io standard (SKILL.md with YAML frontmatter) is sufficient for MVP.
-**Future scope:** Add when skills need version requirements, build steps, or complex dependencies beyond what SKILL.md supports.
+### Skill Versioning
+**What:** Version requirements and compatibility checking for skills.
+**Why deferred:** The skill include system covers the immediate need for external dependencies. Version constraints add complexity.
+**Future scope:** Add when skills need version pinning or compatibility matrices.
 
 ### Config Assets (MCPs and Hooks)
 **What:** Support for MCP servers and hooks as first-class asset types, merged into target JSON config files.

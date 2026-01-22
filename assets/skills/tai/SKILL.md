@@ -314,6 +314,48 @@ description: >
 description: A skill for tai.
 ```
 
+## Skill Includes
+
+Skills can declare external dependencies via a `tai.yaml` manifest. Includes are resolved at install time.
+
+### tai.yaml Format
+
+```yaml
+# assets/skills/my-skill/tai.yaml
+include:
+  # From a named source
+  - from: source-name        # Source defined in config's tai.yaml
+    path: file.md            # Path within source
+    dest: references/        # Trailing "/" preserves filename
+
+  # From a URL
+  - url: https://example.com/file.md
+    dest: docs/example.md    # Explicit path
+
+  # Copy a directory
+  - from: scripts-repo
+    path: helpers/
+    dest: scripts/
+```
+
+### Destination Rules
+
+- `dest: dir/` (trailing slash) → preserves original filename
+- `dest: dir/file.md` (no trailing slash) → exact target path
+
+### Defining Sources
+
+Sources are defined in the config repo's `tai.yaml`, allowing machine-specific paths:
+
+```yaml
+# my-tai-config/tai.yaml
+sources:
+  - name: rad
+    path: ~/src/rad          # Different per machine
+```
+
+This keeps skills portable—the `tai.yaml` in the skill references source names, not absolute paths.
+
 ## Style Guidelines
 
 - Use **imperative language** ("Run X", "Create Y")

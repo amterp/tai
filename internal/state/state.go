@@ -120,7 +120,7 @@ func Load() (*State, error) {
 		Paths:         paths,
 		GlobalConfig:  globalCfg,
 		ManifestStore: manifestStore,
-		Installer:     install.NewInstaller(manifestStore, ""), // Empty config repo path for now
+		Installer:     install.NewInstaller(manifestStore, "", nil), // Empty config repo path and no sources for now
 	}
 
 	// If we have an active config, load it
@@ -189,8 +189,8 @@ func (s *State) LoadConfigRepo(path string) error {
 	s.BundleResolver = bundle.NewResolver(bundles, sources)
 	s.ProfileResolver = profile.NewResolver(profiles, bundles, sources)
 
-	// Create installer
-	s.Installer = install.NewInstaller(s.ManifestStore, absPath)
+	// Create installer with sources for include resolution
+	s.Installer = install.NewInstaller(s.ManifestStore, absPath, sources)
 
 	return nil
 }

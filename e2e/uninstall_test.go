@@ -40,7 +40,7 @@ bundles:
 	sources, _ := loader.LoadAll(taiConfig.Sources)
 
 	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := install.NewInstaller(manifestStore, env.ConfigRepo)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	// Install first
@@ -120,7 +120,7 @@ bundles:
 	sources, _ := loader.LoadAll(taiConfig.Sources)
 
 	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := install.NewInstaller(manifestStore, env.ConfigRepo)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	// Install (wraps existing content)
@@ -181,7 +181,7 @@ bundles:
 	sources, _ := loader.LoadAll(taiConfig.Sources)
 
 	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := install.NewInstaller(manifestStore, env.ConfigRepo)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	// Install
@@ -219,7 +219,7 @@ func TestE2EUninstallEmpty(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 
 	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := install.NewInstaller(manifestStore, env.ConfigRepo)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	result, err := installer.Uninstall(adapter)

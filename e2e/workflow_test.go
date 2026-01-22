@@ -56,7 +56,7 @@ bundles:
 	sources, _ := loader.LoadAll(taiConfig.Sources)
 
 	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := install.NewInstaller(manifestStore, env.ConfigRepo)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	// Install personal profile
@@ -151,7 +151,7 @@ bundles:
 	sources, _ := loader.LoadAll(taiConfig.Sources)
 
 	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := install.NewInstaller(manifestStore, env.ConfigRepo)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	conflictAsset, _ := sources["local"].ResolveAsset("personas/conflict.md")
@@ -230,7 +230,7 @@ bundles:
 	sources, _ := loader.LoadAll(taiConfig.Sources)
 
 	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := install.NewInstaller(manifestStore, env.ConfigRepo)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	asset, _ := sources["local"].ResolveAsset("personas/test.md")
@@ -298,7 +298,7 @@ bundles:
 	}
 
 	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
-	installer := install.NewInstaller(manifestStore, env.ConfigRepo)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
 	localAsset, _ := sources["local"].ResolveAsset("personas/local.md")

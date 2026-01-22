@@ -4,12 +4,20 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/source"
 	"github.com/amterp/tai/internal/template"
+)
+
+const (
+	// SkillManifestFilename is the name of the skill manifest file.
+	// This file is a build-time artifact and should not be installed.
+	SkillManifestFilename = "tai.yaml"
 )
 
 // InstallOptions configures installation behavior.
@@ -40,13 +48,17 @@ type Conflict struct {
 type Installer struct {
 	manifestStore *ManifestStore
 	configRepo    string
+	sources       map[string]*source.LoadedSource
+	httpClient    *http.Client
 }
 
 // NewInstaller creates a new installer.
-func NewInstaller(manifestStore *ManifestStore, configRepo string) *Installer {
+func NewInstaller(manifestStore *ManifestStore, configRepo string, sources map[string]*source.LoadedSource) *Installer {
 	return &Installer{
 		manifestStore: manifestStore,
 		configRepo:    configRepo,
+		sources:       sources,
+		httpClient:    DefaultHTTPClient(),
 	}
 }
 
@@ -120,6 +132,16 @@ func (i *Installer) Install(
 		if !opts.DryRun {
 			if err := i.installAsset(resolved, fullTargetPath); err != nil {
 				return nil, fmt.Errorf("installing %s: %w", targetPath, err)
+			}
+
+			// For skill directories, re-compute checksum after installation
+			// to account for resolved includes
+			if resolved.IsDir {
+				checksum, err := ComputeDirChecksum(fullTargetPath)
+				if err != nil {
+					return nil, fmt.Errorf("computing installed checksum for %s: %w", targetPath, err)
+				}
+				resolved.Checksum = checksum
 			}
 		}
 
@@ -319,8 +341,24 @@ func (i *Installer) installAsset(resolved *config.ResolvedAsset, fullTargetPath 
 	}
 
 	if resolved.IsDir {
-		// Copy directory recursively
-		return copyDir(resolved.SourcePath, fullTargetPath)
+		// For skill directories, exclude the manifest file (it's a build-time artifact)
+		if err := copyDirExcluding(resolved.SourcePath, fullTargetPath, SkillManifestFilename); err != nil {
+			return err
+		}
+
+		// Load and process skill manifest if present
+		manifest, err := config.LoadSkillManifest(resolved.SourcePath)
+		if err != nil {
+			return fmt.Errorf("loading skill manifest: %w", err)
+		}
+		if manifest != nil && len(manifest.Include) > 0 {
+			resolver := NewIncludeResolver(i.sources, i.httpClient)
+			if err := resolver.ResolveIncludes(manifest, fullTargetPath); err != nil {
+				return fmt.Errorf("resolving includes: %w", err)
+			}
+		}
+
+		return nil
 	}
 
 	// Write file content
@@ -370,18 +408,38 @@ func copyFile(src, dst string) error {
 
 // copyDir copies a directory recursively.
 func copyDir(src, dst string) error {
+	return copyDirExcluding(src, dst)
+}
+
+// copyDirExcluding copies a directory recursively, excluding files with names in excludes.
+func copyDirExcluding(src, dst string, excludes ...string) error {
 	// Remove existing destination
 	os.RemoveAll(dst)
+
+	excludeSet := make(map[string]bool, len(excludes))
+	for _, e := range excludes {
+		excludeSet[e] = true
+	}
 
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
+		// Skip excluded files (only at top level of skill directory)
 		relPath, err := filepath.Rel(src, path)
 		if err != nil {
 			return err
 		}
+
+		// Only exclude files at the root of the skill directory
+		if excludeSet[relPath] {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+
 		dstPath := filepath.Join(dst, relPath)
 
 		if d.IsDir() {
