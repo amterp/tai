@@ -514,12 +514,13 @@ func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr s
 		manifestPath = s.Paths.ManifestDir
 	}
 	out.InstallResult(&output.InstallResultData{
-		Added:    result.Added,
-		Updated:  result.Updated,
-		Removed:  result.Removed,
-		Skipped:  result.Skipped,
-		DryRun:   dryRun,
-		Manifest: manifestPath,
+		Added:     result.Added,
+		Updated:   result.Updated,
+		Unchanged: result.Unchanged,
+		Removed:   result.Removed,
+		Skipped:   result.Skipped,
+		DryRun:    dryRun,
+		Manifest:  manifestPath,
 	})
 }
 

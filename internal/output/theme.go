@@ -18,10 +18,11 @@ type Theme struct {
 	Header lipgloss.Style
 
 	// Status indicators
-	Added   lipgloss.Style // + prefix for new items
-	Updated lipgloss.Style // ~ prefix for updated items
-	Removed lipgloss.Style // - prefix for removed items
-	Skipped lipgloss.Style // ? prefix for skipped items
+	Added     lipgloss.Style // + prefix for new items
+	Updated   lipgloss.Style // ~ prefix for updated items
+	Unchanged lipgloss.Style // = prefix for unchanged items
+	Removed   lipgloss.Style // - prefix for removed items
+	Skipped   lipgloss.Style // ? prefix for skipped items
 
 	// Messages
 	Success lipgloss.Style
@@ -40,10 +41,11 @@ func DefaultTheme() Theme {
 			Foreground(colorBlue).
 			Bold(true),
 
-		Added:   lipgloss.NewStyle().Foreground(colorGreen),
-		Updated: lipgloss.NewStyle().Foreground(colorYellow),
-		Removed: lipgloss.NewStyle().Foreground(colorRed),
-		Skipped: lipgloss.NewStyle().Foreground(colorGray),
+		Added:     lipgloss.NewStyle().Foreground(colorGreen),
+		Updated:   lipgloss.NewStyle().Foreground(colorYellow),
+		Unchanged: lipgloss.NewStyle().Foreground(colorGray),
+		Removed:   lipgloss.NewStyle().Foreground(colorRed),
+		Skipped:   lipgloss.NewStyle().Foreground(colorGray),
 
 		Success: lipgloss.NewStyle().Foreground(colorGreen),
 		Info:    lipgloss.NewStyle().Foreground(colorBlue),

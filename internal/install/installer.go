@@ -30,12 +30,13 @@ type InstallOptions struct {
 
 // InstallResult contains the result of an installation.
 type InstallResult struct {
-	Added    []string // Files added
-	Updated  []string // Files updated
-	Removed  []string // Files removed
-	Skipped  []string // Files skipped due to conflicts
-	Errors   []error  // Non-fatal errors
-	Manifest *Manifest
+	Added     []string // Files added
+	Updated   []string // Files updated (content changed)
+	Unchanged []string // Files unchanged (content identical)
+	Removed   []string // Files removed
+	Skipped   []string // Files skipped due to conflicts
+	Errors    []error  // Non-fatal errors
+	Manifest  *Manifest
 }
 
 // Conflict represents a file conflict.
@@ -121,13 +122,6 @@ func (i *Installer) Install(
 			}
 		}
 
-		// Track what's happening
-		if wasManaged {
-			result.Updated = append(result.Updated, targetPath)
-		} else {
-			result.Added = append(result.Added, targetPath)
-		}
-
 		// Install the asset
 		if !opts.DryRun {
 			if err := i.installAsset(resolved, fullTargetPath); err != nil {
@@ -143,6 +137,17 @@ func (i *Installer) Install(
 				}
 				resolved.Checksum = checksum
 			}
+		}
+
+		// Track what's happening (after checksum is finalized)
+		if wasManaged {
+			if resolved.Checksum == existingEntry.Checksum {
+				result.Unchanged = append(result.Unchanged, targetPath)
+			} else {
+				result.Updated = append(result.Updated, targetPath)
+			}
+		} else {
+			result.Added = append(result.Added, targetPath)
 		}
 
 		newEntries = append(newEntries, EntryFromAsset(resolved))

@@ -130,8 +130,41 @@ func TestPlainOutput_InstallResult(t *testing.T) {
 	if !strings.Contains(got, "? docs/conflict.md (skipped)") {
 		t.Errorf("expected skipped item, got %q", got)
 	}
-	if !strings.Contains(got, "1 added, 1 updated, 1 removed") {
+	if !strings.Contains(got, "1 added, 1 updated, 0 unchanged, 1 removed") {
 		t.Errorf("expected summary, got %q", got)
+	}
+}
+
+func TestPlainOutput_InstallResultWithUnchanged(t *testing.T) {
+	var buf bytes.Buffer
+	out := NewPlain(&buf, &buf)
+
+	out.InstallResult(&InstallResultData{
+		Added:     []string{"personas/new.md"},
+		Updated:   []string{"skills/changed.md"},
+		Unchanged: []string{"docs/same.md", "personas/stable.md"},
+		Removed:   []string{"docs/old.md"},
+		DryRun:    false,
+	})
+
+	got := buf.String()
+	if !strings.Contains(got, "+ personas/new.md (new)") {
+		t.Errorf("expected added item, got %q", got)
+	}
+	if !strings.Contains(got, "~ skills/changed.md (updated)") {
+		t.Errorf("expected updated item, got %q", got)
+	}
+	if !strings.Contains(got, "= docs/same.md (unchanged)") {
+		t.Errorf("expected unchanged item docs/same.md, got %q", got)
+	}
+	if !strings.Contains(got, "= personas/stable.md (unchanged)") {
+		t.Errorf("expected unchanged item personas/stable.md, got %q", got)
+	}
+	if !strings.Contains(got, "- docs/old.md (removed)") {
+		t.Errorf("expected removed item, got %q", got)
+	}
+	if !strings.Contains(got, "1 added, 1 updated, 2 unchanged, 1 removed") {
+		t.Errorf("expected summary with unchanged count, got %q", got)
 	}
 }
 
@@ -147,6 +180,22 @@ func TestPlainOutput_InstallResultDryRun(t *testing.T) {
 	got := buf.String()
 	if !strings.Contains(got, "would be added") {
 		t.Errorf("expected dry-run language, got %q", got)
+	}
+}
+
+func TestPlainOutput_InstallResultDryRunWithUnchanged(t *testing.T) {
+	var buf bytes.Buffer
+	out := NewPlain(&buf, &buf)
+
+	out.InstallResult(&InstallResultData{
+		Updated:   []string{"skills/changed.md"},
+		Unchanged: []string{"docs/same.md"},
+		DryRun:    true,
+	})
+
+	got := buf.String()
+	if !strings.Contains(got, "0 would be added, 1 updated, 1 unchanged, 0 removed") {
+		t.Errorf("expected dry-run summary with unchanged, got %q", got)
 	}
 }
 
@@ -259,6 +308,40 @@ func TestStyledOutput_InstallResult(t *testing.T) {
 	}
 	if !strings.Contains(got, "skills/commit.md") {
 		t.Errorf("expected updated item, got %q", got)
+	}
+}
+
+func TestStyledOutput_InstallResultWithUnchanged(t *testing.T) {
+	var buf bytes.Buffer
+	out := NewStyled(&buf, &buf)
+
+	out.InstallResult(&InstallResultData{
+		Added:     []string{"personas/new.md"},
+		Updated:   []string{"skills/changed.md"},
+		Unchanged: []string{"docs/same.md"},
+		Removed:   []string{"docs/old.md"},
+		DryRun:    false,
+	})
+
+	got := buf.String()
+	if !strings.Contains(got, "personas/new.md") {
+		t.Errorf("expected added item, got %q", got)
+	}
+	if !strings.Contains(got, "skills/changed.md") {
+		t.Errorf("expected updated item, got %q", got)
+	}
+	if !strings.Contains(got, "docs/same.md") {
+		t.Errorf("expected unchanged item, got %q", got)
+	}
+	if !strings.Contains(got, "(unchanged)") {
+		t.Errorf("expected '(unchanged)' label, got %q", got)
+	}
+	if !strings.Contains(got, "docs/old.md") {
+		t.Errorf("expected removed item, got %q", got)
+	}
+	// Summary should include unchanged count
+	if !strings.Contains(got, "1 added, 1 updated, 1 unchanged, 1 removed") {
+		t.Errorf("expected summary with unchanged, got %q", got)
 	}
 }
 

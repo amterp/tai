@@ -60,12 +60,13 @@ type KeyValuePair struct {
 
 // InstallResultData contains the data for displaying installation results.
 type InstallResultData struct {
-	Added    []string
-	Updated  []string
-	Removed  []string
-	Skipped  []string
-	DryRun   bool
-	Manifest string // Path to manifest file (empty in dry-run)
+	Added     []string
+	Updated   []string
+	Unchanged []string
+	Removed   []string
+	Skipped   []string
+	DryRun    bool
+	Manifest  string // Path to manifest file (empty in dry-run)
 }
 
 // Options configures output behavior.

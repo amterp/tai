@@ -126,11 +126,97 @@ func TestInstallerInstallUpdate(t *testing.T) {
 	if len(result.Updated) != 1 {
 		t.Errorf("len(Updated) = %d, want 1", len(result.Updated))
 	}
+	if len(result.Unchanged) != 0 {
+		t.Errorf("len(Unchanged) = %d, want 0", len(result.Unchanged))
+	}
 
 	// Verify new content
 	content := env.ReadTargetFile("output-styles/test.md")
 	if content != "# Version 2" {
 		t.Errorf("content = %q, want '# Version 2'", content)
+	}
+}
+
+func TestInstallerInstallUnchanged(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Initial install
+	env.SetupAsset("personas", "test.md", "# Same Content")
+	assets := []*config.Asset{
+		{Type: "personas", Name: "test.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
+	}
+
+	result1, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("First install failed: %v", err)
+	}
+
+	// First install should be Added
+	if len(result1.Added) != 1 {
+		t.Errorf("First install: len(Added) = %d, want 1", len(result1.Added))
+	}
+
+	// Re-install with same content (no changes to source)
+	result2, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Second install failed: %v", err)
+	}
+
+	// Should be unchanged, not updated
+	if len(result2.Unchanged) != 1 {
+		t.Errorf("Second install: len(Unchanged) = %d, want 1", len(result2.Unchanged))
+	}
+	if len(result2.Updated) != 0 {
+		t.Errorf("Second install: len(Updated) = %d, want 0", len(result2.Updated))
+	}
+	if len(result2.Added) != 0 {
+		t.Errorf("Second install: len(Added) = %d, want 0", len(result2.Added))
+	}
+}
+
+func TestInstallerInstallMixedUnchangedAndUpdated(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Initial install with two assets
+	env.SetupAsset("personas", "unchanged.md", "# Will Stay Same")
+	env.SetupAsset("personas", "updated.md", "# Version 1")
+
+	assets := []*config.Asset{
+		{Type: "personas", Name: "unchanged.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "unchanged.md")},
+		{Type: "personas", Name: "updated.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "updated.md")},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("First install failed: %v", err)
+	}
+
+	// Update only one asset
+	env.SetupAsset("personas", "updated.md", "# Version 2")
+
+	// Re-install
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Second install failed: %v", err)
+	}
+
+	// One should be unchanged, one should be updated
+	if len(result.Unchanged) != 1 {
+		t.Errorf("len(Unchanged) = %d, want 1", len(result.Unchanged))
+	}
+	if len(result.Updated) != 1 {
+		t.Errorf("len(Updated) = %d, want 1", len(result.Updated))
+	}
+
+	// Verify which is which
+	if result.Unchanged[0] != "output-styles/unchanged.md" {
+		t.Errorf("Unchanged[0] = %q, want 'output-styles/unchanged.md'", result.Unchanged[0])
+	}
+	if result.Updated[0] != "output-styles/updated.md" {
+		t.Errorf("Updated[0] = %q, want 'output-styles/updated.md'", result.Updated[0])
 	}
 }
 
