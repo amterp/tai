@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Project Overview
 
-**tai** is a CLI tool for managing AI agent configurations across different targets (Claude Code, Cursor, etc.). It organizes, composes, and installs target-agnostic assets (personas, delegates, skills, docs) from multiple sources while maintaining version control and portability.
+**tai** is a CLI tool for managing AI agent configurations across different targets (Claude Code, Cursor, etc.). It organizes, composes, and installs target-agnostic assets (personas, delegates, skills, docs, MCPs, hooks) from multiple sources while maintaining version control and portability.
 
 ## Commands
 
@@ -29,10 +29,14 @@ go test -run TestBundle ./...    # Run specific test by name
 | **Delegate** | Specialized helper | agents (sub-agents) |
 | **Skill** | Procedural capability | skills |
 | **Doc** | Reference material | CLAUDE.md, .cursorrules |
-| **Asset** | Atomic configuration unit | Single persona/delegate/skill/doc |
+| **MCP** | Model Context Protocol server | MCP server entry (v0.2) |
+| **Hook** | Event-triggered command | Hook in settings (v0.2) |
+| **Asset** | Atomic configuration unit | Single persona/delegate/skill/doc/mcp/hook |
 | **Bundle** | Named collection of assets | Shopping list of related assets |
 | **Profile** | Bundle(s) + target | What you actually install |
 | **Source** | Asset provider | Local dir, tai repo |
+
+**Asset shapes:** File assets (personas, delegates, skills, docs) are copied to target paths. Config assets (mcps, hooks) are merged into target JSON config files.
 
 ### Data Flow
 
@@ -69,6 +73,8 @@ Adapters translate tai concepts to target-specific formats. The Claude adapter m
 - `delegates/` → `agents/`
 - `skills/` → `skills/`
 - `docs/` → root level
+- `mcps/` → entries in `.mcp.json` or `~/.claude.json` (v0.2)
+- `hooks/` → entries in `settings.json` (v0.2)
 
 ## User Config Repo Structure
 
@@ -76,10 +82,12 @@ Adapters translate tai concepts to target-specific formats. The Claude adapter m
 my-tai-config/
 ├── tai.yaml            # Config manifest (version, sources, default_profile)
 ├── assets/             # Target-agnostic assets
-│   ├── personas/
+│   ├── personas/       # File assets
 │   ├── delegates/
 │   ├── skills/
-│   └── docs/
+│   ├── docs/
+│   ├── mcps/           # Config assets (v0.2)
+│   └── hooks/
 ├── bundles/            # Bundle definitions (YAML)
 └── profiles/           # Profile definitions (YAML)
 ```

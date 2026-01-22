@@ -18,14 +18,35 @@ tai is a CLI tool for managing AI agent configurations. It provides a framework 
 | **Delegate** | A specialized helper for tasks | agents (sub-agents) |
 | **Skill** | A procedural capability | skills |
 | **Doc** | Reference material | CLAUDE.md, supporting docs |
+| **MCP** | Model Context Protocol server | MCP server entry in config |
+| **Hook** | Event-triggered shell command | Hook entry in settings |
 
 Additional terms:
-- **Asset**: An atomic configuration unit—a single persona, delegate, skill, or doc.
+- **Asset**: An atomic configuration unit—a single persona, delegate, skill, doc, MCP, or hook.
 - **Bundle**: A named collection of assets. Acts as a "shopping list" for composing related assets.
 - **Profile**: A bundle bound to a specific target. Profiles are what you actually install and run.
 - **Source**: A location providing assets—a local directory, another tai config repo, or (future) a git remote.
 - **Config Repo**: A repository defining sources, bundles, and profiles. The entry point for tai.
 - **Adapter**: Target-specific logic that knows how to build, install, and run a particular AI target.
+
+### Asset Types
+
+Assets come in two shapes based on how they're installed:
+
+| Shape | Asset Types | How Defined | How Installed |
+|-------|-------------|-------------|---------------|
+| **File assets** | personas, delegates, skills, docs | Files/directories in `assets/` | Copied to target paths |
+| **Config assets** | mcps, hooks | YAML fragments in `assets/` | Merged into target JSON config files |
+
+**File assets** are the traditional model: you define a file (or directory for skills), and tai copies it to the appropriate location in the target's config directory.
+
+**Config assets** are entries that get merged into JSON configuration files. The target (Claude Code, Cursor, etc.) reads these JSON files at runtime. tai must read the existing JSON, merge in the new entries, and write it back—being careful to preserve entries it doesn't manage.
+
+This distinction matters because:
+1. **Installation logic differs**: copy vs. JSON merge
+2. **Uninstallation differs**: delete file vs. remove JSON keys
+3. **Conflict handling differs**: file exists vs. key exists
+4. **Scope matters more**: config assets often have project/user/local scope options
 
 ### Design Principles
 
@@ -60,7 +81,8 @@ Additional terms:
                               ▼ provides
 ┌─────────────────────────────────────────────────────────────┐
 │                         Assets                               │
-│  personas/, delegates/, skills/, docs/                      │
+│  File: personas/, delegates/, skills/, docs/                │
+│  Config: mcps/, hooks/                                      │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼ composed into
@@ -121,9 +143,14 @@ my-tai-config/
 │   │   └── pair-programmer.md
 │   ├── skills/           # Procedural capabilities (→ skills in Claude)
 │   │   └── council-participant/   # Skills follow agentskills.io standard
-│   └── docs/             # Reference material (→ CLAUDE.md etc.)
-│       ├── CLAUDE.md
-│       └── RFC2119.md
+│   ├── docs/             # Reference material (→ CLAUDE.md etc.)
+│   │   ├── CLAUDE.md
+│   │   └── RFC2119.md
+│   ├── mcps/             # MCP server definitions (→ .mcp.json entries)
+│   │   ├── github.yaml
+│   │   └── postgres.yaml
+│   └── hooks/            # Hook definitions (→ settings.json entries)
+│       └── format-on-save.yaml
 ├── bundles/
 │   ├── core.yaml
 │   └── work-extras.yaml
@@ -180,11 +207,14 @@ description: Essential assets for daily work
 
 # Assets can be referenced with source:path syntax
 # If source omitted, defaults to "local"
+# Both file assets and config assets use the same referencing syntax
 assets:
   - personas/senior-swe.md
   - delegates/code-reviewer.md
   - docs/CLAUDE.md
   - docs/RFC2119.md
+  - mcps/github              # Config asset: MCP server
+  - hooks/format-on-save     # Config asset: hook
 ```
 
 ```yaml
@@ -237,7 +267,92 @@ assets:
 options:
   # Example Claude-specific options (future use)
   # dangerously_skip_permissions: false
+
+# Optional: installation scope for config assets (default: project)
+# Affects where MCPs and hooks are installed
+scope: project  # or "user" or "local"
 ```
+
+### Config Asset Definitions
+
+Config assets (MCPs and hooks) are defined as YAML files that describe entries to be merged into target configuration files.
+
+#### MCP Definition
+
+```yaml
+# my-tai-config/assets/mcps/github.yaml
+# The filename (minus extension) becomes the server name
+
+type: stdio                    # Required: "stdio" or "http"
+command: npx                   # Required for stdio: executable path
+args:                          # Optional: command arguments
+  - "-y"
+  - "@modelcontextprotocol/server-github"
+env:                           # Optional: environment variables
+  GITHUB_TOKEN: "${GITHUB_TOKEN}"
+```
+
+```yaml
+# my-tai-config/assets/mcps/internal-api.yaml
+# HTTP-based MCP server
+
+type: http
+url: https://api.internal.company.com/mcp
+headers:
+  Authorization: "Bearer ${API_KEY}"
+```
+
+**MCP fields:**
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `name` | string | No | Override filename as server name |
+| `type` | string | Yes | `stdio` or `http` |
+| `command` | string | stdio only | Executable path |
+| `args` | list | No | Command arguments |
+| `env` | map | No | Environment variables (supports `${VAR}` expansion) |
+| `url` | string | http only | Server endpoint |
+| `headers` | map | http only | HTTP headers |
+
+#### Hook Definition
+
+```yaml
+# my-tai-config/assets/hooks/format-on-save.yaml
+
+event: PostToolUse             # Required: which event triggers this hook
+matcher: Edit|Write            # Optional: tool pattern (empty = all tools)
+command: prettier --write "$FILE"  # Required: shell command to run
+```
+
+```yaml
+# my-tai-config/assets/hooks/security-check.yaml
+
+event: PreToolUse
+matcher: Bash
+command: ~/scripts/check-dangerous-commands.sh
+```
+
+**Hook fields:**
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `name` | string | No | Override filename as hook identifier |
+| `event` | string | Yes | Event that triggers the hook |
+| `matcher` | string | No | Tool pattern (`Tool1\|Tool2`), empty matches all |
+| `command` | string | Yes | Shell command to execute |
+
+**Available hook events (Claude Code):**
+
+| Event | When it fires |
+|-------|---------------|
+| `PreToolUse` | Before any tool executes |
+| `PostToolUse` | After tool executes |
+| `UserPromptSubmit` | When user submits a prompt |
+| `Notification` | When Claude sends a notification |
+| `Stop` | When Claude finishes responding |
+| `SubagentStop` | When a subagent completes |
+| `SessionStart` | When a session begins |
+| `SessionEnd` | When a session ends |
 
 ## CLI Interface
 
@@ -363,6 +478,10 @@ type Adapter interface {
     // e.g., "personas" → "output-styles", "delegates" → "agents"
     AssetMapping() map[string]string
 
+    // SupportedAssetTypes returns which asset types this adapter supports
+    // Profiles containing unsupported types will fail fast at install time
+    SupportedAssetTypes() []string
+
     // ValidateAssets checks that assets are valid for this target
     ValidateAssets(assets []Asset) error
 
@@ -378,6 +497,20 @@ type Adapter interface {
 
     // Run invokes the target (optional, for wrapper mode)
     Run(args []string) error
+
+    // --- Config asset methods (for mcps, hooks, etc.) ---
+
+    // ConfigAssetTypes returns which asset types are config-based (vs file-based)
+    ConfigAssetTypes() []string  // e.g., ["mcps", "hooks"]
+
+    // ConfigFilePath returns the target JSON file for a config asset type and scope
+    ConfigFilePath(assetType string, scope string) string
+
+    // MergeConfigAsset merges a config asset into existing JSON content
+    MergeConfigAsset(existing []byte, asset ConfigAsset) ([]byte, error)
+
+    // RemoveConfigAsset removes a config asset from existing JSON content
+    RemoveConfigAsset(existing []byte, assetID ConfigAssetID) ([]byte, error)
 }
 ```
 
@@ -393,6 +526,37 @@ The Claude adapter:
 - Installation is file copy (not symlink for reliability)
 - May use `--add-dir` for run-time config in future
 
+**Config asset handling:**
+
+| Asset Type | Scope | Target File |
+|------------|-------|-------------|
+| `mcps` | project | `.mcp.json` (project root) |
+| `mcps` | user | `~/.claude.json` |
+| `mcps` | local | `.claude.json` (project root) |
+| `hooks` | project | `.claude/settings.json` |
+| `hooks` | user | `~/.claude/settings.json` |
+| `hooks` | local | `.claude/settings.local.json` |
+
+**MCP installation:** Entries are added to the `mcpServers` key in the target JSON file:
+```json
+{
+  "mcpServers": {
+    "github": { "type": "stdio", "command": "npx", ... }
+  }
+}
+```
+
+**Hook installation:** Entries are added to the `hooks.{EventName}` array in the target JSON file:
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "..." }] }
+    ]
+  }
+}
+```
+
 ## Installation Manifest
 
 ```yaml
@@ -402,6 +566,7 @@ profile: work
 config_repo: /Users/amterp/work-tai-config
 installed_at: 2024-01-21T14:30:00Z
 
+# File assets: tracked by path
 files:
   - path: output-styles/senior-swe.md
     source: local
@@ -420,6 +585,25 @@ files:
     checksum: sha256:789ghi...
     backup_path: /Users/amterp/.claude/CLAUDE.md.tai-backup
     is_templated: true
+
+# Config assets: tracked by type, name, and target file
+config_entries:
+  - type: mcp
+    name: github
+    source: local
+    source_path: /Users/amterp/my-tai-config/assets/mcps/github.yaml
+    target_file: .mcp.json
+    scope: project
+    checksum: sha256:mcp123...   # Checksum of the installed JSON fragment
+
+  - type: hook
+    name: format-on-save
+    source: local
+    source_path: /Users/amterp/my-tai-config/assets/hooks/format-on-save.yaml
+    target_file: .claude/settings.json
+    scope: project
+    event: PostToolUse           # For hooks: which event array it's in
+    checksum: sha256:hook456...
 ```
 
 The manifest enables:
@@ -473,6 +657,53 @@ tai follows a **fail-fast** philosophy. Installation MUST fail (not warn-and-con
 - A bundle referenced in a profile doesn't exist
 
 Rationale: Silent partial installs are worse than loud failures. A typo in a bundle definition should not result in a working-but-incomplete installation.
+
+### Config Asset Installation
+
+Config assets (MCPs, hooks) require different handling than file assets because they're merged into shared JSON configuration files.
+
+#### Installation Process
+
+1. **Read target file**: Load the existing JSON config (or `{}` if it doesn't exist)
+2. **Merge entries**: Add/update the config asset entry at the appropriate key path
+3. **Write back**: Save the modified JSON, preserving all non-tai-managed entries
+4. **Record in manifest**: Track the asset name, target file, and checksum
+
+#### Uninstallation Process
+
+1. **Load manifest**: Find config entries tai installed
+2. **Read target file**: Load the current JSON config
+3. **Identify entries**: Match by type and name (e.g., MCP server name, hook identifier)
+4. **Compare checksums**: If entry was modified since install, warn but proceed (user took ownership)
+5. **Remove entries**: Delete only the entries tai installed
+6. **Write back**: Save the modified JSON (or delete file if empty and tai-created)
+
+#### Conflict Handling for Config Assets
+
+| Scenario | Action |
+|----------|--------|
+| Key doesn't exist | Add normally |
+| Key exists, not in manifest | **Error**: Unmanaged conflict (use `--force` to overwrite) |
+| Key exists, in manifest, unchanged | Update to new version |
+| Key exists, in manifest, user modified | **Warning**: Overwrite with `--force`, skip with `--skip-conflicts` |
+
+#### Scope Resolution
+
+Config assets can be installed at different scopes. The scope is determined by (in order of precedence):
+
+1. Per-asset override in profile (if supported)
+2. Profile-level `scope` setting
+3. Default scope (typically `project`)
+
+```yaml
+# Profile with explicit scope
+name: work
+target: claude
+scope: user  # MCPs and hooks install to user-level config files
+
+bundles:
+  - dev-tools
+```
 
 ### Remote Source Caching (Future)
 
@@ -641,6 +872,12 @@ bundles:
 
 ### Deferred to Future Versions
 
+- [ ] **Config assets (MCPs, hooks)** - v0.2 target
+  - [ ] MCP server definitions (`assets/mcps/`)
+  - [ ] Hook definitions (`assets/hooks/`)
+  - [ ] JSON merge installation logic
+  - [ ] Scope handling (project/user/local)
+  - [ ] Config entry manifest tracking
 - [ ] Git remote sources
 - [ ] `--add-dir` runtime injection (vs. installing to ~/.claude)
 - [ ] Cursor adapter
@@ -693,6 +930,18 @@ Items considered during design but explicitly deferred. These inform future deve
 **Why deferred:** The agentskills.io standard (SKILL.md with YAML frontmatter) is sufficient for MVP.
 **Future scope:** Add when skills need version requirements, build steps, or complex dependencies beyond what SKILL.md supports.
 
+### Config Assets (MCPs and Hooks)
+**What:** Support for MCP servers and hooks as first-class asset types, merged into target JSON config files.
+**Why deferred:** Requires different installation logic (JSON merge vs. file copy), manifest tracking changes, and scope handling. File-based assets cover the core use cases for v0.1.
+**Design decisions:**
+- Config assets stored as YAML files in `assets/mcps/` and `assets/hooks/` for consistency with other assets
+- Same referencing syntax in bundles (`mcps/github`, `hooks/format-on-save`)
+- Filename becomes identifier (MCP server name, hook name) unless overridden
+- Installation scope (project/user/local) controlled at profile level with per-asset override option
+- Uninstall matches by identifier; warns if entry was modified (user took ownership)
+- Adapters declare which asset types they support; unsupported types in a profile cause fail-fast error
+**Target version:** v0.2
+
 ## Testing Philosophy
 
 1. **No hardcoded paths**: All filesystem paths are injected via config structs
@@ -727,6 +976,8 @@ For creating rich terminal output, the following libraries are approved:
 4. ~~**CLAUDE.md handling**~~: **RESOLVED.** Use `{{existing}}` templating to wrap user content. tai backs up the original and restores it on uninstall.
 
 5. **Profile inheritance**: Should profiles be able to extend other profiles? Deferred—adds complexity but might be useful in the future.
+
+7. **Config asset scope granularity**: Should scope be per-asset, per-asset-type, or only per-profile? Current design uses profile-level default. May need per-asset override for mixed project/user installs.
 
 6. ~~**Templating syntax**~~: **RESOLVED.** Simple `{{variable}}` substitution. Not Go templates or Jinja—just straightforward variable replacement. Special variable `{{existing}}` for injecting current file content.
 
