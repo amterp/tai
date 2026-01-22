@@ -4,7 +4,8 @@
   "alias": "consider-variety-of-asset",
   "alias_explicit": false,
   "title": "consider variety of asset types",
+  "description": "Specced in SPEC.md - added MCP and hook support as config-based assets for v0.2",
   "creator": "Alexander Terp",
   "created_at_millis": 1769056450718,
-  "updated_at_millis": 1769056450718
+  "updated_at_millis": 1769056976971
 }

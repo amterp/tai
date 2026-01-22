@@ -1,6 +1,7 @@
 # Build outputs
 /tai
 *.exe
+bin
 
 # IDE/editor
 .idea/
