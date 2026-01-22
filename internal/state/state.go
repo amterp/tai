@@ -114,10 +114,12 @@ func Load() (*State, error) {
 		return nil, err
 	}
 
+	manifestStore := install.NewManifestStore(paths.ManifestDir)
 	state := &State{
 		Paths:         paths,
 		GlobalConfig:  globalCfg,
-		ManifestStore: install.NewManifestStore(paths.ManifestDir),
+		ManifestStore: manifestStore,
+		Installer:     install.NewInstaller(manifestStore, ""), // Empty config repo path for now
 	}
 
 	// If we have an active config, load it
