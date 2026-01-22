@@ -1,0 +1,167 @@
+// Package install handles installation and manifest management.
+package install
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/amterp/tai/internal/config"
+)
+
+// Manifest tracks what tai has installed to a target.
+type Manifest struct {
+	Target      string          `yaml:"target"`
+	Profile     string          `yaml:"profile"`
+	ConfigRepo  string          `yaml:"config_repo"`
+	InstalledAt time.Time       `yaml:"installed_at"`
+	Files       []ManifestEntry `yaml:"files"`
+}
+
+// ManifestEntry represents a single installed file.
+type ManifestEntry struct {
+	Path       string `yaml:"path"`        // Target-relative path
+	SourceName string `yaml:"source"`      // Source name
+	SourcePath string `yaml:"source_path"` // Full filesystem path in source
+	Checksum   string `yaml:"checksum"`    // SHA-256 checksum
+	BackupPath string `yaml:"backup_path"` // Path to backup (for {{existing}} files)
+	IsDir      bool   `yaml:"is_dir"`      // True for skill directories
+}
+
+// ManifestStore handles loading and saving manifests.
+type ManifestStore struct {
+	manifestDir string // e.g., ~/.config/tai/manifests
+}
+
+// NewManifestStore creates a new manifest store.
+func NewManifestStore(manifestDir string) *ManifestStore {
+	return &ManifestStore{manifestDir: manifestDir}
+}
+
+// Load loads a manifest for a target.
+func (s *ManifestStore) Load(target string) (*Manifest, error) {
+	path := s.manifestPath(target)
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil // No existing manifest
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading manifest: %w", err)
+	}
+
+	var manifest Manifest
+	if err := yaml.Unmarshal(data, &manifest); err != nil {
+		return nil, fmt.Errorf("parsing manifest: %w", err)
+	}
+
+	return &manifest, nil
+}
+
+// Save saves a manifest for a target.
+func (s *ManifestStore) Save(manifest *Manifest) error {
+	if err := os.MkdirAll(s.manifestDir, 0755); err != nil {
+		return fmt.Errorf("creating manifest directory: %w", err)
+	}
+
+	data, err := yaml.Marshal(manifest)
+	if err != nil {
+		return fmt.Errorf("serializing manifest: %w", err)
+	}
+
+	path := s.manifestPath(manifest.Target)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("writing manifest: %w", err)
+	}
+
+	return nil
+}
+
+// Delete deletes a manifest for a target.
+func (s *ManifestStore) Delete(target string) error {
+	path := s.manifestPath(target)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("deleting manifest: %w", err)
+	}
+	return nil
+}
+
+// manifestPath returns the path to a manifest file.
+func (s *ManifestStore) manifestPath(target string) string {
+	return filepath.Join(s.manifestDir, target+".yaml")
+}
+
+// ComputeChecksum computes the SHA-256 checksum of file content.
+func ComputeChecksum(content []byte) string {
+	hash := sha256.Sum256(content)
+	return "sha256:" + hex.EncodeToString(hash[:])
+}
+
+// ComputeFileChecksum computes the checksum of a file.
+func ComputeFileChecksum(path string) (string, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return ComputeChecksum(content), nil
+}
+
+// ComputeDirChecksum computes a checksum for a directory (recursive file listing).
+func ComputeDirChecksum(path string) (string, error) {
+	hash := sha256.New()
+
+	err := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+
+		// Include relative path in hash
+		relPath, _ := filepath.Rel(path, p)
+		hash.Write([]byte(relPath))
+
+		// Include file content
+		content, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		hash.Write(content)
+
+		return nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// BuildManifest builds a manifest from resolved assets.
+func BuildManifest(target, profile, configRepo string, entries []ManifestEntry) *Manifest {
+	return &Manifest{
+		Target:      target,
+		Profile:     profile,
+		ConfigRepo:  configRepo,
+		InstalledAt: time.Now(),
+		Files:       entries,
+	}
+}
+
+// EntryFromAsset creates a manifest entry from a resolved asset.
+func EntryFromAsset(asset *config.ResolvedAsset) ManifestEntry {
+	return ManifestEntry{
+		Path:       asset.TargetPath,
+		SourceName: asset.SourceName,
+		SourcePath: asset.SourcePath,
+		Checksum:   asset.Checksum,
+		BackupPath: asset.BackupPath,
+		IsDir:      asset.IsDir,
+	}
+}
