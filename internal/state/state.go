@@ -13,6 +13,7 @@ import (
 	"github.com/amterp/tai/internal/bundle"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/install"
+	"github.com/amterp/tai/internal/pathutil"
 	"github.com/amterp/tai/internal/profile"
 	"github.com/amterp/tai/internal/source"
 )
@@ -134,19 +135,18 @@ func Load() (*State, error) {
 
 // LoadConfigRepo loads a config repository.
 func (s *State) LoadConfigRepo(path string) error {
-	// Expand ~ if present
-	if len(path) > 0 && path[0] == '~' {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("expanding ~: %w", err)
-		}
-		path = filepath.Join(home, path[1:])
-	}
-
-	// Make absolute
-	absPath, err := filepath.Abs(path)
+	// Expand ~ and make absolute
+	absPath, err := pathutil.MakeAbsolute(path, "")
 	if err != nil {
-		return fmt.Errorf("making path absolute: %w", err)
+		return fmt.Errorf("resolving config path: %w", err)
+	}
+	// MakeAbsolute with empty base won't make relative paths absolute,
+	// so we need to handle that case
+	if !filepath.IsAbs(absPath) {
+		absPath, err = filepath.Abs(absPath)
+		if err != nil {
+			return fmt.Errorf("making path absolute: %w", err)
+		}
 	}
 
 	// Parse tai.yaml
@@ -178,6 +178,13 @@ func (s *State) LoadConfigRepo(path string) error {
 	}
 	s.Profiles = profiles
 
+	// Validate profile targets against registered adapters
+	for name, profile := range profiles {
+		if _, err := adapter.DefaultRegistry.Get(profile.Target); err != nil {
+			return fmt.Errorf("profile %q: unknown target %q (no adapter registered)", name, profile.Target)
+		}
+	}
+
 	// Create resolvers
 	s.BundleResolver = bundle.NewResolver(bundles, sources)
 	s.ProfileResolver = profile.NewResolver(profiles, bundles, sources)
@@ -190,18 +197,16 @@ func (s *State) LoadConfigRepo(path string) error {
 
 // SetActiveConfig sets the active config repo path and saves it.
 func (s *State) SetActiveConfig(path string) error {
-	// Expand and validate path
-	if len(path) > 0 && path[0] == '~' {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("expanding ~: %w", err)
-		}
-		path = filepath.Join(home, path[1:])
-	}
-
-	absPath, err := filepath.Abs(path)
+	// Expand ~ and make absolute
+	absPath, err := pathutil.MakeAbsolute(path, "")
 	if err != nil {
-		return fmt.Errorf("making path absolute: %w", err)
+		return fmt.Errorf("resolving config path: %w", err)
+	}
+	if !filepath.IsAbs(absPath) {
+		absPath, err = filepath.Abs(absPath)
+		if err != nil {
+			return fmt.Errorf("making path absolute: %w", err)
+		}
 	}
 
 	// Verify tai.yaml exists

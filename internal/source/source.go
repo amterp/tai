@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/pathutil"
 )
 
 // LoadedSource represents a source with its resolved path and discovered assets.
@@ -74,20 +75,9 @@ func (l *Loader) Load(src config.Source) (*LoadedSource, error) {
 
 // resolvePath resolves the source path to an absolute filesystem path.
 func (l *Loader) resolvePath(src config.Source) (string, error) {
-	path := src.Path
-
-	// Expand ~ to home directory
-	if strings.HasPrefix(path, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("cannot expand ~: %w", err)
-		}
-		path = filepath.Join(home, path[2:])
-	}
-
-	// Handle relative paths
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(l.configRepoPath, path)
+	path, err := pathutil.MakeAbsolute(src.Path, l.configRepoPath)
+	if err != nil {
+		return "", fmt.Errorf("resolving path: %w", err)
 	}
 
 	// For tai-repo sources, point to assets/ subdirectory
@@ -95,7 +85,7 @@ func (l *Loader) resolvePath(src config.Source) (string, error) {
 		path = filepath.Join(path, "assets")
 	}
 
-	return filepath.Clean(path), nil
+	return path, nil
 }
 
 // discoverAssets discovers all assets in a loaded source.
@@ -151,11 +141,8 @@ func (ls *LoadedSource) GetAsset(assetPath string) (string, bool) {
 	// assetPath is like "personas/senior-swe.md" or "skills/my-skill"
 	fullPath := filepath.Join(ls.ResolvedPath, assetPath)
 
-	// Clean both paths and verify the result is still within the source directory
-	cleanedFull := filepath.Clean(fullPath)
-	cleanedBase := filepath.Clean(ls.ResolvedPath)
-	if !strings.HasPrefix(cleanedFull, cleanedBase+string(filepath.Separator)) &&
-		cleanedFull != cleanedBase {
+	// Verify the result is still within the source directory
+	if !pathutil.IsContainedIn(fullPath, ls.ResolvedPath) {
 		return "", false // Path traversal attempt
 	}
 
