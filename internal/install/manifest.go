@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -62,7 +63,8 @@ func (s *ManifestStore) Load(target string) (*Manifest, error) {
 	return &manifest, nil
 }
 
-// Save saves a manifest for a target.
+// Save saves a manifest for a target atomically.
+// Writes to a temp file first, then renames to ensure atomic update.
 func (s *ManifestStore) Save(manifest *Manifest) error {
 	if err := os.MkdirAll(s.manifestDir, 0755); err != nil {
 		return fmt.Errorf("creating manifest directory: %w", err)
@@ -73,9 +75,18 @@ func (s *ManifestStore) Save(manifest *Manifest) error {
 		return fmt.Errorf("serializing manifest: %w", err)
 	}
 
-	path := s.manifestPath(manifest.Target)
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	finalPath := s.manifestPath(manifest.Target)
+	tempPath := finalPath + ".tmp"
+
+	// Write to temp file
+	if err := os.WriteFile(tempPath, data, 0644); err != nil {
 		return fmt.Errorf("writing manifest: %w", err)
+	}
+
+	// Atomic rename
+	if err := os.Rename(tempPath, finalPath); err != nil {
+		os.Remove(tempPath) // Clean up temp file on failure
+		return fmt.Errorf("finalizing manifest: %w", err)
 	}
 
 	return nil
@@ -111,33 +122,41 @@ func ComputeFileChecksum(path string) (string, error) {
 }
 
 // ComputeDirChecksum computes a checksum for a directory (recursive file listing).
+// Files are sorted by path to ensure deterministic checksums across platforms.
 func ComputeDirChecksum(path string) (string, error) {
-	hash := sha256.New()
-
+	// First, collect all file paths
+	var files []string
 	err := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
-			return nil
+		if !info.IsDir() {
+			relPath, _ := filepath.Rel(path, p)
+			files = append(files, relPath)
 		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	// Sort paths for deterministic ordering
+	sort.Strings(files)
+
+	// Now hash in sorted order
+	hash := sha256.New()
+	for _, relPath := range files {
+		fullPath := filepath.Join(path, relPath)
 
 		// Include relative path in hash
-		relPath, _ := filepath.Rel(path, p)
 		hash.Write([]byte(relPath))
 
 		// Include file content
-		content, err := os.ReadFile(p)
+		content, err := os.ReadFile(fullPath)
 		if err != nil {
-			return err
+			return "", err
 		}
 		hash.Write(content)
-
-		return nil
-	})
-
-	if err != nil {
-		return "", err
 	}
 
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil

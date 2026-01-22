@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strings"
 
 	"github.com/amterp/ra"
 	"github.com/amterp/tai/internal/config"
@@ -105,6 +106,11 @@ func main() {
 		SetDefault(false).
 		SetUsage("Leave conflicting files as-is").
 		Register(installCmd)
+	installVars, _ := ra.NewString("var").
+		SetShort("v").
+		SetOptional(true).
+		SetUsage("Template variables (format: key1=val1,key2=val2)").
+		Register(installCmd)
 	installUsed, _ := root.RegisterCmd(installCmd)
 
 	// Uninstall command
@@ -184,7 +190,7 @@ func main() {
 			os.Exit(1)
 		}
 	case *installUsed:
-		runInstall(*installProfile, *installDryRun, *installForce, *installSkipConflicts)
+		runInstall(*installProfile, *installDryRun, *installForce, *installSkipConflicts, *installVars)
 	case *uninstallUsed:
 		runUninstall(*uninstallTarget)
 	case *statusUsed:
@@ -201,6 +207,25 @@ func main() {
 func fatal(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
 	os.Exit(1)
+}
+
+// parseVariables parses a comma-separated list of key=value pairs.
+func parseVariables(varsStr string) template.Variables {
+	vars := template.Variables{}
+	if varsStr == "" {
+		return vars
+	}
+	for _, pair := range strings.Split(varsStr, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) == 2 {
+			vars[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		}
+	}
+	return vars
 }
 
 func loadState() *state.State {
@@ -383,7 +408,7 @@ func runShowBundle(name string) {
 
 // --- Install commands ---
 
-func runInstall(profileName string, dryRun, force, skipConflicts bool) {
+func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr string) {
 	s := loadState()
 	requireActiveConfig(s)
 
@@ -403,12 +428,15 @@ func runInstall(profileName string, dryRun, force, skipConflicts bool) {
 	logger := log.New(os.Stdout, "ℹ ", 0)
 	s.ProfileResolver.SetLogger(logger)
 
+	// Parse template variables
+	vars := parseVariables(varsStr)
+
 	// Prepare install options
 	opts := install.InstallOptions{
 		DryRun:        dryRun,
 		Force:         force,
 		SkipConflicts: skipConflicts,
-		Variables:     template.Variables{}, // Could add custom variables here
+		Variables:     vars,
 	}
 
 	// Convert resolved assets

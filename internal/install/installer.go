@@ -84,7 +84,7 @@ func (i *Installer) Install(
 		fullTargetPath := filepath.Join(targetDir, targetPath)
 
 		// Resolve the asset to get content
-		resolved, err := i.resolveAsset(asset, targetPath, fullTargetPath, templateEngine)
+		resolved, err := i.resolveAsset(asset, targetPath, fullTargetPath, templateEngine, opts.DryRun)
 		if err != nil {
 			return nil, fmt.Errorf("resolving asset %s: %w", asset.SourcePath, err)
 		}
@@ -149,6 +149,8 @@ func (i *Installer) Install(
 						result.Errors = append(result.Errors, fmt.Errorf("removing %s: %w", path, err))
 					}
 				}
+				// Clean up empty parent directories
+				cleanEmptyDirs(fullPath, targetDir)
 			}
 		}
 	}
@@ -197,6 +199,8 @@ func (i *Installer) Uninstall(adap adapter.Adapter) (*InstallResult, error) {
 					result.Errors = append(result.Errors, fmt.Errorf("removing %s: %w", entry.Path, err))
 				}
 			}
+			// Clean up empty parent directories
+			cleanEmptyDirs(fullPath, targetDir)
 		}
 	}
 
@@ -209,10 +213,12 @@ func (i *Installer) Uninstall(adap adapter.Adapter) (*InstallResult, error) {
 }
 
 // resolveAsset resolves an asset to a ResolvedAsset with content loaded.
+// If dryRun is true, backup paths are computed but backups are not created.
 func (i *Installer) resolveAsset(
 	asset *config.Asset,
 	targetPath, fullTargetPath string,
 	engine *template.Engine,
+	dryRun bool,
 ) (*config.ResolvedAsset, error) {
 	resolved := &config.ResolvedAsset{
 		Asset:      *asset,
@@ -237,12 +243,15 @@ func (i *Installer) resolveAsset(
 		if template.HasTemplateVars(content) {
 			resolved.IsTemplated = true
 
-			// If uses {{existing}}, backup the existing file
+			// If uses {{existing}}, prepare backup of the existing file
 			if template.HasExistingVar(content) {
 				if _, err := os.Stat(fullTargetPath); err == nil {
 					backupPath := fullTargetPath + ".tai-backup"
-					if err := copyFile(fullTargetPath, backupPath); err != nil {
-						return nil, fmt.Errorf("creating backup: %w", err)
+					// Only create actual backup if not dry-run
+					if !dryRun {
+						if err := copyFile(fullTargetPath, backupPath); err != nil {
+							return nil, fmt.Errorf("creating backup: %w", err)
+						}
 					}
 					resolved.BackupPath = backupPath
 				}
@@ -324,6 +333,21 @@ func (i *Installer) restoreBackup(backupPath, targetPath string) error {
 		return err
 	}
 	return nil
+}
+
+// cleanEmptyDirs removes empty parent directories up to (but not including) stopAt.
+func cleanEmptyDirs(path, stopAt string) {
+	dir := filepath.Dir(path)
+	for dir != stopAt && dir != "." && dir != "/" {
+		entries, err := os.ReadDir(dir)
+		if err != nil || len(entries) > 0 {
+			break // Not empty or can't read - stop
+		}
+		if err := os.Remove(dir); err != nil {
+			break // Can't remove - stop
+		}
+		dir = filepath.Dir(dir)
+	}
 }
 
 // copyFile copies a file from src to dst.

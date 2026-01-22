@@ -146,9 +146,19 @@ func (l *Loader) discoverAssetsInDir(dir, assetType string) ([]string, error) {
 }
 
 // GetAsset returns the full path to an asset.
+// Returns false if the path escapes the source directory (path traversal protection).
 func (ls *LoadedSource) GetAsset(assetPath string) (string, bool) {
 	// assetPath is like "personas/senior-swe.md" or "skills/my-skill"
 	fullPath := filepath.Join(ls.ResolvedPath, assetPath)
+
+	// Clean both paths and verify the result is still within the source directory
+	cleanedFull := filepath.Clean(fullPath)
+	cleanedBase := filepath.Clean(ls.ResolvedPath)
+	if !strings.HasPrefix(cleanedFull, cleanedBase+string(filepath.Separator)) &&
+		cleanedFull != cleanedBase {
+		return "", false // Path traversal attempt
+	}
+
 	_, err := os.Stat(fullPath)
 	if err != nil {
 		return "", false
