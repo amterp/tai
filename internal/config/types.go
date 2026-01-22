@@ -17,6 +17,7 @@ type Source struct {
 
 // Bundle represents a named collection of assets.
 type Bundle struct {
+	Version     int      `yaml:"version,omitempty"` // Schema version (optional, defaults to 1)
 	Name        string   `yaml:"name"`
 	Description string   `yaml:"description"`
 	Bundles     []string `yaml:"bundles"` // Included bundles (bundle names)
@@ -25,6 +26,7 @@ type Bundle struct {
 
 // Profile represents a bundle bound to a specific target.
 type Profile struct {
+	Version     int               `yaml:"version,omitempty"` // Schema version (optional, defaults to 1)
 	Name        string            `yaml:"name"`
 	Description string            `yaml:"description"`
 	Target      string            `yaml:"target"` // e.g., "claude", "cursor"

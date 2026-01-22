@@ -17,6 +17,7 @@ import (
 
 // Manifest tracks what tai has installed to a target.
 type Manifest struct {
+	Version     int             `yaml:"version"`     // Schema version
 	Target      string          `yaml:"target"`
 	Profile     string          `yaml:"profile"`
 	ConfigRepo  string          `yaml:"config_repo"`
@@ -162,9 +163,13 @@ func ComputeDirChecksum(path string) (string, error) {
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
+// ManifestVersion is the current manifest schema version.
+const ManifestVersion = 1
+
 // BuildManifest builds a manifest from resolved assets.
 func BuildManifest(target, profile, configRepo string, entries []ManifestEntry) *Manifest {
 	return &Manifest{
+		Version:     ManifestVersion,
 		Target:      target,
 		Profile:     profile,
 		ConfigRepo:  configRepo,
