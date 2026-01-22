@@ -1,0 +1,41 @@
+#!/usr/bin/env rad
+---
+Development helper script for tai.
+Provides common development tasks like building, testing, and linting.
+---
+
+args:
+    validate v bool  # Build, test, and lint
+    build b bool     # Build the tai binary
+
+if not validate and not build:
+    print_err("No action specified. Use --validate/-v or --build/-b")
+    exit(1)
+
+if build or validate:
+    do_build()
+
+if validate:
+    do_test()
+    do_lint()
+    print("\n✓ All validations passed!")
+
+fn do_build():
+    print("Building tai...")
+    $`mkdir -p bin && go build -o bin/tai ./cmd/tai`
+    print("✓ Build complete: ./bin/tai")
+
+fn do_test():
+    print("\nRunning tests...")
+    $`go test ./...`
+
+fn do_lint():
+    print("\nRunning go vet...")
+    $`go vet ./...`
+
+    print("\nRunning staticcheck...")
+    code = $`staticcheck ./...` catch:
+        if code == 127:
+            print_err("staticcheck not installed. Install with: go install honnef.co/go/tools/cmd/staticcheck@latest")
+            exit(1)
+        exit(code)
