@@ -1,0 +1,54 @@
+kan_schema = "board/2"
+id = "b_CNw8ylqO"
+name = "main"
+default_column = "backlog-hi"
+
+[[columns]]
+  name = "uncomitted"
+  color = "#ec4899"
+
+[[columns]]
+  name = "backlog-lo"
+  color = "#9333ea"
+
+[[columns]]
+  name = "backlog-hi"
+  color = "#6b7280"
+  card_ids = ["a_CO1Hm0Ki", "a_CO2ASXWG", "a_CO2t37qo"]
+
+[[columns]]
+  name = "next"
+  color = "#3b82f6"
+  card_ids = ["a_CO2NpM5i"]
+
+[[columns]]
+  name = "in-progress"
+  color = "#f59e0b"
+  card_ids = ["a_CO1WEyQi"]
+
+[[columns]]
+  name = "done"
+  color = "#10b981"
+
+[custom_fields]
+  [custom_fields.type]
+    type = "enum"
+
+    [[custom_fields.type.options]]
+      value = "bug"
+      color = "#ef4444"
+
+    [[custom_fields.type.options]]
+      value = "enhancement"
+      color = "#3b82f6"
+
+    [[custom_fields.type.options]]
+      value = "feature"
+      color = "#22c55e"
+
+    [[custom_fields.type.options]]
+      value = "chore"
+      color = "#6b7280"
+
+[card_display]
+  type_indicator = "type"

@@ -64,9 +64,5 @@ func (r *Registry) List() []string {
 }
 
 // DefaultRegistry is the global registry with all built-in adapters.
+// Adapters register themselves via init().
 var DefaultRegistry = NewRegistry()
-
-// RegisterBuiltins registers all built-in adapters.
-func RegisterBuiltins() {
-	// Adapters register themselves via init()
-}

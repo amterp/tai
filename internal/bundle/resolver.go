@@ -119,6 +119,7 @@ func (r *Resolver) resolveAssetRef(ref string) (*config.Asset, error) {
 // Later bundles override earlier ones on conflict (deduplication).
 func (r *Resolver) ResolveMultiple(names []string) (*ResolvedBundle, []Override, error) {
 	assetMap := make(map[string]*config.Asset)
+	bundleMap := make(map[string]string) // assetKey -> bundle name that provided it
 	order := []string{}
 	var overrides []Override
 
@@ -131,18 +132,19 @@ func (r *Resolver) ResolveMultiple(names []string) (*ResolvedBundle, []Override,
 		for _, asset := range resolved.Assets {
 			assetKey := asset.Type + "/" + asset.Name
 			if existing, exists := assetMap[assetKey]; exists {
-				// Record the override
+				// Record the override with correct bundle names
 				overrides = append(overrides, Override{
-					AssetPath:    assetKey,
-					FromBundle:   existing.SourceName, // Actually from bundle, but we track source
-					ToBundle:     name,
-					FromSource:   existing.SourceName,
-					ToSource:     asset.SourceName,
+					AssetPath:  assetKey,
+					FromBundle: bundleMap[assetKey],
+					ToBundle:   name,
+					FromSource: existing.SourceName,
+					ToSource:   asset.SourceName,
 				})
 			} else {
 				order = append(order, assetKey)
 			}
 			assetMap[assetKey] = asset
+			bundleMap[assetKey] = name
 		}
 	}
 

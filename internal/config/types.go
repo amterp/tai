@@ -1,8 +1,6 @@
 // Package config provides types and parsing for tai configuration files.
 package config
 
-import "time"
-
 // TaiConfig represents the top-level tai.yaml configuration file.
 type TaiConfig struct {
 	Version        int      `yaml:"version"`
@@ -52,24 +50,6 @@ type ResolvedAsset struct {
 	Checksum    string // SHA-256 checksum of content
 	BackupPath  string // Path to backup file (for {{existing}} templated files)
 	IsTemplated bool   // Whether this asset uses templating
-}
-
-// Manifest tracks what tai has installed to a target.
-type Manifest struct {
-	Target      string          `yaml:"target"`
-	Profile     string          `yaml:"profile"`
-	ConfigRepo  string          `yaml:"config_repo"`
-	InstalledAt time.Time       `yaml:"installed_at"`
-	Files       []ManifestEntry `yaml:"files"`
-}
-
-// ManifestEntry represents a single installed file.
-type ManifestEntry struct {
-	Path       string `yaml:"path"`        // Target-relative path
-	SourceName string `yaml:"source"`      // Source name
-	SourcePath string `yaml:"source_path"` // Full filesystem path in source
-	Checksum   string `yaml:"checksum"`    // SHA-256 checksum
-	BackupPath string `yaml:"backup_path"` // Path to backup (for {{existing}} files)
 }
 
 // AssetType constants.
