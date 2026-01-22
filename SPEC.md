@@ -1,7 +1,7 @@
 # tai Specification
 
-**Version:** 0.1 (Draft)
-**Status:** Design Phase
+**Version:** 0.1 (MVP)
+**Status:** Implemented
 
 ## Overview
 
@@ -120,7 +120,7 @@ my-tai-config/
 │   │   ├── code-reviewer.md
 │   │   └── pair-programmer.md
 │   ├── skills/           # Procedural capabilities (→ skills in Claude)
-│   │   └── council-participant/
+│   │   └── council-participant/   # Skills follow agentskills.io standard
 │   └── docs/             # Reference material (→ CLAUDE.md etc.)
 │       ├── CLAUDE.md
 │       └── RFC2119.md
@@ -144,7 +144,10 @@ version: 1
 # PRIORITY: Later sources override earlier ones when asset paths conflict.
 # This ordering is intentional—list base/default sources first, overrides last.
 sources:
-  # Local assets in this repo (always implicitly available as "local")
+  # Local assets in this repo
+  # NOTE: The "local" source is IMPLICIT - tai automatically adds it if not
+  # explicitly defined. It points to ./assets in the config repo. You only
+  # need to declare it if you want to override the path.
   - name: local
     path: ./assets
 
@@ -409,6 +412,14 @@ files:
     source: work-shared
     source_path: /Users/amterp/work/ai-common/personas/company-style.md
     checksum: sha256:def456...
+
+  # Files using {{existing}} templating track their backup
+  - path: CLAUDE.md
+    source: local
+    source_path: /Users/amterp/my-tai-config/assets/docs/CLAUDE.md
+    checksum: sha256:789ghi...
+    backup_path: /Users/amterp/.claude/CLAUDE.md.tai-backup
+    is_templated: true
 ```
 
 The manifest enables:
@@ -471,6 +482,49 @@ When using git remote sources:
 - `tai install` does NOT require explicit sync first
 - `tai install` warns if cache is stale (configurable threshold, default 24h)
 - Cache miss during install triggers automatic fetch
+
+## Templating
+
+tai supports simple variable substitution in assets during installation.
+
+### Syntax
+
+Variables use double curly braces: `{{variable_name}}`
+
+```markdown
+# Project: {{project_name}}
+
+Welcome to the {{project_name}} codebase.
+```
+
+When installing, pass variables via the `--var` flag:
+
+```bash
+tai install work --var project_name=MyApp
+```
+
+### Special Variables
+
+#### `{{existing}}`
+
+The `{{existing}}` variable injects the current contents of the target file. This is useful for wrapping existing configuration without losing user content.
+
+```markdown
+# tai Header
+
+{{existing}}
+
+# tai Footer
+```
+
+When installed to a file that already contains content, the result includes the original content in place of `{{existing}}`.
+
+**Backup behavior:** When using `{{existing}}`, tai:
+1. Creates a backup of the original file (e.g., `CLAUDE.md.tai-backup`)
+2. Records the backup path in the manifest
+3. On uninstall, restores the original content from the backup
+
+This ensures users don't lose their customizations when uninstalling tai.
 
 ### Merge Strategies (Future)
 
@@ -573,24 +627,29 @@ bundles:
 - [x] Config repo structure (tai.yaml, bundles/, profiles/, assets/)
 - [x] Target-agnostic asset structure (personas/, delegates/, skills/, docs/)
 - [x] Source types: local path, other tai repo
-- [x] Bundle and profile resolution
+- [x] Bundle and profile resolution with circular reference detection (fail-fast)
+- [x] Diamond dependency deduplication
 - [x] Claude adapter with file-copy installation and terminology mapping
-- [x] Installation manifest tracking
+- [x] Skills handling per agentskills.io standard (SKILL.md with YAML frontmatter)
+- [x] Installation manifest tracking with backup support
 - [x] Basic CLI: config, list, install, uninstall, status, locate
 - [x] `--dry-run` flag for install preview
+- [x] `--force` and `--skip-conflicts` flags for conflict handling
 - [x] `tai run` pass-through
+- [x] Simple templating with `{{variable}}` substitution
+- [x] `{{existing}}` templating for wrapping existing file content with backup/restore
 
 ### Deferred to Future Versions
 
 - [ ] Git remote sources
-- [ ] Templating/compilation of assets (variable substitution)
 - [ ] `--add-dir` runtime injection (vs. installing to ~/.claude)
 - [ ] Cursor adapter
-- [ ] Merge strategies (append/prepend/template)
+- [ ] Merge strategies (append/prepend/template) - beyond {{existing}}
 - [ ] Asset validation (schema checking)
 - [ ] Version compatibility checking
 - [ ] `tai lint` command
 - [ ] `tai install --strict` mode
+- [ ] Profile inheritance
 
 ## Future Considerations
 
@@ -630,9 +689,32 @@ Items considered during design but explicitly deferred. These inform future deve
 **Future scope:** Refactor adapter interface when first non-file-based target emerges.
 
 ### Skill Manifests
-**What:** Skills have explicit manifest files (`skill.yaml`) declaring metadata, entry points, dependencies.
-**Why deferred:** Directory-as-atomic-unit is sufficient for MVP. Skills aren't complex enough yet to need manifests.
-**Future scope:** Add when skills need version requirements, build steps, or complex dependencies.
+**What:** Extended skill metadata beyond the agentskills.io SKILL.md standard.
+**Why deferred:** The agentskills.io standard (SKILL.md with YAML frontmatter) is sufficient for MVP.
+**Future scope:** Add when skills need version requirements, build steps, or complex dependencies beyond what SKILL.md supports.
+
+## Testing Philosophy
+
+1. **No hardcoded paths**: All filesystem paths are injected via config structs
+2. **Temp directories**: All tests create isolated temp dirs via `t.TempDir()`
+3. **Fixtures**: Helper functions in `internal/testutil` set up fake config repos
+4. **Coverage targets**:
+   - Unit tests for all parsing/resolution logic
+   - Integration tests for adapters
+   - E2E tests for full workflows in `e2e/` directory
+
+## Implementation Notes
+
+### CLI Framework
+
+tai uses [github.com/amterp/ra](https://github.com/amterp/ra) for CLI argument parsing. ra provides a clean, declarative API for defining commands with dual-nature arguments.
+
+### UI Libraries
+
+For creating rich terminal output, the following libraries are approved:
+- [Lip Gloss](https://github.com/charmbracelet/lipgloss) - Style definitions
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea) - TUI framework
+- [Bubbles](https://github.com/charmbracelet/bubbles) - TUI components
 
 ## Open Questions
 
@@ -640,13 +722,13 @@ Items considered during design but explicitly deferred. These inform future deve
 
 2. **Checksum on re-install**: Should we warn if source file changed but installed file was also modified externally? (Both diverged from manifest.)
 
-3. **Skills structure**: Skills are directories. How do bundles reference them? Proposal: `skills/my-skill/` (trailing slash indicates directory).
+3. ~~**Skills structure**~~: **RESOLVED.** Skills follow the [agentskills.io](https://agentskills.io) standard (SKILL.md with YAML frontmatter). Bundles reference them as `skills/my-skill` (directory path, no trailing slash needed).
 
-4. **CLAUDE.md handling**: This file is special—it's the root config. Should tai own it entirely, or merge with existing? Proposal: tai owns it via docs/, but supports `includes:` directive to reference other docs.
+4. ~~**CLAUDE.md handling**~~: **RESOLVED.** Use `{{existing}}` templating to wrap user content. tai backs up the original and restores it on uninstall.
 
-5. **Profile inheritance**: Should profiles be able to extend other profiles? Adds complexity but might be useful.
+5. **Profile inheritance**: Should profiles be able to extend other profiles? Deferred—adds complexity but might be useful in the future.
 
-6. **Templating syntax**: When we add templating, what syntax? Go templates, Jinja-style, or custom?
+6. ~~**Templating syntax**~~: **RESOLVED.** Simple `{{variable}}` substitution. Not Go templates or Jinja—just straightforward variable replacement. Special variable `{{existing}}` for injecting current file content.
 
 ---
 
