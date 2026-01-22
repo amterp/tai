@@ -2,25 +2,35 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/amterp/ra"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/install"
+	"github.com/amterp/tai/internal/output"
 	"github.com/amterp/tai/internal/state"
 	"github.com/amterp/tai/internal/template"
 )
 
 const version = "0.1.0"
 
+// out is the global output instance, initialized after flag parsing.
+var out output.Output
+
 func main() {
 	root := ra.NewCmd("tai")
 	root.SetDescription("Manage AI agent configurations across targets (v" + version + ")")
 	root.SetAutoHelpOnNoArgs(true)
+
+	// Global flags
+	noColor, _ := ra.NewBool("no-color").
+		SetDefault(false).
+		SetUsage("Disable colored output").
+		Register(root)
 
 	// Config subcommands
 	configCmd := ra.NewCmd("config")
@@ -153,6 +163,13 @@ func main() {
 	// Parse
 	root.ParseOrExit(os.Args[1:])
 
+	// Initialize output after flag parsing
+	out = output.New(output.Options{
+		Writer:    os.Stdout,
+		ErrWriter: os.Stderr,
+		NoColor:   *noColor,
+	})
+
 	// Route to appropriate handler
 	switch {
 	case *configUsed:
@@ -162,7 +179,7 @@ func main() {
 		case *configShowUsed:
 			runConfigShow()
 		default:
-			fmt.Fprintln(os.Stderr, "Usage: tai config <set|show>")
+			out.Error("Usage: tai config <set|show>")
 			os.Exit(1)
 		}
 	case *listUsed:
@@ -176,7 +193,7 @@ func main() {
 		case *listAssetsUsed:
 			runListAssets(*listAssetsSource)
 		default:
-			fmt.Fprintln(os.Stderr, "Usage: tai list <sources|bundles|profiles|assets>")
+			out.Error("Usage: tai list <sources|bundles|profiles|assets>")
 			os.Exit(1)
 		}
 	case *showUsed:
@@ -186,7 +203,7 @@ func main() {
 		case *showBundleUsed:
 			runShowBundle(*showBundleName)
 		default:
-			fmt.Fprintln(os.Stderr, "Usage: tai show <profile|bundle> <name>")
+			out.Error("Usage: tai show <profile|bundle> <name>")
 			os.Exit(1)
 		}
 	case *installUsed:
@@ -200,12 +217,12 @@ func main() {
 	case *runUsed:
 		runRun(*runTarget, *runArgs)
 	default:
-		fmt.Print(root.GenerateUsage(false))
+		out.Raw(root.GenerateUsage(false))
 	}
 }
 
 func fatal(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
+	out.Error(fmt.Sprintf(format, args...))
 	os.Exit(1)
 }
 
@@ -249,18 +266,23 @@ func runConfigSet(path string) {
 	if err := s.SetActiveConfig(path); err != nil {
 		fatal("setting active config: %v", err)
 	}
-	fmt.Printf("Active config set to: %s\n", s.GlobalConfig.ActiveConfig)
+	out.Success("Active config set to: " + s.GlobalConfig.ActiveConfig)
 }
 
 func runConfigShow() {
 	s := loadState()
-	fmt.Printf("Config directory: %s\n", s.Paths.ConfigDir)
-	fmt.Printf("Cache directory:  %s\n", s.Paths.CacheDir)
-	if s.GlobalConfig.ActiveConfig != "" {
-		fmt.Printf("Active config:    %s\n", s.GlobalConfig.ActiveConfig)
-	} else {
-		fmt.Println("Active config:    (none)")
+	out.KeyValueBlock([]output.KeyValuePair{
+		{Key: "Config directory", Value: s.Paths.ConfigDir},
+		{Key: "Cache directory", Value: s.Paths.CacheDir},
+		{Key: "Active config", Value: valueOrNone(s.GlobalConfig.ActiveConfig)},
+	})
+}
+
+func valueOrNone(s string) string {
+	if s == "" {
+		return "(none)"
 	}
+	return s
 }
 
 // --- List commands ---
@@ -269,14 +291,19 @@ func runListSources() {
 	s := loadState()
 	requireActiveConfig(s)
 
-	fmt.Println("Sources:")
+	items := make([]output.ListItem, 0, len(s.TaiConfig.Sources))
 	for _, src := range s.TaiConfig.Sources {
 		typeStr := src.Type
 		if typeStr == "" {
 			typeStr = "local"
 		}
-		fmt.Printf("  %-15s  %-10s  %s\n", src.Name, typeStr, src.Path)
+		items = append(items, output.ListItem{
+			Name:        src.Name,
+			Description: typeStr,
+			Extra:       src.Path,
+		})
 	}
+	out.List("Sources:", items)
 }
 
 func runListBundles() {
@@ -284,25 +311,29 @@ func runListBundles() {
 	requireActiveConfig(s)
 
 	if len(s.Bundles) == 0 {
-		fmt.Println("No bundles defined.")
+		out.Info("No bundles defined.")
 		return
 	}
 
-	fmt.Println("Bundles:")
 	names := make([]string, 0, len(s.Bundles))
 	for name := range s.Bundles {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 
+	items := make([]output.ListItem, 0, len(names))
 	for _, name := range names {
 		b := s.Bundles[name]
 		desc := b.Description
 		if desc == "" {
 			desc = "(no description)"
 		}
-		fmt.Printf("  %-20s  %s\n", name, desc)
+		items = append(items, output.ListItem{
+			Name:        name,
+			Description: desc,
+		})
 	}
+	out.List("Bundles:", items)
 }
 
 func runListProfiles() {
@@ -310,25 +341,30 @@ func runListProfiles() {
 	requireActiveConfig(s)
 
 	if len(s.Profiles) == 0 {
-		fmt.Println("No profiles defined.")
+		out.Info("No profiles defined.")
 		return
 	}
 
-	fmt.Println("Profiles:")
 	names := make([]string, 0, len(s.Profiles))
 	for name := range s.Profiles {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 
+	items := make([]output.ListItem, 0, len(names))
 	for _, name := range names {
 		p := s.Profiles[name]
 		desc := p.Description
 		if desc == "" {
 			desc = "(no description)"
 		}
-		fmt.Printf("  %-15s  %-10s  %s\n", name, p.Target, desc)
+		items = append(items, output.ListItem{
+			Name:        name,
+			Description: p.Target,
+			Extra:       desc,
+		})
 	}
+	out.List("Profiles:", items)
 }
 
 func runListAssets(sourceName string) {
@@ -341,12 +377,14 @@ func runListAssets(sourceName string) {
 		if !ok {
 			fatal("source not found: %s", sourceName)
 		}
-		fmt.Printf("Assets from source '%s':\n", sourceName)
 		assets := src.ListAllAssets()
 		sort.Strings(assets)
+
+		items := make([]output.ListItem, 0, len(assets))
 		for _, a := range assets {
-			fmt.Printf("  %s\n", a)
+			items = append(items, output.ListItem{Name: a})
 		}
+		out.List("Assets from source '"+sourceName+"':", items)
 	} else {
 		// All sources
 		for name, src := range s.Sources {
@@ -354,11 +392,13 @@ func runListAssets(sourceName string) {
 			if len(assets) == 0 {
 				continue
 			}
-			fmt.Printf("%s:\n", name)
 			sort.Strings(assets)
+
+			items := make([]output.ListItem, 0, len(assets))
 			for _, a := range assets {
-				fmt.Printf("  %s\n", a)
+				items = append(items, output.ListItem{Name: a})
 			}
+			out.List(name+":", items)
 		}
 	}
 }
@@ -374,13 +414,21 @@ func runShowProfile(name string) {
 		fatal("resolving profile: %v", err)
 	}
 
-	fmt.Printf("Profile: %s\n", resolved.Name)
-	fmt.Printf("Target:  %s\n", resolved.Target)
-	fmt.Printf("Assets:  %d\n", len(resolved.Assets))
-	fmt.Println()
+	out.KeyValueBlock([]output.KeyValuePair{
+		{Key: "Profile", Value: resolved.Name},
+		{Key: "Target", Value: resolved.Target},
+		{Key: "Assets", Value: strconv.Itoa(len(resolved.Assets))},
+	})
 
+	out.Blank()
+	items := make([]output.ListItem, 0, len(resolved.Assets))
 	for _, asset := range resolved.Assets {
-		fmt.Printf("  %s/%s (%s)\n", asset.Type, asset.Name, asset.SourceName)
+		items = append(items, output.ListItem{
+			Name: asset.Type + "/" + asset.Name + " (" + asset.SourceName + ")",
+		})
+	}
+	for _, item := range items {
+		out.Raw("  " + item.Name)
 	}
 }
 
@@ -394,17 +442,21 @@ func runShowBundle(name string) {
 	}
 
 	b := s.Bundles[name]
-	fmt.Printf("Bundle: %s\n", resolved.Name)
-	if b.Description != "" {
-		fmt.Printf("Description: %s\n", b.Description)
+	pairs := []output.KeyValuePair{
+		{Key: "Bundle", Value: resolved.Name},
 	}
-	fmt.Printf("Assets: %d\n", len(resolved.Assets))
-	fmt.Println()
+	if b.Description != "" {
+		pairs = append(pairs, output.KeyValuePair{Key: "Description", Value: b.Description})
+	}
+	pairs = append(pairs, output.KeyValuePair{Key: "Assets", Value: strconv.Itoa(len(resolved.Assets))})
+	out.KeyValueBlock(pairs)
 
+	out.Blank()
 	for _, asset := range resolved.Assets {
-		fmt.Printf("  %s/%s (%s)\n", asset.Type, asset.Name, asset.SourceName)
+		out.Raw("  " + asset.Type + "/" + asset.Name + " (" + asset.SourceName + ")")
 	}
 }
+
 
 // --- Install commands ---
 
@@ -424,9 +476,8 @@ func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr s
 		fatal("%v", err)
 	}
 
-	// Set up logging for overrides
-	logger := log.New(os.Stdout, "ℹ ", 0)
-	s.ProfileResolver.SetLogger(logger)
+	// Set up logging for overrides using an OutputLogger
+	s.ProfileResolver.SetLogger(&outputLogger{out: out})
 
 	// Parse template variables
 	vars := parseVariables(varsStr)
@@ -447,9 +498,9 @@ func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr s
 
 	// Install
 	if dryRun {
-		fmt.Printf("Would install profile '%s' for %s...\n", profileName, resolved.Target)
+		out.Info("Would install profile '" + profileName + "' for " + resolved.Target + "...")
 	} else {
-		fmt.Printf("Installing profile '%s' for %s...\n", profileName, resolved.Target)
+		out.Info("Installing profile '" + profileName + "' for " + resolved.Target + "...")
 	}
 
 	result, err := s.Installer.Install(adapter, profileName, assets, opts)
@@ -458,37 +509,28 @@ func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr s
 	}
 
 	// Report results
-	if len(result.Added) > 0 {
-		for _, path := range result.Added {
-			fmt.Printf("  + %s (new)\n", path)
-		}
+	manifestPath := ""
+	if !dryRun {
+		manifestPath = s.Paths.ManifestDir
 	}
-	if len(result.Updated) > 0 {
-		for _, path := range result.Updated {
-			fmt.Printf("  ~ %s (updated)\n", path)
-		}
-	}
-	if len(result.Removed) > 0 {
-		for _, path := range result.Removed {
-			fmt.Printf("  - %s (removed)\n", path)
-		}
-	}
-	if len(result.Skipped) > 0 {
-		for _, path := range result.Skipped {
-			fmt.Printf("  ? %s (skipped)\n", path)
-		}
-	}
+	out.InstallResult(&output.InstallResultData{
+		Added:    result.Added,
+		Updated:  result.Updated,
+		Removed:  result.Removed,
+		Skipped:  result.Skipped,
+		DryRun:   dryRun,
+		Manifest: manifestPath,
+	})
+}
 
-	// Summary
-	fmt.Println()
-	if dryRun {
-		fmt.Printf("%d would be added, %d updated, %d removed\n",
-			len(result.Added), len(result.Updated), len(result.Removed))
-	} else {
-		fmt.Printf("%d added, %d updated, %d removed\n",
-			len(result.Added), len(result.Updated), len(result.Removed))
-		fmt.Printf("Manifest written to %s\n", s.Paths.ManifestDir)
-	}
+// outputLogger wraps Output to implement the logger interface expected by ProfileResolver.
+type outputLogger struct {
+	out output.Output
+}
+
+func (l *outputLogger) Printf(format string, args ...any) {
+	msg := strings.TrimSuffix(fmt.Sprintf(format, args...), "\n")
+	l.out.Info(msg)
 }
 
 func runUninstall(target string) {
@@ -499,7 +541,7 @@ func runUninstall(target string) {
 		fatal("%v", err)
 	}
 
-	fmt.Printf("Uninstalling from %s...\n", target)
+	out.Info("Uninstalling from " + target + "...")
 
 	result, err := s.Installer.Uninstall(adapter)
 	if err != nil {
@@ -507,20 +549,20 @@ func runUninstall(target string) {
 	}
 
 	if len(result.Removed) == 0 {
-		fmt.Println("Nothing to uninstall.")
+		out.Info("Nothing to uninstall.")
 		return
 	}
 
 	for _, path := range result.Removed {
-		fmt.Printf("  - %s\n", path)
+		out.Raw("  - " + path)
 	}
 
-	fmt.Printf("\n%d files removed\n", len(result.Removed))
+	out.Success(strconv.Itoa(len(result.Removed)) + " files removed")
 
 	if len(result.Errors) > 0 {
-		fmt.Println("\nWarnings:")
-		for _, err := range result.Errors {
-			fmt.Printf("  %v\n", err)
+		out.Warning("Some files could not be removed:")
+		for _, e := range result.Errors {
+			out.Raw("  " + e.Error())
 		}
 	}
 }
@@ -539,25 +581,27 @@ func runStatus(target string) {
 	for _, t := range targets {
 		manifest, err := s.Installer.Status(t)
 		if err != nil {
-			fmt.Printf("%s: error loading status: %v\n", t, err)
+			out.Error(t + ": error loading status: " + err.Error())
 			continue
 		}
 
 		if manifest == nil {
-			fmt.Printf("%s: not installed\n", t)
+			out.Info(t + ": not installed")
 			continue
 		}
 
-		fmt.Printf("%s:\n", t)
-		fmt.Printf("  Profile:     %s\n", manifest.Profile)
-		fmt.Printf("  Config repo: %s\n", manifest.ConfigRepo)
-		fmt.Printf("  Installed:   %s\n", manifest.InstalledAt.Format("2006-01-02 15:04:05"))
-		fmt.Printf("  Files:       %d\n", len(manifest.Files))
+		out.Header(t + ":")
+		out.KeyValueBlock([]output.KeyValuePair{
+			{Key: "Profile", Value: manifest.Profile},
+			{Key: "Config repo", Value: manifest.ConfigRepo},
+			{Key: "Installed", Value: manifest.InstalledAt.Format("2006-01-02 15:04:05")},
+			{Key: "Files", Value: strconv.Itoa(len(manifest.Files))},
+		})
 
 		if len(manifest.Files) > 0 {
-			fmt.Println("  Installed files:")
+			out.Header("  Installed files:")
 			for _, f := range manifest.Files {
-				fmt.Printf("    %s\n", f.Path)
+				out.Raw("    " + f.Path)
 			}
 		}
 	}
@@ -574,7 +618,7 @@ func runLocate(assetPath string) {
 		fatal("%v", err)
 	}
 
-	fmt.Println(path)
+	out.Raw(path)
 }
 
 // --- Run command ---

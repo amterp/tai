@@ -3,13 +3,21 @@ package profile
 
 import (
 	"fmt"
-	"io"
-	"log"
 
 	"github.com/amterp/tai/internal/bundle"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/source"
 )
+
+// Logger is an interface for logging messages.
+type Logger interface {
+	Printf(format string, args ...any)
+}
+
+// noopLogger discards all log messages.
+type noopLogger struct{}
+
+func (noopLogger) Printf(string, ...any) {}
 
 // ResolvedProfile contains the fully resolved assets for a profile.
 type ResolvedProfile struct {
@@ -25,7 +33,7 @@ type Resolver struct {
 	bundles        map[string]*config.Bundle
 	sources        map[string]*source.LoadedSource
 	bundleResolver *bundle.Resolver
-	logger         *log.Logger
+	logger         Logger
 }
 
 // NewResolver creates a new profile resolver.
@@ -39,12 +47,12 @@ func NewResolver(
 		bundles:        bundles,
 		sources:        sources,
 		bundleResolver: bundle.NewResolver(bundles, sources),
-		logger:         log.New(io.Discard, "", 0), // Discard by default
+		logger:         noopLogger{}, // Discard by default
 	}
 }
 
 // SetLogger sets the logger for override messages.
-func (r *Resolver) SetLogger(logger *log.Logger) {
+func (r *Resolver) SetLogger(logger Logger) {
 	r.logger = logger
 }
 
