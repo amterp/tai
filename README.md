@@ -1,17 +1,21 @@
-# tai
+# Tai
 
-**tai** is a CLI tool for managing AI agent configurations across different targets. It organizes, composes, and installs target-agnostic assets (personas, delegates, skills, docs) from multiple sources while keeping your configuration version-controlled and portable.
+**Tai** is a CLI tool for managing AI agent configurations across different targets. It organizes, composes, and
+installs target-agnostic assets (personas, delegates, skills, docs) from multiple sources while keeping your
+configuration version-controlled and portable.
 
-## Why tai?
+## Why Tai?
 
-AI coding assistants like Claude Code and Cursor use configuration files to customize their behavior—output styles, custom agents, skills, and reference documentation. Managing these configurations across machines, sharing them between personal and work contexts, or keeping them version-controlled quickly becomes unwieldy.
+AI coding assistants like Claude Code and Cursor use configuration files to customize their behavior -- output styles,
+custom agents, skills, and reference documentation. Managing these configurations across machines, sharing them between
+personal and work contexts, or keeping them version-controlled quickly becomes unwieldy.
 
-tai solves this by:
+Tai solves this by:
 
 - **Centralizing configuration** in a version-controlled "config repo" that you own
 - **Composing assets** from multiple sources (personal, work, shared team configs)
 - **Installing to any supported target** with a single command
-- **Tracking what it installs** so you can cleanly switch profiles or uninstall
+- **Tracking what's installed** so you can cleanly switch profiles or uninstall
 
 ## Installation
 
@@ -19,66 +23,22 @@ tai solves this by:
 go install github.com/amterp/tai/cmd/tai@latest
 ```
 
-## Quick Start
-
-```bash
-# 1. Create or clone a config repo
-mkdir ~/my-tai-config && cd ~/my-tai-config
-
-# 2. Initialize with a minimal structure
-mkdir -p assets/{personas,delegates,skills,docs} bundles profiles
-
-# 3. Create your first persona
-cat > assets/personas/senior-swe.md << 'EOF'
-# Senior Software Engineer
-
-You are a senior software engineer who values clean, maintainable code.
-Focus on architecture and long-term implications of design decisions.
-EOF
-
-# 4. Create a bundle referencing your assets
-cat > bundles/core.yaml << 'EOF'
-name: core
-description: My core assets
-assets:
-  - personas/senior-swe.md
-EOF
-
-# 5. Create a profile targeting Claude
-cat > profiles/personal.yaml << 'EOF'
-name: personal
-description: Personal Claude setup
-target: claude
-bundles:
-  - core
-EOF
-
-# 6. Create the config manifest
-cat > tai.yaml << 'EOF'
-version: 1
-default_profile: personal
-EOF
-
-# 7. Set this as your active config repo and install
-tai config set ~/my-tai-config
-tai install personal
-
-# Done! Your assets are now installed to ~/.claude/
-```
+<!-- TODO: Write a more user-friendly quick start guide -->
 
 ## Core Concepts
 
-| Term | What it is | Claude equivalent |
-|------|------------|-------------------|
-| **Persona** | Behavioral style/role | output-style |
-| **Delegate** | Specialized helper agent | agents (sub-agents) |
-| **Skill** | Procedural capability | skills |
-| **Doc** | Reference material | CLAUDE.md, supporting docs |
-| **Asset** | Any single persona, delegate, skill, or doc | — |
-| **Bundle** | Named collection of assets | — |
-| **Profile** | Bundle(s) bound to a target | — |
-| **Source** | Location providing assets | — |
-| **Target** | AI tool to install to | Claude Code, Cursor, etc. |
+| Term            | What it is                                   | Claude equivalent          |
+|-----------------|----------------------------------------------|----------------------------|
+| **Persona**     | Behavioral style/role                        | output-style               |
+| **Delegate**    | Specialized helper agent                     | agents (sub-agents)        |
+| **Skill**       | Procedural capability                        | skills                     |
+| **Doc**         | Reference material                           | CLAUDE.md, supporting docs |
+| **Asset**       | Any single persona, delegate, skill, or doc  | -                          |
+| **Bundle**      | Named collection of assets                   | -                          |
+| **Profile**     | Bundle(s) bound to a target                  | -                          |
+| **Source**      | Location providing assets                    | -                          |
+| **Target**      | AI tool to install to                        | Claude Code, Cursor, etc.  |
+| **Config Repo** | Repository containing your Tai configuration | -                          |
 
 ### How They Fit Together
 
@@ -210,7 +170,7 @@ tai install <profile> --force      # Overwrite conflicting files
 tai install <profile> --skip-conflicts  # Leave conflicts as-is
 tai install <profile> --var key=val     # Pass template variables
 
-tai uninstall <target>             # Remove tai-managed files
+tai uninstall <target>             # Remove Tai-managed files
 tai status [target]                # Show what's installed
 ```
 
@@ -224,21 +184,22 @@ tai run <target> [args...]  # Run target (e.g., tai run claude)
 
 ### Additive, Non-Destructive
 
-tai only manages files it installs. It never wipes your target directory or touches files it doesn't own.
+Tai only manages files it installs. It never wipes your target directory or touches files it doesn't own.
 
 ### Conflict Resolution
 
 When a file already exists:
 
-| Scenario | Default behavior |
-|----------|------------------|
-| tai-managed file, unchanged | Overwrite with new version |
-| tai-managed file, user-modified | Error (use `--force` to overwrite) |
-| Unmanaged file exists | Error (use `--force` or `--skip-conflicts`) |
+| Scenario                        | Default behavior                                                |
+|---------------------------------|-----------------------------------------------------------------|
+| Tai-managed file, unchanged     | Overwrite with new version                                      |
+| Tai-managed file, user-modified | Error (use `--force` to overwrite)                              |
+| Unmanaged file exists           | Error (Tai doesn't own it; use `--force` or `--skip-conflicts`) |
 
 ### Re-installation
 
-When you run `tai install` with an existing installation, tai:
+When you run `tai install` with an existing installation, Tai:
+
 1. Compares the new profile against the current manifest
 2. Adds new files
 3. Updates changed files
@@ -260,17 +221,17 @@ tai install work --var project_name=MyApp
 
 ### The `{{existing}}` Variable
 
-Inject the current contents of a target file—useful for wrapping existing configuration:
+Inject the current contents of a target file -- useful for wrapping existing configuration:
 
 ```markdown
-# tai additions
+# Tai additions
 
 {{existing}}
 
-# End tai additions
+# End Tai additions
 ```
 
-When using `{{existing}}`, tai backs up the original file and restores it on uninstall.
+When using `{{existing}}`, Tai backs up the original file and restores it on uninstall.
 
 ## Example Workflows
 
@@ -315,7 +276,7 @@ sources:
     path: ~/work/company-ai-config
 ```
 
-Assets from later sources override earlier ones when paths conflict. tai logs these overrides as info messages.
+Assets from later sources override earlier ones when paths conflict. Tai logs these overrides as info messages.
 
 ## Supported Targets
 
@@ -323,10 +284,10 @@ Assets from later sources override earlier ones when paths conflict. tai logs th
 
 - Target directory: `~/.claude/`
 - Asset mapping:
-  - `personas/` → `output-styles/`
-  - `delegates/` → `agents/`
-  - `skills/` → `skills/`
-  - `docs/` → root level
+    - `personas/` → `output-styles/`
+    - `delegates/` → `agents/`
+    - `skills/` → `skills/`
+    - `docs/` → root level
 
 ### Future Targets
 
@@ -335,7 +296,7 @@ Assets from later sources override earlier ones when paths conflict. tai logs th
 
 ## Global State
 
-tai stores its configuration in standard locations:
+Tai stores its configuration in standard locations:
 
 ```
 ~/.config/tai/
@@ -346,7 +307,8 @@ tai stores its configuration in standard locations:
 
 ## Skills
 
-Skills follow the [agentskills.io](https://agentskills.io) standard. Unlike other assets (which are single files), skills are directories containing a `SKILL.md` with YAML frontmatter:
+Skills follow the [agentskills.io](https://agentskills.io) standard. Unlike other assets (which are single files),
+skills are directories containing a `SKILL.md` with YAML frontmatter:
 
 ```
 assets/skills/my-skill/
@@ -363,8 +325,8 @@ assets:
 
 ## Design Principles
 
-1. **Target-agnostic assets**: Define assets in tai terminology; adapters translate for each target
-2. **Additive installation**: Never wipes target directories; only manages what it installed
+1. **Target-agnostic assets**: Define assets in Tai terminology; adapters translate for each target
+2. **Additive installation**: Never wipes target directories; only manages what Tai installed
 3. **Fail-fast**: Missing files or circular references cause immediate failure, not partial installs
 4. **Version-controlled source of truth**: Your config repo is canonical; target directories are derived
 
