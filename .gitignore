@@ -1,0 +1,20 @@
+# Build outputs
+/tai
+*.exe
+
+# IDE/editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage.out
+*.cover
+
+# Temporary files
+*.tmp
