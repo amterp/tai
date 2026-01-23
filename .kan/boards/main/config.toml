@@ -6,7 +6,7 @@ default_column = "backlog-hi"
 [[columns]]
   name = "uncomitted"
   color = "#ec4899"
-  card_ids = ["a_CPRywaNV"]
+  card_ids = ["a_CPRywaNV", "a_CxrT98mW"]
 
 [[columns]]
   name = "backlog-lo"
@@ -16,21 +16,21 @@ default_column = "backlog-hi"
 [[columns]]
   name = "backlog-hi"
   color = "#6b7280"
-  card_ids = ["a_CO2ASXWG", "a_CO2t37qo", "a_CPYmLOjS", "a_CPqB0dZy", "a_CPqfOaTu", "a_CPrU7uj3", "a_CPz13ekg", "a_CQ2njJ9r", "a_CQ3q8C8P"]
+  card_ids = ["a_CO2ASXWG", "a_CO2t37qo", "a_CPYmLOjS", "a_CPqB0dZy", "a_CPqfOaTu", "a_CPrU7uj3", "a_CPz13ekg", "a_CQ2njJ9r", "a_CQ3q8C8P", "a_CxxO64vd"]
 
 [[columns]]
   name = "next"
   color = "#3b82f6"
+  card_ids = ["a_CxwPmDUG"]
 
 [[columns]]
   name = "in-progress"
   color = "#f59e0b"
-  card_ids = ["a_CPoVSX0t"]
 
 [[columns]]
   name = "done"
   color = "#10b981"
-  card_ids = ["a_CO2NpM5i", "a_CODTF64l", "a_CO1Hm0Ki", "a_CODMwCAu", "a_COCbGzgy", "a_CO1WEyQi", "a_COCn1MrK"]
+  card_ids = ["a_CxqTFO1o", "a_CxqYj93b", "a_CPoVSX0t", "a_CO2NpM5i", "a_CODTF64l", "a_CO1Hm0Ki", "a_CODMwCAu", "a_COCbGzgy", "a_CO1WEyQi", "a_COCn1MrK"]
 
 [custom_fields]
   [custom_fields.type]
