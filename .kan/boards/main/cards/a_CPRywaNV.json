@@ -1,0 +1,11 @@
+{
+  "_v": 1,
+  "id": "a_CPRywaNV",
+  "alias": "ability-to-customize-install-2",
+  "alias_explicit": false,
+  "title": "ability to customize install locations/layout?",
+  "description": "can imagine wanting to install into somewhere other than just ~/.claude, e.g. other repos instead.",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769059417996,
+  "updated_at_millis": 1769059483783
+}

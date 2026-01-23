@@ -16,7 +16,7 @@ default_column = "backlog-hi"
 [[columns]]
   name = "backlog-hi"
   color = "#6b7280"
-  card_ids = ["a_CO2ASXWG", "a_CO2t37qo", "a_CPYmLOjS", "a_CPqB0dZy", "a_CPqfOaTu", "a_CPrU7uj3"]
+  card_ids = ["a_CO2ASXWG", "a_CO2t37qo", "a_CPYmLOjS", "a_CPqB0dZy", "a_CPqfOaTu", "a_CPrU7uj3", "a_CPz13ekg", "a_CQ2njJ9r", "a_CQ3q8C8P"]
 
 [[columns]]
   name = "next"

@@ -20,5 +20,3 @@ coverage.out
 # Temporary files
 *.tmp
 
-# Kanban tool
-.kan/

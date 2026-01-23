@@ -1,0 +1,10 @@
+{
+  "_v": 1,
+  "id": "a_CPrU7uj3",
+  "alias": "implement-gh-ci-for-binary-2",
+  "alias_explicit": false,
+  "title": "implement GH CI for binary size in PR + tests",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769060398318,
+  "updated_at_millis": 1769060402079
+}
