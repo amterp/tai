@@ -427,13 +427,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcInfo.Mode().Perm())
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	if _, err = io.Copy(dstFile, srcFile); err != nil {
 		return err
@@ -441,15 +441,10 @@ func copyFile(src, dst string) error {
 	return dstFile.Close()
 }
 
-// copyDir copies a directory recursively.
-func copyDir(src, dst string) error {
-	return copyDirExcluding(src, dst)
-}
-
 // copyDirExcluding copies a directory recursively, excluding files with names in excludes.
 func copyDirExcluding(src, dst string, excludes ...string) error {
 	// Remove existing destination
-	os.RemoveAll(dst)
+	_ = os.RemoveAll(dst)
 
 	excludeSet := make(map[string]bool, len(excludes))
 	for _, e := range excludes {

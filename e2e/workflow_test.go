@@ -184,8 +184,12 @@ bundles:
 	}
 
 	// Clean up for next test
-	installer.Uninstall(adapter)
-	os.WriteFile(conflictPath, []byte("# Existing Unmanaged"), 0644)
+	if _, err := installer.Uninstall(adapter); err != nil {
+		t.Fatalf("Uninstall failed: %v", err)
+	}
+	if err := os.WriteFile(conflictPath, []byte("# Existing Unmanaged"), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
 
 	// Test 3: With force, should overwrite
 	result, err = installer.Install(adapter, "test", assets, install.InstallOptions{Force: true})

@@ -30,12 +30,9 @@ fn do_test():
     $`go test ./...`
 
 fn do_lint():
-    print("\nRunning go vet...")
-    $`go vet ./...`
-
-    print("\nRunning staticcheck...")
-    code = $`staticcheck ./...` catch:
+    print("\nRunning golangci-lint...")
+    code = $`golangci-lint run ./...` catch:
         if code == 127:
-            print_err("staticcheck not installed. Install with: go install honnef.co/go/tools/cmd/staticcheck@latest")
+            print_err("golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest")
             exit(1)
         exit(code)

@@ -16,6 +16,13 @@ go build ./cmd/tai
 go test ./...                    # All tests
 go test ./e2e -v                 # E2E tests verbose
 go test -run TestBundle ./...    # Run specific test by name
+
+# Lint
+golangci-lint run ./...          # Runs errcheck, govet, staticcheck, unused, ineffassign
+
+# Dev script (build + test + lint)
+./dev -v                         # Full validation
+./dev -b                         # Build only
 ```
 
 ## Architecture

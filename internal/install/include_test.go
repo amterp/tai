@@ -293,7 +293,7 @@ func TestResolveURLInclude(t *testing.T) {
 	t.Run("successful URL fetch", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("# Content from URL"))
+			_, _ = w.Write([]byte("# Content from URL"))
 		}))
 		defer server.Close()
 
@@ -323,7 +323,7 @@ func TestResolveURLInclude(t *testing.T) {
 	t.Run("directory dest preserves URL filename", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("content"))
+			_, _ = w.Write([]byte("content"))
 		}))
 		defer server.Close()
 
@@ -387,7 +387,7 @@ func TestResolveURLInclude(t *testing.T) {
 	t.Run("path traversal in dest rejected", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("malicious content"))
+			_, _ = w.Write([]byte("malicious content"))
 		}))
 		defer server.Close()
 
@@ -414,7 +414,7 @@ func TestResolveURLInclude(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			// Write slightly more than MaxIncludeSize
 			data := make([]byte, MaxIncludeSize+1000)
-			w.Write(data)
+			_, _ = w.Write(data)
 		}))
 		defer server.Close()
 
@@ -459,7 +459,7 @@ func TestResolveIncludes(t *testing.T) {
 	// Create a test HTTP server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("# Remote Content"))
+		_, _ = w.Write([]byte("# Remote Content"))
 	}))
 	defer server.Close()
 

@@ -234,10 +234,11 @@ func TestLoadedSourceResolveAsset(t *testing.T) {
 		t.Error("expected error for non-existing asset")
 	}
 
-	// Invalid asset type
-	if err := os.WriteFile(filepath.Join(env.ConfigRepo, "assets", "invalid", "test.md"), []byte("x"), 0644); err == nil {
-		// This should fail because we'd need to create the directory first
-		// The test is just checking that invalid types are rejected
+	// Invalid asset type - WriteFile fails because the "invalid" directory doesn't exist,
+	// confirming invalid asset type directories aren't created by default.
+	err = os.WriteFile(filepath.Join(env.ConfigRepo, "assets", "invalid", "test.md"), []byte("x"), 0644)
+	if err == nil {
+		t.Error("expected error writing to non-existent 'invalid' asset type directory")
 	}
 }
 

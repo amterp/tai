@@ -114,7 +114,7 @@ func (r *IncludeResolver) resolveURLInclude(inc config.Include, targetSkillPath 
 	if err != nil {
 		return fmt.Errorf("fetching %q: %w", inc.URL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("fetching %q: HTTP %d %s", inc.URL, resp.StatusCode, http.StatusText(resp.StatusCode))
@@ -135,7 +135,7 @@ func (r *IncludeResolver) resolveURLInclude(inc config.Include, targetSkillPath 
 	if err != nil {
 		return fmt.Errorf("creating destination file %q: %w", destPath, err)
 	}
-	defer destFile.Close()
+	defer func() { _ = destFile.Close() }()
 
 	// Security: Limit download size to prevent resource exhaustion
 	limitedReader := io.LimitReader(resp.Body, MaxIncludeSize+1)
@@ -144,7 +144,7 @@ func (r *IncludeResolver) resolveURLInclude(inc config.Include, targetSkillPath 
 		return fmt.Errorf("writing to %q: %w", destPath, err)
 	}
 	if written > MaxIncludeSize {
-		os.Remove(destPath) // Clean up oversized file
+		_ = os.Remove(destPath) // Clean up oversized file
 		return fmt.Errorf("URL %q exceeds maximum size of %d bytes", inc.URL, MaxIncludeSize)
 	}
 
@@ -207,7 +207,7 @@ func extractFilename(srcPath, srcURL string) (string, error) {
 // Rejects symlinks for security.
 func (r *IncludeResolver) copyDirectory(src, dst string) error {
 	// Remove existing destination if it exists
-	os.RemoveAll(dst)
+	_ = os.RemoveAll(dst)
 
 	return filepath.WalkDir(src, func(srcPath string, d fs.DirEntry, err error) error {
 		if err != nil {

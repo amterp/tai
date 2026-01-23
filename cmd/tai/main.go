@@ -513,6 +513,7 @@ func runReinstall(target string, dryRun, force, skipConflicts bool, varsStr stri
 		}
 		if manifest == nil {
 			fatal("No profile installed for target '%s'.", target)
+			return
 		}
 		toReinstall = []reinstallTarget{{target: target, profile: manifest.Profile}}
 	} else {
@@ -563,9 +564,7 @@ func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts 
 	}
 
 	assets := make([]*config.Asset, len(resolved.Assets))
-	for i, a := range resolved.Assets {
-		assets[i] = a
-	}
+	copy(assets, resolved.Assets)
 
 	if dryRun {
 		out.Info("Would install profile '" + profileName + "' for " + resolved.Target + "...")

@@ -87,7 +87,7 @@ func (s *ManifestStore) Save(manifest *Manifest) error {
 
 	// Atomic rename
 	if err := os.Rename(tempPath, finalPath); err != nil {
-		os.Remove(tempPath) // Clean up temp file on failure
+		_ = os.Remove(tempPath) // Clean up temp file on failure
 		return fmt.Errorf("finalizing manifest: %w", err)
 	}
 
