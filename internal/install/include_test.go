@@ -532,6 +532,54 @@ func TestResolveIncludes(t *testing.T) {
 	})
 }
 
+func TestCopyDirectoryPreservesPermissions(t *testing.T) {
+	srcDir := t.TempDir()
+
+	// Create a subdirectory with specific permissions
+	subDir := filepath.Join(srcDir, "bin")
+	if err := os.MkdirAll(subDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(subDir, "run.sh"), []byte("#!/bin/bash"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "README.md"), []byte("# Docs"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	dstDir := filepath.Join(t.TempDir(), "dest")
+	resolver := NewIncludeResolver(nil, nil)
+	if err := resolver.copyDirectory(srcDir, dstDir); err != nil {
+		t.Fatalf("copyDirectory failed: %v", err)
+	}
+
+	// Check file permissions
+	scriptInfo, err := os.Stat(filepath.Join(dstDir, "bin", "run.sh"))
+	if err != nil {
+		t.Fatalf("stat script: %v", err)
+	}
+	if scriptInfo.Mode().Perm() != 0755 {
+		t.Errorf("script permissions = %o, want %o", scriptInfo.Mode().Perm(), os.FileMode(0755))
+	}
+
+	docInfo, err := os.Stat(filepath.Join(dstDir, "README.md"))
+	if err != nil {
+		t.Fatalf("stat doc: %v", err)
+	}
+	if docInfo.Mode().Perm() != 0644 {
+		t.Errorf("doc permissions = %o, want %o", docInfo.Mode().Perm(), os.FileMode(0644))
+	}
+
+	// Check directory permissions
+	binInfo, err := os.Stat(filepath.Join(dstDir, "bin"))
+	if err != nil {
+		t.Fatalf("stat bin dir: %v", err)
+	}
+	if binInfo.Mode().Perm() != 0750 {
+		t.Errorf("bin dir permissions = %o, want %o", binInfo.Mode().Perm(), os.FileMode(0750))
+	}
+}
+
 func TestDefaultHTTPClient(t *testing.T) {
 	client := DefaultHTTPClient()
 

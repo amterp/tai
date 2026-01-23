@@ -1,6 +1,8 @@
 // Package config provides types and parsing for tai configuration files.
 package config
 
+import "io/fs"
+
 // TaiConfig represents the top-level tai.yaml configuration file.
 type TaiConfig struct {
 	Version        int      `yaml:"version"`
@@ -47,11 +49,12 @@ type Asset struct {
 // ResolvedAsset is an Asset with its content loaded and ready for installation.
 type ResolvedAsset struct {
 	Asset
-	Content     []byte // File content (nil for directories)
-	TargetPath  string // Where this should be installed (target-relative)
-	Checksum    string // SHA-256 checksum of content
-	BackupPath  string // Path to backup file (for {{existing}} templated files)
-	IsTemplated bool   // Whether this asset uses templating
+	Content     []byte      // File content (nil for directories)
+	TargetPath  string      // Where this should be installed (target-relative)
+	Checksum    string      // SHA-256 checksum of content
+	BackupPath  string      // Path to backup file (for {{existing}} templated files)
+	IsTemplated bool        // Whether this asset uses templating
+	FileMode    fs.FileMode // Source file permissions (zero means default 0644)
 }
 
 // AssetType constants.

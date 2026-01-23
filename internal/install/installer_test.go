@@ -1,6 +1,7 @@
 package install
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -560,5 +561,176 @@ func TestInstallerInstallSkillDirectory(t *testing.T) {
 	}
 	if !env.TargetFileExists("skills/my-skill/helper.sh") {
 		t.Error("helper.sh not created")
+	}
+}
+
+func TestCopyFilePreservesPermissions(t *testing.T) {
+	dir := t.TempDir()
+
+	srcPath := filepath.Join(dir, "script.sh")
+	dstPath := filepath.Join(dir, "script-copy.sh")
+
+	// Create source file with executable permissions
+	if err := os.WriteFile(srcPath, []byte("#!/bin/bash\necho hello"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := copyFile(srcPath, dstPath); err != nil {
+		t.Fatalf("copyFile failed: %v", err)
+	}
+
+	dstInfo, err := os.Stat(dstPath)
+	if err != nil {
+		t.Fatalf("stat dst: %v", err)
+	}
+
+	if dstInfo.Mode().Perm() != 0755 {
+		t.Errorf("dst permissions = %o, want %o", dstInfo.Mode().Perm(), os.FileMode(0755))
+	}
+}
+
+func TestInstallerPreservesFilePermissions(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Create an executable script asset
+	scriptPath := filepath.Join(env.ConfigRepo, "assets", "skills", "run.sh")
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho run"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skills", Name: "run.sh", SourceName: "local",
+			SourcePath: scriptPath},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	installed := filepath.Join(env.TargetDir, "skills", "run.sh")
+	info, err := os.Stat(installed)
+	if err != nil {
+		t.Fatalf("stat installed file: %v", err)
+	}
+
+	if info.Mode().Perm() != 0755 {
+		t.Errorf("installed permissions = %o, want %o", info.Mode().Perm(), os.FileMode(0755))
+	}
+}
+
+func TestInstallerSkillDirectoryPreservesPermissions(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Create a skill directory with mixed permissions
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "mixed-perms")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "run.sh"), []byte("#!/bin/bash\necho run"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "README.md"), []byte("# Docs"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skills", Name: "mixed-perms", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	// Check executable script preserved 0755
+	scriptInfo, err := os.Stat(filepath.Join(env.TargetDir, "skills", "mixed-perms", "run.sh"))
+	if err != nil {
+		t.Fatalf("stat script: %v", err)
+	}
+	if scriptInfo.Mode().Perm() != 0755 {
+		t.Errorf("script permissions = %o, want %o", scriptInfo.Mode().Perm(), os.FileMode(0755))
+	}
+
+	// Check doc preserved 0644
+	docInfo, err := os.Stat(filepath.Join(env.TargetDir, "skills", "mixed-perms", "README.md"))
+	if err != nil {
+		t.Fatalf("stat doc: %v", err)
+	}
+	if docInfo.Mode().Perm() != 0644 {
+		t.Errorf("doc permissions = %o, want %o", docInfo.Mode().Perm(), os.FileMode(0644))
+	}
+}
+
+func TestInstallAssetFallsBackTo0644WhenFileModeZero(t *testing.T) {
+	dir := t.TempDir()
+	installer := &Installer{}
+
+	targetPath := filepath.Join(dir, "output.md")
+	resolved := &config.ResolvedAsset{
+		Asset:   config.Asset{Type: "docs", Name: "output.md"},
+		Content: []byte("# Hello"),
+		// FileMode intentionally left as zero
+	}
+
+	if err := installer.installAsset(resolved, targetPath); err != nil {
+		t.Fatalf("installAsset failed: %v", err)
+	}
+
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if info.Mode().Perm() != 0644 {
+		t.Errorf("permissions = %o, want %o (default fallback)", info.Mode().Perm(), fs.FileMode(0644))
+	}
+}
+
+func TestInstallerPermissionChangeTriggersUpdate(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	scriptPath := filepath.Join(env.ConfigRepo, "assets", "skills", "run.sh")
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho v1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skills", Name: "run.sh", SourceName: "local", SourcePath: scriptPath},
+	}
+
+	// First install — 0644
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("first install: %v", err)
+	}
+
+	installed := filepath.Join(env.TargetDir, "skills", "run.sh")
+	info, _ := os.Stat(installed)
+	if info.Mode().Perm() != 0644 {
+		t.Fatalf("first install permissions = %o, want 0644", info.Mode().Perm())
+	}
+
+	// Change source content and permissions to executable
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho v2"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// WriteFile doesn't update mode on existing files, so chmod explicitly
+	if err := os.Chmod(scriptPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second install — should update with new permissions
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("second install: %v", err)
+	}
+	if len(result.Updated) != 1 {
+		t.Errorf("len(Updated) = %d, want 1", len(result.Updated))
+	}
+
+	info, _ = os.Stat(installed)
+	if info.Mode().Perm() != 0755 {
+		t.Errorf("updated permissions = %o, want 0755", info.Mode().Perm())
 	}
 }

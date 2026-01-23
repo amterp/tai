@@ -260,7 +260,13 @@ func (i *Installer) resolveAsset(
 		}
 		resolved.Checksum = checksum
 	} else {
-		// File - read content
+		// File - read content and capture permissions
+		srcInfo, err := os.Stat(asset.SourcePath)
+		if err != nil {
+			return nil, err
+		}
+		resolved.FileMode = srcInfo.Mode().Perm()
+
 		content, err := os.ReadFile(asset.SourcePath)
 		if err != nil {
 			return nil, err
@@ -366,8 +372,16 @@ func (i *Installer) installAsset(resolved *config.ResolvedAsset, fullTargetPath 
 		return nil
 	}
 
-	// Write file content
-	return os.WriteFile(fullTargetPath, resolved.Content, 0644)
+	// Write file content, preserving source permissions
+	mode := resolved.FileMode
+	if mode == 0 {
+		mode = 0644
+	}
+	if err := os.WriteFile(fullTargetPath, resolved.Content, mode); err != nil {
+		return err
+	}
+	// WriteFile only applies mode on creation; explicitly set it for updates
+	return os.Chmod(fullTargetPath, mode)
 }
 
 // restoreBackup restores a backup file.
@@ -393,22 +407,38 @@ func cleanEmptyDirs(path, stopAt string) {
 	}
 }
 
-// copyFile copies a file from src to dst.
+// mkdirPreservingMode creates a directory at dstPath using the permissions from the source DirEntry.
+func mkdirPreservingMode(dstPath string, d fs.DirEntry) error {
+	info, err := d.Info()
+	if err != nil {
+		return err
+	}
+	return os.MkdirAll(dstPath, info.Mode().Perm())
+}
+
+// copyFile copies a file from src to dst, preserving the source file's permissions.
 func copyFile(src, dst string) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer srcFile.Close()
 
-	dstFile, err := os.Create(dst)
+	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcInfo.Mode().Perm())
 	if err != nil {
 		return err
 	}
 	defer dstFile.Close()
 
-	_, err = io.Copy(dstFile, srcFile)
-	return err
+	if _, err = io.Copy(dstFile, srcFile); err != nil {
+		return err
+	}
+	return dstFile.Close()
 }
 
 // copyDir copies a directory recursively.
@@ -448,7 +478,7 @@ func copyDirExcluding(src, dst string, excludes ...string) error {
 		dstPath := filepath.Join(dst, relPath)
 
 		if d.IsDir() {
-			return os.MkdirAll(dstPath, 0755)
+			return mkdirPreservingMode(dstPath, d)
 		}
 
 		return copyFile(path, dstPath)

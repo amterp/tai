@@ -226,7 +226,7 @@ func (r *IncludeResolver) copyDirectory(src, dst string) error {
 		dstPath := filepath.Join(dst, relPath)
 
 		if d.IsDir() {
-			return os.MkdirAll(dstPath, 0755)
+			return mkdirPreservingMode(dstPath, d)
 		}
 
 		return copyFile(srcPath, dstPath)
