@@ -123,6 +123,34 @@ func main() {
 		Register(installCmd)
 	installUsed, _ := root.RegisterCmd(installCmd)
 
+	// Reinstall command
+	reinstallCmd := ra.NewCmd("reinstall")
+	reinstallCmd.SetDescription("Re-run installation for already-installed profiles")
+	reinstallTarget, _ := ra.NewString("target").
+		SetOptional(true).
+		SetUsage("Target to reinstall (default: all installed targets)").
+		Register(reinstallCmd)
+	reinstallDryRun, _ := ra.NewBool("dry-run").
+		SetShort("n").
+		SetDefault(false).
+		SetUsage("Preview changes without applying").
+		Register(reinstallCmd)
+	reinstallForce, _ := ra.NewBool("force").
+		SetShort("f").
+		SetDefault(false).
+		SetUsage("Overwrite conflicting files").
+		Register(reinstallCmd)
+	reinstallSkipConflicts, _ := ra.NewBool("skip-conflicts").
+		SetDefault(false).
+		SetUsage("Leave conflicting files as-is").
+		Register(reinstallCmd)
+	reinstallVars, _ := ra.NewString("var").
+		SetShort("v").
+		SetOptional(true).
+		SetUsage("Template variables (format: key1=val1,key2=val2)").
+		Register(reinstallCmd)
+	reinstallUsed, _ := root.RegisterCmd(reinstallCmd)
+
 	// Uninstall command
 	uninstallCmd := ra.NewCmd("uninstall")
 	uninstallCmd.SetDescription("Remove tai-managed files for a target")
@@ -208,6 +236,8 @@ func main() {
 		}
 	case *installUsed:
 		runInstall(*installProfile, *installDryRun, *installForce, *installSkipConflicts, *installVars)
+	case *reinstallUsed:
+		runReinstall(*reinstallTarget, *reinstallDryRun, *reinstallForce, *reinstallSkipConflicts, *reinstallVars)
 	case *uninstallUsed:
 		runUninstall(*uninstallTarget)
 	case *statusUsed:
@@ -463,26 +493,68 @@ func runShowBundle(name string) {
 func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr string) {
 	s := loadState()
 	requireActiveConfig(s)
+	doInstall(s, profileName, dryRun, force, skipConflicts, varsStr)
+}
 
-	// Resolve profile
+func runReinstall(target string, dryRun, force, skipConflicts bool, varsStr string) {
+	s := loadState()
+	requireActiveConfig(s)
+
+	type reinstallTarget struct {
+		target  string
+		profile string
+	}
+
+	var toReinstall []reinstallTarget
+	if target != "" {
+		manifest, err := s.ManifestStore.Load(target)
+		if err != nil {
+			fatal("loading manifest for '%s': %v", target, err)
+		}
+		if manifest == nil {
+			fatal("No profile installed for target '%s'.", target)
+		}
+		toReinstall = []reinstallTarget{{target: target, profile: manifest.Profile}}
+	} else {
+		targets, err := s.ManifestStore.List()
+		if err != nil {
+			fatal("listing installed targets: %v", err)
+		}
+		if len(targets) == 0 {
+			fatal("Nothing installed. Use 'tai install <profile>' first.")
+		}
+		for _, t := range targets {
+			manifest, err := s.ManifestStore.Load(t)
+			if err != nil {
+				fatal("loading manifest for '%s': %v", t, err)
+			}
+			toReinstall = append(toReinstall, reinstallTarget{target: t, profile: manifest.Profile})
+		}
+	}
+
+	for i, rt := range toReinstall {
+		if i > 0 {
+			out.Blank()
+		}
+		doInstall(s, rt.profile, dryRun, force, skipConflicts, varsStr)
+	}
+}
+
+// doInstall performs profile resolution and installation against pre-loaded state.
+func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts bool, varsStr string) {
 	resolved, err := s.ResolveProfile(profileName)
 	if err != nil {
 		fatal("resolving profile: %v", err)
 	}
 
-	// Get adapter
 	adapter, err := s.GetAdapter(resolved.Target)
 	if err != nil {
 		fatal("%v", err)
 	}
 
-	// Set up logging for overrides using an OutputLogger
 	s.ProfileResolver.SetLogger(&outputLogger{out: out})
 
-	// Parse template variables
 	vars := parseVariables(varsStr)
-
-	// Prepare install options
 	opts := install.InstallOptions{
 		DryRun:        dryRun,
 		Force:         force,
@@ -490,13 +562,11 @@ func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr s
 		Variables:     vars,
 	}
 
-	// Convert resolved assets
 	assets := make([]*config.Asset, len(resolved.Assets))
 	for i, a := range resolved.Assets {
 		assets[i] = a
 	}
 
-	// Install
 	if dryRun {
 		out.Info("Would install profile '" + profileName + "' for " + resolved.Target + "...")
 	} else {
@@ -508,7 +578,6 @@ func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr s
 		fatal("installation failed: %v", err)
 	}
 
-	// Report results
 	manifestPath := ""
 	if !dryRun {
 		manifestPath = s.Paths.ManifestDir

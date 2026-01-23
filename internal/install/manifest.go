@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -100,6 +101,30 @@ func (s *ManifestStore) Delete(target string) error {
 		return fmt.Errorf("deleting manifest: %w", err)
 	}
 	return nil
+}
+
+// List returns the names of all targets that have manifests installed.
+func (s *ManifestStore) List() ([]string, error) {
+	entries, err := os.ReadDir(s.manifestDir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading manifests directory: %w", err)
+	}
+
+	var targets []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasSuffix(name, ".yaml") {
+			targets = append(targets, strings.TrimSuffix(name, ".yaml"))
+		}
+	}
+	sort.Strings(targets)
+	return targets, nil
 }
 
 // manifestPath returns the path to a manifest file.
