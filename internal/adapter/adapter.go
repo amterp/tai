@@ -24,6 +24,13 @@ type Adapter interface {
 	// e.g., "personas/senior-swe.md" -> "output-styles/senior-swe.md"
 	MapAssetPath(asset *config.Asset) string
 
+	// TransformContent transforms a resolved asset's content into the target's
+	// expected format. For example, the Claude adapter converts tai frontmatter
+	// into Claude-specific frontmatter for personas and delegates.
+	// The asset's Content holds the body (frontmatter already stripped) and
+	// Metadata holds the parsed frontmatter fields.
+	TransformContent(asset *config.ResolvedAsset) ([]byte, error)
+
 	// Run invokes the target with the given arguments.
 	Run(args []string) error
 }

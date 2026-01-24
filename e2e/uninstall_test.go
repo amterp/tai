@@ -22,8 +22,8 @@ sources:
     path: ./assets
 `)
 
-	env.SetupAsset("personas", "test.md", "# Test")
-	env.SetupAsset("delegates", "helper.md", "# Helper")
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Test")
+	env.SetupAsset("delegates", "helper.md", "---\ntai-schema-version: 1\nname: Helper\n---\n\n# Helper")
 	env.SetupBundle("test", `name: test
 assets:
   - personas/test.md
@@ -104,7 +104,7 @@ sources:
     path: ./assets
 `)
 
-	env.SetupAsset("docs", "CLAUDE.md", "# Wrapped\n{{existing}}\n# End")
+	env.SetupAsset("docs", "CLAUDE.md", "---\ntai-schema-version: 1\n---\n\n# Wrapped\n{{existing}}\n# End")
 	env.SetupBundle("test", `name: test
 assets:
   - docs/CLAUDE.md
@@ -165,7 +165,7 @@ sources:
     path: ./assets
 `)
 
-	env.SetupAsset("personas", "managed.md", "# Managed")
+	env.SetupAsset("personas", "managed.md", "---\ntai-schema-version: 1\nname: Managed\n---\n\n# Managed")
 	env.SetupBundle("test", `name: test
 assets:
   - personas/managed.md

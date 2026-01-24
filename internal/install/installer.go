@@ -10,6 +10,7 @@ import (
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/frontmatter"
 	"github.com/amterp/tai/internal/source"
 	"github.com/amterp/tai/internal/template"
 )
@@ -97,7 +98,7 @@ func (i *Installer) Install(
 		fullTargetPath := filepath.Join(targetDir, targetPath)
 
 		// Resolve the asset to get content
-		resolved, err := i.resolveAsset(asset, targetPath, fullTargetPath, templateEngine, opts.DryRun)
+		resolved, err := i.resolveAsset(asset, targetPath, fullTargetPath, templateEngine, adap, opts.DryRun)
 		if err != nil {
 			return nil, fmt.Errorf("resolving asset %s: %w", asset.SourcePath, err)
 		}
@@ -124,7 +125,7 @@ func (i *Installer) Install(
 
 		// Install the asset
 		if !opts.DryRun {
-			if err := i.installAsset(resolved, fullTargetPath); err != nil {
+			if err := i.installAsset(resolved, fullTargetPath, adap); err != nil {
 				return nil, fmt.Errorf("installing %s: %w", targetPath, err)
 			}
 
@@ -245,6 +246,7 @@ func (i *Installer) resolveAsset(
 	asset *config.Asset,
 	targetPath, fullTargetPath string,
 	engine *template.Engine,
+	adap adapter.Adapter,
 	dryRun bool,
 ) (*config.ResolvedAsset, error) {
 	resolved := &config.ResolvedAsset{
@@ -298,8 +300,27 @@ func (i *Installer) resolveAsset(
 			content = processed
 		}
 
-		resolved.Content = content
-		resolved.Checksum = ComputeChecksum(content)
+		// Parse and validate frontmatter for all file asset types
+		parsed, err := frontmatter.Parse(content)
+		if err != nil {
+			return nil, fmt.Errorf("parsing frontmatter: %w", err)
+		}
+
+		if err := validateAssetMetadata(parsed.Metadata, asset.Type); err != nil {
+			return nil, fmt.Errorf("asset %s/%s: %w", asset.Type, asset.Name, err)
+		}
+
+		resolved.Metadata = parsed.Metadata
+		resolved.Content = parsed.Body
+
+		// Let the adapter transform content (e.g., add target-specific frontmatter)
+		transformed, err := adap.TransformContent(resolved)
+		if err != nil {
+			return nil, fmt.Errorf("transforming content: %w", err)
+		}
+		resolved.Content = transformed
+
+		resolved.Checksum = ComputeChecksum(resolved.Content)
 	}
 
 	return resolved, nil
@@ -345,7 +366,7 @@ func (i *Installer) checkConflict(
 }
 
 // installAsset installs a resolved asset to the target.
-func (i *Installer) installAsset(resolved *config.ResolvedAsset, fullTargetPath string) error {
+func (i *Installer) installAsset(resolved *config.ResolvedAsset, fullTargetPath string, adap adapter.Adapter) error {
 	// Ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(fullTargetPath), 0755); err != nil {
 		return err
@@ -369,6 +390,11 @@ func (i *Installer) installAsset(resolved *config.ResolvedAsset, fullTargetPath 
 			}
 		}
 
+		// Transform SKILL.md with target-specific frontmatter
+		if err := i.transformSkillMd(resolved, fullTargetPath, adap); err != nil {
+			return err
+		}
+
 		return nil
 	}
 
@@ -382,6 +408,53 @@ func (i *Installer) installAsset(resolved *config.ResolvedAsset, fullTargetPath 
 	}
 	// WriteFile only applies mode on creation; explicitly set it for updates
 	return os.Chmod(fullTargetPath, mode)
+}
+
+// transformSkillMd reads SKILL.md from the installed skill directory, parses
+// and validates its tai frontmatter, transforms it through the adapter, and
+// writes the result back. This gives skill SKILL.md files target-specific
+// frontmatter (name, description, tools) just like standalone file assets.
+func (i *Installer) transformSkillMd(resolved *config.ResolvedAsset, skillTargetPath string, adap adapter.Adapter) error {
+	skillMdPath := filepath.Join(skillTargetPath, "SKILL.md")
+	info, err := os.Stat(skillMdPath)
+	if os.IsNotExist(err) {
+		return nil // No SKILL.md — nothing to transform
+	}
+	if err != nil {
+		return fmt.Errorf("reading SKILL.md: %w", err)
+	}
+	mode := info.Mode().Perm()
+
+	content, err := os.ReadFile(skillMdPath)
+	if err != nil {
+		return fmt.Errorf("reading SKILL.md: %w", err)
+	}
+
+	parsed, err := frontmatter.Parse(content)
+	if err != nil {
+		return fmt.Errorf("parsing SKILL.md frontmatter: %w", err)
+	}
+
+	if err := validateAssetMetadata(parsed.Metadata, config.AssetTypeSkills); err != nil {
+		return fmt.Errorf("skill %s/SKILL.md: %w", resolved.Name, err)
+	}
+
+	// Build a synthetic ResolvedAsset so the adapter can transform it
+	synthetic := &config.ResolvedAsset{
+		Asset: config.Asset{
+			Type: config.AssetTypeSkills,
+			Name: "SKILL.md",
+		},
+		Content:  parsed.Body,
+		Metadata: parsed.Metadata,
+	}
+
+	transformed, err := adap.TransformContent(synthetic)
+	if err != nil {
+		return fmt.Errorf("transforming SKILL.md: %w", err)
+	}
+
+	return os.WriteFile(skillMdPath, transformed, mode)
 }
 
 // restoreBackup restores a backup file.

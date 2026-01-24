@@ -134,6 +134,24 @@ assets:
   - personas/brainstormer.md
 ```
 
+### Asset File Formats
+
+All file assets require tai frontmatter with `tai-schema-version: 1`:
+
+```markdown
+---
+tai-schema-version: 1
+name: Senior SWE
+description: Experienced software engineer co-owner role.
+---
+
+# Senior SWE
+
+You are a senior software engineer...
+```
+
+During installation, tai validates the frontmatter, strips `tai-schema-version`, and the adapter renders target-specific frontmatter. Docs are installed as body only (no target frontmatter). Delegates and skills also support a `tools` field.
+
 ## CLI Reference
 
 ### Configuration

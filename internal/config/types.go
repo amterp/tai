@@ -47,14 +47,27 @@ type Asset struct {
 }
 
 // ResolvedAsset is an Asset with its content loaded and ready for installation.
+//
+// The install pipeline populates Content and Metadata as follows:
+//   - Content holds the file body AFTER tai frontmatter has been stripped.
+//     The adapter's TransformContent receives this stripped body and may
+//     prepend target-specific frontmatter (e.g., Claude's name/description/tools).
+//     After TransformContent, Content holds the final bytes to write to disk.
+//   - Metadata holds the parsed tai frontmatter fields (tai-schema-version, name,
+//     description, tools). The adapter reads Metadata to produce target frontmatter.
+//     tai-schema-version is never written to the target — it's a build-time discriminator.
+//
+// For directory assets (skills), Content and Metadata are nil; the directory is
+// copied and SKILL.md is transformed separately via transformSkillMd.
 type ResolvedAsset struct {
 	Asset
-	Content     []byte      // File content (nil for directories)
-	TargetPath  string      // Where this should be installed (target-relative)
-	Checksum    string      // SHA-256 checksum of content
-	BackupPath  string      // Path to backup file (for {{existing}} templated files)
-	IsTemplated bool        // Whether this asset uses templating
-	FileMode    fs.FileMode // Source file permissions (zero means default 0644)
+	Content     []byte            // Body after tai frontmatter stripped; final installed bytes after transform
+	Metadata    map[string]string // Parsed tai frontmatter fields (nil for directories)
+	TargetPath  string            // Where this should be installed (target-relative)
+	Checksum    string            // SHA-256 checksum of final content
+	BackupPath  string            // Path to backup file (for {{existing}} templated files)
+	IsTemplated bool              // Whether this asset uses templating
+	FileMode    fs.FileMode       // Source file permissions (zero means default 0644)
 }
 
 // AssetType constants.

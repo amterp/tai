@@ -50,8 +50,10 @@ golangci-lint run ./...          # Runs errcheck, govet, staticcheck, unused, in
 ```
 Config Repo (tai.yaml + bundles/ + profiles/ + assets/)
   ↓
-Sources → Assets → Bundles → Profiles → Target Config
+Sources → Assets → Bundles → Profiles → Install Pipeline → Target Config
 ```
+
+**Install pipeline per file asset:** Read → Template substitution → Parse & validate tai frontmatter → Adapter `TransformContent` → Checksum → Write
 
 ### Package Structure
 
@@ -63,6 +65,7 @@ Sources → Assets → Bundles → Profiles → Target Config
 - **internal/profile/** - Composes bundles into profiles, handles asset deduplication
 - **internal/install/** - Installation logic with manifest tracking, conflict detection, backup/restore
 - **internal/adapter/** - Target-specific implementations (currently Claude)
+- **internal/frontmatter/** - YAML frontmatter parsing/rendering (target-agnostic)
 - **internal/template/** - `{{variable}}` and `{{existing}}` substitution
 
 ### Key Design Decisions
@@ -75,11 +78,11 @@ Sources → Assets → Bundles → Profiles → Target Config
 
 ### Adapter Interface
 
-Adapters translate tai concepts to target-specific formats. The Claude adapter maps:
-- `personas/` → `output-styles/`
-- `delegates/` → `agents/`
-- `skills/` → `skills/`
-- `docs/` → root level
+Adapters translate tai concepts to target-specific formats. They implement `TransformContent()` to strip tai frontmatter (`tai-schema-version`) and render the target's expected format. The Claude adapter maps:
+- `personas/` → `output-styles/` (renders `name`, `description` frontmatter)
+- `delegates/` → `agents/` (renders `name`, `description`, `tools` frontmatter)
+- `skills/` → `skills/` (SKILL.md gets `name`, `description`, `tools` frontmatter)
+- `docs/` → root level (body only, no target frontmatter)
 - `mcps/` → entries in `.mcp.json` or `~/.claude.json` (v0.2)
 - `hooks/` → entries in `settings.json` (v0.2)
 

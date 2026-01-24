@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/amterp/tai/internal/adapter/claude"
@@ -26,9 +27,8 @@ func setupInstallTest(t *testing.T) (*testutil.TestEnv, *Installer, *claude.Adap
 func TestInstallerInstallSimple(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Create test assets
-	env.SetupAsset("personas", "test.md", "# Test Persona")
-	env.SetupAsset("delegates", "helper.md", "# Helper Agent")
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Test Persona")
+	env.SetupAsset("delegates", "helper.md", "---\ntai-schema-version: 1\nname: Helper\n---\n\n# Helper Agent")
 
 	assets := []*config.Asset{
 		{Type: "personas", Name: "test.md", SourceName: "local",
@@ -42,7 +42,6 @@ func TestInstallerInstallSimple(t *testing.T) {
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Check results
 	if len(result.Added) != 2 {
 		t.Errorf("len(Added) = %d, want 2", len(result.Added))
 	}
@@ -50,7 +49,6 @@ func TestInstallerInstallSimple(t *testing.T) {
 		t.Errorf("len(Updated) = %d, want 0", len(result.Updated))
 	}
 
-	// Verify files were created
 	if !env.TargetFileExists("output-styles/test.md") {
 		t.Error("output-styles/test.md not created")
 	}
@@ -58,13 +56,13 @@ func TestInstallerInstallSimple(t *testing.T) {
 		t.Error("agents/helper.md not created")
 	}
 
-	// Verify content
+	// Adapter renders Claude frontmatter (name only, no tai-schema-version)
 	content := env.ReadTargetFile("output-styles/test.md")
-	if content != "# Test Persona" {
-		t.Errorf("content = %q, want '# Test Persona'", content)
+	expected := "---\nname: Test\n---\n\n# Test Persona"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
 	}
 
-	// Verify manifest was saved
 	if result.Manifest == nil {
 		t.Fatal("Manifest is nil")
 	}
@@ -76,7 +74,7 @@ func TestInstallerInstallSimple(t *testing.T) {
 func TestInstallerInstallDryRun(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	env.SetupAsset("personas", "test.md", "# Test Persona")
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Test Persona")
 
 	assets := []*config.Asset{
 		{Type: "personas", Name: "test.md", SourceName: "local",
@@ -88,12 +86,10 @@ func TestInstallerInstallDryRun(t *testing.T) {
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Should report as added
 	if len(result.Added) != 1 {
 		t.Errorf("len(Added) = %d, want 1", len(result.Added))
 	}
 
-	// But file should NOT exist
 	if env.TargetFileExists("output-styles/test.md") {
 		t.Error("file created during dry run")
 	}
@@ -102,8 +98,7 @@ func TestInstallerInstallDryRun(t *testing.T) {
 func TestInstallerInstallUpdate(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Initial install
-	env.SetupAsset("personas", "test.md", "# Version 1")
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Version 1")
 	assets := []*config.Asset{
 		{Type: "personas", Name: "test.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
@@ -114,16 +109,13 @@ func TestInstallerInstallUpdate(t *testing.T) {
 		t.Fatalf("First install failed: %v", err)
 	}
 
-	// Update the asset
-	env.SetupAsset("personas", "test.md", "# Version 2")
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Version 2")
 
-	// Re-install
 	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
 	if err != nil {
 		t.Fatalf("Second install failed: %v", err)
 	}
 
-	// Should be an update
 	if len(result.Updated) != 1 {
 		t.Errorf("len(Updated) = %d, want 1", len(result.Updated))
 	}
@@ -131,18 +123,17 @@ func TestInstallerInstallUpdate(t *testing.T) {
 		t.Errorf("len(Unchanged) = %d, want 0", len(result.Unchanged))
 	}
 
-	// Verify new content
 	content := env.ReadTargetFile("output-styles/test.md")
-	if content != "# Version 2" {
-		t.Errorf("content = %q, want '# Version 2'", content)
+	expected := "---\nname: Test\n---\n\n# Version 2"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
 	}
 }
 
 func TestInstallerInstallUnchanged(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Initial install
-	env.SetupAsset("personas", "test.md", "# Same Content")
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Same\n---\n\n# Same Content")
 	assets := []*config.Asset{
 		{Type: "personas", Name: "test.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
@@ -153,18 +144,15 @@ func TestInstallerInstallUnchanged(t *testing.T) {
 		t.Fatalf("First install failed: %v", err)
 	}
 
-	// First install should be Added
 	if len(result1.Added) != 1 {
 		t.Errorf("First install: len(Added) = %d, want 1", len(result1.Added))
 	}
 
-	// Re-install with same content (no changes to source)
 	result2, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
 	if err != nil {
 		t.Fatalf("Second install failed: %v", err)
 	}
 
-	// Should be unchanged, not updated
 	if len(result2.Unchanged) != 1 {
 		t.Errorf("Second install: len(Unchanged) = %d, want 1", len(result2.Unchanged))
 	}
@@ -179,9 +167,8 @@ func TestInstallerInstallUnchanged(t *testing.T) {
 func TestInstallerInstallMixedUnchangedAndUpdated(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Initial install with two assets
-	env.SetupAsset("personas", "unchanged.md", "# Will Stay Same")
-	env.SetupAsset("personas", "updated.md", "# Version 1")
+	env.SetupAsset("personas", "unchanged.md", "---\ntai-schema-version: 1\nname: Unchanged\n---\n\n# Will Stay Same")
+	env.SetupAsset("personas", "updated.md", "---\ntai-schema-version: 1\nname: Updated\n---\n\n# Version 1")
 
 	assets := []*config.Asset{
 		{Type: "personas", Name: "unchanged.md", SourceName: "local",
@@ -195,16 +182,13 @@ func TestInstallerInstallMixedUnchangedAndUpdated(t *testing.T) {
 		t.Fatalf("First install failed: %v", err)
 	}
 
-	// Update only one asset
-	env.SetupAsset("personas", "updated.md", "# Version 2")
+	env.SetupAsset("personas", "updated.md", "---\ntai-schema-version: 1\nname: Updated\n---\n\n# Version 2")
 
-	// Re-install
 	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
 	if err != nil {
 		t.Fatalf("Second install failed: %v", err)
 	}
 
-	// One should be unchanged, one should be updated
 	if len(result.Unchanged) != 1 {
 		t.Errorf("len(Unchanged) = %d, want 1", len(result.Unchanged))
 	}
@@ -212,7 +196,6 @@ func TestInstallerInstallMixedUnchangedAndUpdated(t *testing.T) {
 		t.Errorf("len(Updated) = %d, want 1", len(result.Updated))
 	}
 
-	// Verify which is which
 	if result.Unchanged[0] != "output-styles/unchanged.md" {
 		t.Errorf("Unchanged[0] = %q, want 'output-styles/unchanged.md'", result.Unchanged[0])
 	}
@@ -224,9 +207,8 @@ func TestInstallerInstallMixedUnchangedAndUpdated(t *testing.T) {
 func TestInstallerInstallRemoveStale(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Initial install with two assets
-	env.SetupAsset("personas", "keep.md", "# Keep")
-	env.SetupAsset("personas", "remove.md", "# Remove")
+	env.SetupAsset("personas", "keep.md", "---\ntai-schema-version: 1\nname: Keep\n---\n\n# Keep")
+	env.SetupAsset("personas", "remove.md", "---\ntai-schema-version: 1\nname: Remove\n---\n\n# Remove")
 
 	assets := []*config.Asset{
 		{Type: "personas", Name: "keep.md", SourceName: "local",
@@ -240,7 +222,6 @@ func TestInstallerInstallRemoveStale(t *testing.T) {
 		t.Fatalf("First install failed: %v", err)
 	}
 
-	// Re-install with only one asset
 	assets = []*config.Asset{
 		{Type: "personas", Name: "keep.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "keep.md")},
@@ -251,12 +232,10 @@ func TestInstallerInstallRemoveStale(t *testing.T) {
 		t.Fatalf("Second install failed: %v", err)
 	}
 
-	// Should report removed
 	if len(result.Removed) != 1 {
 		t.Errorf("len(Removed) = %d, want 1", len(result.Removed))
 	}
 
-	// Verify file was removed
 	if env.TargetFileExists("output-styles/remove.md") {
 		t.Error("removed file still exists")
 	}
@@ -268,7 +247,7 @@ func TestInstallerInstallRemoveStale(t *testing.T) {
 func TestInstallerInstallWithTemplating(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	env.SetupAsset("personas", "templated.md", "# Persona for {{project_name}}")
+	env.SetupAsset("personas", "templated.md", "---\ntai-schema-version: 1\nname: Templated\n---\n\n# Persona for {{project_name}}")
 
 	assets := []*config.Asset{
 		{Type: "personas", Name: "templated.md", SourceName: "local",
@@ -286,9 +265,8 @@ func TestInstallerInstallWithTemplating(t *testing.T) {
 		t.Errorf("len(Added) = %d, want 1", len(result.Added))
 	}
 
-	// Verify templated content
 	content := env.ReadTargetFile("output-styles/templated.md")
-	expected := "# Persona for MyProject"
+	expected := "---\nname: Templated\n---\n\n# Persona for MyProject"
 	if content != expected {
 		t.Errorf("content = %q, want %q", content, expected)
 	}
@@ -306,8 +284,7 @@ func TestInstallerInstallWithExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create asset with {{existing}}
-	env.SetupAsset("docs", "CLAUDE.md", "# Header\n\n{{existing}}\n\n# Footer")
+	env.SetupAsset("docs", "CLAUDE.md", "---\ntai-schema-version: 1\n---\n\n# Header\n\n{{existing}}\n\n# Footer")
 
 	assets := []*config.Asset{
 		{Type: "docs", Name: "CLAUDE.md", SourceName: "local",
@@ -319,7 +296,6 @@ func TestInstallerInstallWithExisting(t *testing.T) {
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Verify backup was created
 	if len(result.Manifest.Files) != 1 {
 		t.Fatal("expected 1 manifest entry")
 	}
@@ -327,14 +303,13 @@ func TestInstallerInstallWithExisting(t *testing.T) {
 		t.Error("BackupPath is empty")
 	}
 
-	// Verify templated content includes existing
+	// Docs produce body only (no target frontmatter)
 	content := env.ReadTargetFile("CLAUDE.md")
 	expected := "# Header\n\n# Existing Content\n\n# Footer"
 	if content != expected {
 		t.Errorf("content = %q, want %q", content, expected)
 	}
 
-	// Verify backup exists
 	backupPath := existingPath + ".tai-backup"
 	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
 		t.Error("backup file not created")
@@ -344,7 +319,6 @@ func TestInstallerInstallWithExisting(t *testing.T) {
 func TestInstallerInstallConflictUnmanaged(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Create existing unmanaged file at target
 	targetPath := filepath.Join(env.TargetDir, "output-styles", "conflict.md")
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
 		t.Fatal(err)
@@ -353,20 +327,18 @@ func TestInstallerInstallConflictUnmanaged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	env.SetupAsset("personas", "conflict.md", "# New Content")
+	env.SetupAsset("personas", "conflict.md", "---\ntai-schema-version: 1\nname: Conflict\n---\n\n# New Content")
 
 	assets := []*config.Asset{
 		{Type: "personas", Name: "conflict.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "conflict.md")},
 	}
 
-	// Should fail without --force
 	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
 	if err == nil {
 		t.Fatal("expected conflict error, got nil")
 	}
 
-	// Should succeed with --force
 	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{Force: true})
 	if err != nil {
 		t.Fatalf("Install with force failed: %v", err)
@@ -379,7 +351,6 @@ func TestInstallerInstallConflictUnmanaged(t *testing.T) {
 func TestInstallerInstallConflictSkip(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Create existing unmanaged file
 	targetPath := filepath.Join(env.TargetDir, "output-styles", "conflict.md")
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
 		t.Fatal(err)
@@ -388,14 +359,13 @@ func TestInstallerInstallConflictSkip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	env.SetupAsset("personas", "conflict.md", "# New Content")
+	env.SetupAsset("personas", "conflict.md", "---\ntai-schema-version: 1\nname: Conflict\n---\n\n# New Content")
 
 	assets := []*config.Asset{
 		{Type: "personas", Name: "conflict.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "conflict.md")},
 	}
 
-	// Should succeed with --skip-conflicts
 	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{SkipConflicts: true})
 	if err != nil {
 		t.Fatalf("Install with skip-conflicts failed: %v", err)
@@ -405,7 +375,6 @@ func TestInstallerInstallConflictSkip(t *testing.T) {
 		t.Errorf("len(Skipped) = %d, want 1", len(result.Skipped))
 	}
 
-	// Original content should be preserved
 	content, _ := os.ReadFile(targetPath)
 	if string(content) != "# Unmanaged" {
 		t.Error("original content was overwritten")
@@ -415,8 +384,7 @@ func TestInstallerInstallConflictSkip(t *testing.T) {
 func TestInstallerUninstall(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// First install
-	env.SetupAsset("personas", "test.md", "# Test")
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Test")
 
 	assets := []*config.Asset{
 		{Type: "personas", Name: "test.md", SourceName: "local",
@@ -428,12 +396,10 @@ func TestInstallerUninstall(t *testing.T) {
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Verify installed
 	if !env.TargetFileExists("output-styles/test.md") {
 		t.Fatal("file not installed")
 	}
 
-	// Uninstall
 	result, err := installer.Uninstall(adapter)
 	if err != nil {
 		t.Fatalf("Uninstall failed: %v", err)
@@ -443,7 +409,6 @@ func TestInstallerUninstall(t *testing.T) {
 		t.Errorf("len(Removed) = %d, want 1", len(result.Removed))
 	}
 
-	// Verify removed
 	if env.TargetFileExists("output-styles/test.md") {
 		t.Error("file not removed")
 	}
@@ -452,14 +417,12 @@ func TestInstallerUninstall(t *testing.T) {
 func TestInstallerUninstallWithBackup(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Create existing file at target
 	existingPath := filepath.Join(env.TargetDir, "CLAUDE.md")
 	if err := os.WriteFile(existingPath, []byte("# Original"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Install with {{existing}}
-	env.SetupAsset("docs", "CLAUDE.md", "# Wrapped\n{{existing}}")
+	env.SetupAsset("docs", "CLAUDE.md", "---\ntai-schema-version: 1\n---\n\n# Wrapped\n{{existing}}")
 
 	assets := []*config.Asset{
 		{Type: "docs", Name: "CLAUDE.md", SourceName: "local",
@@ -471,13 +434,11 @@ func TestInstallerUninstallWithBackup(t *testing.T) {
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Uninstall
 	_, err = installer.Uninstall(adapter)
 	if err != nil {
 		t.Fatalf("Uninstall failed: %v", err)
 	}
 
-	// Original content should be restored
 	content, err := os.ReadFile(existingPath)
 	if err != nil {
 		t.Fatalf("reading restored file: %v", err)
@@ -490,7 +451,6 @@ func TestInstallerUninstallWithBackup(t *testing.T) {
 func TestInstallerStatus(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// No installation yet
 	status, err := installer.Status(adapter.Name())
 	if err != nil {
 		t.Fatalf("Status failed: %v", err)
@@ -499,8 +459,7 @@ func TestInstallerStatus(t *testing.T) {
 		t.Error("expected nil status for no installation")
 	}
 
-	// Install
-	env.SetupAsset("personas", "test.md", "# Test")
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Test")
 	assets := []*config.Asset{
 		{Type: "personas", Name: "test.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
@@ -510,7 +469,6 @@ func TestInstallerStatus(t *testing.T) {
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Check status
 	status, err = installer.Status(adapter.Name())
 	if err != nil {
 		t.Fatalf("Status failed: %v", err)
@@ -529,12 +487,11 @@ func TestInstallerStatus(t *testing.T) {
 func TestInstallerInstallSkillDirectory(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Create a skill directory
 	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "my-skill")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# My Skill"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\ntai-schema-version: 1\nname: My Skill\ndescription: A helpful skill\n---\n\n# My Skill\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(skillDir, "helper.sh"), []byte("#!/bin/bash\necho hello"), 0644); err != nil {
@@ -555,12 +512,18 @@ func TestInstallerInstallSkillDirectory(t *testing.T) {
 		t.Errorf("len(Added) = %d, want 1", len(result.Added))
 	}
 
-	// Verify directory was copied
 	if !env.TargetFileExists("skills/my-skill/SKILL.md") {
 		t.Error("SKILL.md not created")
 	}
 	if !env.TargetFileExists("skills/my-skill/helper.sh") {
 		t.Error("helper.sh not created")
+	}
+
+	// SKILL.md should be transformed with Claude agent frontmatter
+	skillContent := env.ReadTargetFile("skills/my-skill/SKILL.md")
+	expectedSkill := "---\nname: My Skill\ndescription: A helpful skill\n---\n\n# My Skill\n"
+	if skillContent != expectedSkill {
+		t.Errorf("SKILL.md content = %q, want %q", skillContent, expectedSkill)
 	}
 }
 
@@ -570,7 +533,6 @@ func TestCopyFilePreservesPermissions(t *testing.T) {
 	srcPath := filepath.Join(dir, "script.sh")
 	dstPath := filepath.Join(dir, "script-copy.sh")
 
-	// Create source file with executable permissions
 	if err := os.WriteFile(srcPath, []byte("#!/bin/bash\necho hello"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -592,14 +554,14 @@ func TestCopyFilePreservesPermissions(t *testing.T) {
 func TestInstallerPreservesFilePermissions(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Create an executable script asset
-	scriptPath := filepath.Join(env.ConfigRepo, "assets", "skills", "run.sh")
-	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho run"), 0755); err != nil {
+	// Use a doc asset with executable permissions to test permission preservation
+	scriptPath := filepath.Join(env.ConfigRepo, "assets", "docs", "run.sh")
+	if err := os.WriteFile(scriptPath, []byte("---\ntai-schema-version: 1\n---\n\n#!/bin/bash\necho run"), 0755); err != nil {
 		t.Fatal(err)
 	}
 
 	assets := []*config.Asset{
-		{Type: "skills", Name: "run.sh", SourceName: "local",
+		{Type: "docs", Name: "run.sh", SourceName: "local",
 			SourcePath: scriptPath},
 	}
 
@@ -608,7 +570,7 @@ func TestInstallerPreservesFilePermissions(t *testing.T) {
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	installed := filepath.Join(env.TargetDir, "skills", "run.sh")
+	installed := filepath.Join(env.TargetDir, "run.sh")
 	info, err := os.Stat(installed)
 	if err != nil {
 		t.Fatalf("stat installed file: %v", err)
@@ -622,7 +584,6 @@ func TestInstallerPreservesFilePermissions(t *testing.T) {
 func TestInstallerSkillDirectoryPreservesPermissions(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Create a skill directory with mixed permissions
 	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "mixed-perms")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
@@ -644,7 +605,6 @@ func TestInstallerSkillDirectoryPreservesPermissions(t *testing.T) {
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Check executable script preserved 0755
 	scriptInfo, err := os.Stat(filepath.Join(env.TargetDir, "skills", "mixed-perms", "run.sh"))
 	if err != nil {
 		t.Fatalf("stat script: %v", err)
@@ -653,7 +613,6 @@ func TestInstallerSkillDirectoryPreservesPermissions(t *testing.T) {
 		t.Errorf("script permissions = %o, want %o", scriptInfo.Mode().Perm(), os.FileMode(0755))
 	}
 
-	// Check doc preserved 0644
 	docInfo, err := os.Stat(filepath.Join(env.TargetDir, "skills", "mixed-perms", "README.md"))
 	if err != nil {
 		t.Fatalf("stat doc: %v", err)
@@ -666,15 +625,15 @@ func TestInstallerSkillDirectoryPreservesPermissions(t *testing.T) {
 func TestInstallAssetFallsBackTo0644WhenFileModeZero(t *testing.T) {
 	dir := t.TempDir()
 	installer := &Installer{}
+	adapter := claude.New(dir)
 
 	targetPath := filepath.Join(dir, "output.md")
 	resolved := &config.ResolvedAsset{
 		Asset:   config.Asset{Type: "docs", Name: "output.md"},
 		Content: []byte("# Hello"),
-		// FileMode intentionally left as zero
 	}
 
-	if err := installer.installAsset(resolved, targetPath); err != nil {
+	if err := installer.installAsset(resolved, targetPath, adapter); err != nil {
 		t.Fatalf("installAsset failed: %v", err)
 	}
 
@@ -690,37 +649,34 @@ func TestInstallAssetFallsBackTo0644WhenFileModeZero(t *testing.T) {
 func TestInstallerPermissionChangeTriggersUpdate(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	scriptPath := filepath.Join(env.ConfigRepo, "assets", "skills", "run.sh")
-	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho v1"), 0644); err != nil {
+	scriptPath := filepath.Join(env.ConfigRepo, "assets", "docs", "run.sh")
+	if err := os.WriteFile(scriptPath, []byte("---\ntai-schema-version: 1\n---\n\n#!/bin/bash\necho v1"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	assets := []*config.Asset{
-		{Type: "skills", Name: "run.sh", SourceName: "local", SourcePath: scriptPath},
+		{Type: "docs", Name: "run.sh", SourceName: "local", SourcePath: scriptPath},
 	}
 
-	// First install — 0644
 	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
 	if err != nil {
 		t.Fatalf("first install: %v", err)
 	}
 
-	installed := filepath.Join(env.TargetDir, "skills", "run.sh")
+	installed := filepath.Join(env.TargetDir, "run.sh")
 	info, _ := os.Stat(installed)
 	if info.Mode().Perm() != 0644 {
 		t.Fatalf("first install permissions = %o, want 0644", info.Mode().Perm())
 	}
 
-	// Change source content and permissions to executable
-	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho v2"), 0755); err != nil {
+	// Change source content and permissions
+	if err := os.WriteFile(scriptPath, []byte("---\ntai-schema-version: 1\n---\n\n#!/bin/bash\necho v2"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	// WriteFile doesn't update mode on existing files, so chmod explicitly
 	if err := os.Chmod(scriptPath, 0755); err != nil {
 		t.Fatal(err)
 	}
 
-	// Second install — should update with new permissions
 	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
 	if err != nil {
 		t.Fatalf("second install: %v", err)
@@ -732,5 +688,477 @@ func TestInstallerPermissionChangeTriggersUpdate(t *testing.T) {
 	info, _ = os.Stat(installed)
 	if info.Mode().Perm() != 0755 {
 		t.Errorf("updated permissions = %o, want 0755", info.Mode().Perm())
+	}
+}
+
+func TestInstallerPersonaWithFrontmatter(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	env.SetupAsset("personas", "senior-swe.md", "---\ntai-schema-version: 1\nname: Senior SWE\ndescription: An experienced engineer\n---\n\n# Senior SWE\n\nYou are a senior engineer.\n")
+
+	assets := []*config.Asset{
+		{Type: "personas", Name: "senior-swe.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "senior-swe.md")},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("output-styles/senior-swe.md")
+	expected := "---\nname: Senior SWE\ndescription: An experienced engineer\n---\n\n# Senior SWE\n\nYou are a senior engineer.\n"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
+	}
+}
+
+func TestInstallerDelegateWithFrontmatter(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	env.SetupAsset("delegates", "reviewer.md", "---\ntai-schema-version: 1\nname: Code Reviewer\ndescription: Reviews code\n---\n\nReview all code changes.\n")
+
+	assets := []*config.Asset{
+		{Type: "delegates", Name: "reviewer.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "delegates", "reviewer.md")},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("agents/reviewer.md")
+	expected := "---\nname: Code Reviewer\ndescription: Reviews code\n---\n\nReview all code changes.\n"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
+	}
+}
+
+func TestInstallerDelegateWithTools(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	env.SetupAsset("delegates", "reviewer.md", "---\ntai-schema-version: 1\nname: Code Reviewer\ndescription: Reviews code\ntools: Read, Glob, Grep\n---\n\nReview all code changes.\n")
+
+	assets := []*config.Asset{
+		{Type: "delegates", Name: "reviewer.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "delegates", "reviewer.md")},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("agents/reviewer.md")
+	expected := "---\nname: Code Reviewer\ndescription: Reviews code\ntools: Read, Glob, Grep\n---\n\nReview all code changes.\n"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
+	}
+}
+
+func TestInstallerDocStripsOnlyTaiFrontmatter(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Doc with tai frontmatter — installed content should be body only
+	env.SetupAsset("docs", "NOTES.md", "---\ntai-schema-version: 1\nname: Notes\n---\n\n# Project Notes\n\nSome reference material.\n")
+
+	assets := []*config.Asset{
+		{Type: "docs", Name: "NOTES.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "NOTES.md")},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("NOTES.md")
+	expected := "# Project Notes\n\nSome reference material.\n"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
+	}
+}
+
+func TestInstallerDocPreservesBodyFrontmatter(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Doc whose body itself contains --- blocks (e.g., wrapping a file with its own frontmatter).
+	// Only the first (tai) frontmatter is stripped; the body's --- blocks are preserved.
+	env.SetupAsset("docs", "REF.md", "---\ntai-schema-version: 1\n---\n\n---\ntitle: Reference\n---\n\n# Reference Doc\n")
+
+	assets := []*config.Asset{
+		{Type: "docs", Name: "REF.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "REF.md")},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("REF.md")
+	expected := "---\ntitle: Reference\n---\n\n# Reference Doc\n"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
+	}
+}
+
+func TestInstallerSkillDirectoryTransformsSKILLMd(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "test-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: Test Skill\ndescription: Does testing\ntools: Read, Bash\n---\n\nUse this skill for testing.\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skills", Name: "test-skill", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	// SKILL.md should get Claude agent frontmatter (name, description, tools)
+	content := env.ReadTargetFile("skills/test-skill/SKILL.md")
+	expected := "---\nname: Test Skill\ndescription: Does testing\ntools: Read, Bash\n---\n\nUse this skill for testing.\n"
+	if content != expected {
+		t.Errorf("SKILL.md content = %q, want %q", content, expected)
+	}
+}
+
+// --- validateAssetMetadata unit tests ---
+
+func TestValidateAssetMetadataValid(t *testing.T) {
+	metadata := map[string]string{
+		"tai-schema-version": "1",
+		"name":               "My Asset",
+	}
+
+	for _, assetType := range []string{"personas", "delegates", "skills"} {
+		if err := validateAssetMetadata(metadata, assetType); err != nil {
+			t.Errorf("validateAssetMetadata(%s) unexpected error: %v", assetType, err)
+		}
+	}
+}
+
+func TestValidateAssetMetadataDocAllowsMissingName(t *testing.T) {
+	metadata := map[string]string{
+		"tai-schema-version": "1",
+	}
+
+	if err := validateAssetMetadata(metadata, "docs"); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateAssetMetadataNilMetadata(t *testing.T) {
+	err := validateAssetMetadata(nil, "personas")
+	if err == nil {
+		t.Fatal("expected error for nil metadata")
+	}
+	if !strings.Contains(err.Error(), "missing frontmatter") {
+		t.Errorf("error = %q, want mention of 'missing frontmatter'", err.Error())
+	}
+}
+
+func TestValidateAssetMetadataMissingSchemaVersion(t *testing.T) {
+	metadata := map[string]string{
+		"name": "Test",
+	}
+
+	err := validateAssetMetadata(metadata, "personas")
+	if err == nil {
+		t.Fatal("expected error for missing tai-schema-version")
+	}
+	if !strings.Contains(err.Error(), "tai-schema-version") {
+		t.Errorf("error = %q, want mention of tai-schema-version", err.Error())
+	}
+}
+
+func TestValidateAssetMetadataUnsupportedVersion(t *testing.T) {
+	metadata := map[string]string{
+		"tai-schema-version": "99",
+		"name":               "Test",
+	}
+
+	err := validateAssetMetadata(metadata, "personas")
+	if err == nil {
+		t.Fatal("expected error for unsupported version")
+	}
+	if !strings.Contains(err.Error(), "unsupported") {
+		t.Errorf("error = %q, want mention of 'unsupported'", err.Error())
+	}
+}
+
+func TestValidateAssetMetadataMissingName(t *testing.T) {
+	metadata := map[string]string{
+		"tai-schema-version": "1",
+	}
+
+	for _, assetType := range []string{"personas", "delegates", "skills"} {
+		err := validateAssetMetadata(metadata, assetType)
+		if err == nil {
+			t.Errorf("validateAssetMetadata(%s) expected error for missing name", assetType)
+			continue
+		}
+		if !strings.Contains(err.Error(), "name") {
+			t.Errorf("error = %q, want mention of 'name'", err.Error())
+		}
+	}
+}
+
+func TestValidateAssetMetadataWhitespaceOnlyName(t *testing.T) {
+	metadata := map[string]string{
+		"tai-schema-version": "1",
+		"name":               "   \t  ",
+	}
+
+	err := validateAssetMetadata(metadata, "personas")
+	if err == nil {
+		t.Fatal("expected error for whitespace-only name")
+	}
+	if !strings.Contains(err.Error(), "name") {
+		t.Errorf("error = %q, want mention of 'name'", err.Error())
+	}
+}
+
+func TestValidateAssetMetadataUnknownAssetType(t *testing.T) {
+	metadata := map[string]string{
+		"tai-schema-version": "1",
+		"name":               "Test",
+	}
+
+	err := validateAssetMetadata(metadata, "unknown-type")
+	if err == nil {
+		t.Fatal("expected error for unknown asset type")
+	}
+	if !strings.Contains(err.Error(), "unknown asset type") {
+		t.Errorf("error = %q, want mention of 'unknown asset type'", err.Error())
+	}
+}
+
+func TestValidateAssetMetadataRejectsUnknownField(t *testing.T) {
+	tests := []struct {
+		assetType string
+		field     string
+	}{
+		{"personas", "tools"},       // tools not allowed on personas
+		{"docs", "tools"},           // tools not allowed on docs
+		{"personas", "author"},      // completely unknown field
+		{"delegates", "priority"},   // completely unknown field
+		{"skills", "version"},       // not a tai frontmatter field
+	}
+
+	for _, tt := range tests {
+		metadata := map[string]string{
+			"tai-schema-version": "1",
+			"name":               "Test",
+			tt.field:             "some value",
+		}
+
+		err := validateAssetMetadata(metadata, tt.assetType)
+		if err == nil {
+			t.Errorf("validateAssetMetadata(%s) with field %q: expected error", tt.assetType, tt.field)
+			continue
+		}
+		if !strings.Contains(err.Error(), "unknown field") {
+			t.Errorf("error = %q, want mention of 'unknown field'", err.Error())
+		}
+		if !strings.Contains(err.Error(), tt.field) {
+			t.Errorf("error = %q, want mention of field %q", err.Error(), tt.field)
+		}
+	}
+}
+
+func TestValidateAssetMetadataAllowsValidFields(t *testing.T) {
+	// Delegates and skills allow tools
+	for _, assetType := range []string{"delegates", "skills"} {
+		metadata := map[string]string{
+			"tai-schema-version": "1",
+			"name":               "Test",
+			"description":        "A description",
+			"tools":              "Read, Bash",
+		}
+		if err := validateAssetMetadata(metadata, assetType); err != nil {
+			t.Errorf("validateAssetMetadata(%s) with all valid fields: unexpected error: %v", assetType, err)
+		}
+	}
+
+	// Personas allow name + description (no tools)
+	metadata := map[string]string{
+		"tai-schema-version": "1",
+		"name":               "Test",
+		"description":        "A description",
+	}
+	if err := validateAssetMetadata(metadata, "personas"); err != nil {
+		t.Errorf("validateAssetMetadata(personas) with valid fields: unexpected error: %v", err)
+	}
+}
+
+// --- Integration validation tests ---
+
+func TestInstallerRejectsMissingTaiSchemaVersion(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Asset without any frontmatter
+	env.SetupAsset("personas", "bad.md", "# No Frontmatter")
+
+	assets := []*config.Asset{
+		{Type: "personas", Name: "bad.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "bad.md")},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err == nil {
+		t.Fatal("expected error for missing frontmatter")
+	}
+	if !strings.Contains(err.Error(), "tai-schema-version") {
+		t.Errorf("error = %q, want mention of tai-schema-version", err.Error())
+	}
+}
+
+func TestInstallerRejectsUnsupportedTaiSchemaVersion(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	env.SetupAsset("personas", "bad.md", "---\ntai-schema-version: 99\nname: Bad\n---\n\n# Content")
+
+	assets := []*config.Asset{
+		{Type: "personas", Name: "bad.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "bad.md")},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err == nil {
+		t.Fatal("expected error for unsupported schema version")
+	}
+	if !strings.Contains(err.Error(), "unsupported") {
+		t.Errorf("error = %q, want mention of 'unsupported'", err.Error())
+	}
+}
+
+func TestInstallerRejectsMissingNameForPersona(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// tai-schema-version present but no name
+	env.SetupAsset("personas", "bad.md", "---\ntai-schema-version: 1\n---\n\n# No Name")
+
+	assets := []*config.Asset{
+		{Type: "personas", Name: "bad.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "bad.md")},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err == nil {
+		t.Fatal("expected error for missing name")
+	}
+	if !strings.Contains(err.Error(), "name") {
+		t.Errorf("error = %q, want mention of 'name'", err.Error())
+	}
+}
+
+func TestInstallerDocAllowsMissingName(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Docs only require tai-schema-version, name is optional
+	env.SetupAsset("docs", "notes.md", "---\ntai-schema-version: 1\n---\n\n# Notes")
+
+	assets := []*config.Asset{
+		{Type: "docs", Name: "notes.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "notes.md")},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install should succeed for doc without name, got: %v", err)
+	}
+
+	content := env.ReadTargetFile("notes.md")
+	if content != "# Notes" {
+		t.Errorf("content = %q, want %q", content, "# Notes")
+	}
+}
+
+// --- Regression tests ---
+
+func TestInstallerOutputNeverContainsTaiSchemaVersion(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Install all asset types and verify tai-schema-version is stripped from output
+	env.SetupAsset("personas", "p.md", "---\ntai-schema-version: 1\nname: P\ndescription: A persona\n---\n\n# Persona")
+	env.SetupAsset("delegates", "d.md", "---\ntai-schema-version: 1\nname: D\ntools: Read, Bash\n---\n\n# Delegate")
+	env.SetupAsset("docs", "doc.md", "---\ntai-schema-version: 1\nname: Doc\n---\n\n# Documentation")
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "s")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: S\ntools: Grep\n---\n\n# Skill"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "personas", Name: "p.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "p.md")},
+		{Type: "delegates", Name: "d.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "delegates", "d.md")},
+		{Type: "docs", Name: "doc.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "doc.md")},
+		{Type: "skills", Name: "s", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	// Verify no installed file contains tai-schema-version
+	filesToCheck := []string{
+		"output-styles/p.md",
+		"agents/d.md",
+		"doc.md",
+		"skills/s/SKILL.md",
+	}
+	for _, f := range filesToCheck {
+		content := env.ReadTargetFile(f)
+		if strings.Contains(content, "tai-schema-version") {
+			t.Errorf("installed file %s contains tai-schema-version — should have been stripped", f)
+		}
+	}
+}
+
+func TestInstallerSkillDirectoryRejectsInvalidSKILLMd(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Skill directory with a SKILL.md that has no tai-schema-version
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "bad-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("# No frontmatter at all"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skills", Name: "bad-skill", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err == nil {
+		t.Fatal("expected error for SKILL.md without frontmatter")
+	}
+	if !strings.Contains(err.Error(), "tai-schema-version") {
+		t.Errorf("error = %q, want mention of tai-schema-version", err.Error())
 	}
 }

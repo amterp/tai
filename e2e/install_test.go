@@ -17,7 +17,6 @@ import (
 func TestE2EFreshInstall(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 
-	// Set up a complete config repo
 	env.SetupTaiConfig(`version: 1
 sources:
   - name: local
@@ -26,6 +25,7 @@ default_profile: work
 `)
 
 	env.SetupAsset("personas", "senior-swe.md", `---
+tai-schema-version: 1
 name: Senior SWE
 description: A senior software engineer persona
 ---
@@ -36,6 +36,7 @@ You are a senior software engineer.
 `)
 
 	env.SetupAsset("delegates", "code-reviewer.md", `---
+tai-schema-version: 1
 name: code-reviewer
 description: Reviews code for quality
 tools: Read, Glob, Grep
@@ -44,7 +45,11 @@ tools: Read, Glob, Grep
 You are a code reviewer.
 `)
 
-	env.SetupAsset("docs", "CLAUDE.md", `# Project Instructions
+	env.SetupAsset("docs", "CLAUDE.md", `---
+tai-schema-version: 1
+---
+
+# Project Instructions
 
 These are the project instructions.
 `)
@@ -110,10 +115,25 @@ bundles:
 		t.Error("CLAUDE.md not created")
 	}
 
-	// Verify content
-	content := env.ReadTargetFile("output-styles/senior-swe.md")
-	if len(content) == 0 {
-		t.Error("output-styles/senior-swe.md is empty")
+	// Verify persona content has Claude frontmatter (name + description, no tai-schema-version)
+	personaContent := env.ReadTargetFile("output-styles/senior-swe.md")
+	expectedPersona := "---\nname: Senior SWE\ndescription: A senior software engineer persona\n---\n\n# Senior Software Engineer\n\nYou are a senior software engineer.\n"
+	if personaContent != expectedPersona {
+		t.Errorf("persona content = %q, want %q", personaContent, expectedPersona)
+	}
+
+	// Verify delegate content has Claude agent frontmatter (name + description + tools)
+	delegateContent := env.ReadTargetFile("agents/code-reviewer.md")
+	expectedDelegate := "---\nname: code-reviewer\ndescription: Reviews code for quality\ntools: Read, Glob, Grep\n---\n\nYou are a code reviewer.\n"
+	if delegateContent != expectedDelegate {
+		t.Errorf("delegate content = %q, want %q", delegateContent, expectedDelegate)
+	}
+
+	// Verify doc content is body only (tai frontmatter stripped, no target frontmatter)
+	docContent := env.ReadTargetFile("CLAUDE.md")
+	expectedDoc := "# Project Instructions\n\nThese are the project instructions.\n"
+	if docContent != expectedDoc {
+		t.Errorf("doc content = %q, want %q", docContent, expectedDoc)
 	}
 
 	// Verify manifest was created
@@ -139,8 +159,7 @@ sources:
     path: ./assets
 `)
 
-	// Initial setup with one asset
-	env.SetupAsset("personas", "original.md", "# Original")
+	env.SetupAsset("personas", "original.md", "---\ntai-schema-version: 1\nname: Original\n---\n\n# Original")
 	env.SetupBundle("v1", `name: v1
 assets:
   - personas/original.md
@@ -151,7 +170,6 @@ bundles:
   - v1
 `)
 
-	// Load and install v1
 	loader := source.NewLoader(env.ConfigRepo)
 	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
 	sources, _ := loader.LoadAll(taiConfig.Sources)
@@ -160,7 +178,6 @@ bundles:
 	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
-	// First install
 	asset, _ := sources["local"].ResolveAsset("personas/original.md")
 	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
 	if err != nil {
@@ -168,16 +185,14 @@ bundles:
 	}
 
 	// Now add a new asset and update bundle
-	env.SetupAsset("personas", "new.md", "# New")
+	env.SetupAsset("personas", "new.md", "---\ntai-schema-version: 1\nname: New\n---\n\n# New")
 	env.SetupBundle("v1", `name: v1
 assets:
   - personas/new.md
 `)
 
-	// Reload sources
 	sources, _ = loader.LoadAll(taiConfig.Sources)
 
-	// Second install - should remove original, add new
 	newAsset, _ := sources["local"].ResolveAsset("personas/new.md")
 	result, err := installer.Install(adapter, "test", []*config.Asset{newAsset}, install.InstallOptions{})
 	if err != nil {
@@ -191,12 +206,9 @@ assets:
 		t.Errorf("Removed = %d, want 1", len(result.Removed))
 	}
 
-	// Verify old file removed
 	if env.TargetFileExists("output-styles/original.md") {
 		t.Error("original.md should have been removed")
 	}
-
-	// Verify new file created
 	if !env.TargetFileExists("output-styles/new.md") {
 		t.Error("new.md not created")
 	}
@@ -212,8 +224,7 @@ sources:
     path: ./assets
 `)
 
-	// Create asset with template variables
-	env.SetupAsset("personas", "templated.md", "# Project: {{project_name}}")
+	env.SetupAsset("personas", "templated.md", "---\ntai-schema-version: 1\nname: Templated\n---\n\n# Project: {{project_name}}")
 	env.SetupBundle("test", `name: test
 assets:
   - personas/templated.md
@@ -241,7 +252,7 @@ bundles:
 	}
 
 	content := env.ReadTargetFile("output-styles/templated.md")
-	expected := "# Project: MyApp"
+	expected := "---\nname: Templated\n---\n\n# Project: MyApp"
 	if content != expected {
 		t.Errorf("content = %q, want %q", content, expected)
 	}
@@ -251,7 +262,6 @@ bundles:
 func TestE2EInstallWithExisting(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 
-	// Create existing file in target
 	if err := os.MkdirAll(env.TargetDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +275,7 @@ sources:
     path: ./assets
 `)
 
-	env.SetupAsset("docs", "CLAUDE.md", "# Header\n\n{{existing}}\n\n# Footer")
+	env.SetupAsset("docs", "CLAUDE.md", "---\ntai-schema-version: 1\n---\n\n# Header\n\n{{existing}}\n\n# Footer")
 	env.SetupBundle("test", `name: test
 assets:
   - docs/CLAUDE.md
@@ -296,7 +306,6 @@ bundles:
 		t.Errorf("content = %q, want %q", content, expected)
 	}
 
-	// Verify backup was created
 	backupPath := filepath.Join(env.TargetDir, "CLAUDE.md.tai-backup")
 	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
 		t.Error("backup not created")
@@ -313,17 +322,11 @@ sources:
     path: ./assets
 `)
 
-	// Create a skill directory
 	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "my-skill")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
-name: my-skill
-description: A test skill
----
-# My Skill
-`), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\ntai-schema-version: 1\nname: my-skill\ndescription: A test skill\n---\n\n# My Skill\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(skillDir, "helper.sh"), []byte("#!/bin/bash\necho test"), 0644); err != nil {
@@ -354,12 +357,18 @@ bundles:
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Verify skill directory was copied
 	if !env.TargetFileExists("skills/my-skill/SKILL.md") {
 		t.Error("SKILL.md not copied")
 	}
 	if !env.TargetFileExists("skills/my-skill/helper.sh") {
 		t.Error("helper.sh not copied")
+	}
+
+	// SKILL.md should be transformed (tai-schema-version stripped, target frontmatter added)
+	skillContent := env.ReadTargetFile("skills/my-skill/SKILL.md")
+	expectedSkill := "---\nname: my-skill\ndescription: A test skill\n---\n\n# My Skill\n"
+	if skillContent != expectedSkill {
+		t.Errorf("SKILL.md content = %q, want %q", skillContent, expectedSkill)
 	}
 }
 
@@ -367,7 +376,6 @@ bundles:
 func TestE2EInstallSkillWithIncludes(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 
-	// Create a secondary source with files to include
 	radSource := filepath.Join(env.Root, "rad-source")
 	if err := os.MkdirAll(radSource, 0755); err != nil {
 		t.Fatal(err)
@@ -376,7 +384,6 @@ func TestE2EInstallSkillWithIncludes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create examples subdirectory
 	examplesDir := filepath.Join(radSource, "examples")
 	if err := os.MkdirAll(examplesDir, 0755); err != nil {
 		t.Fatal(err)
@@ -393,21 +400,14 @@ sources:
     path: ` + radSource + `
 `)
 
-	// Create a skill directory with tai.yaml manifest
 	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "rad")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
-name: rad
-description: Write and debug Rad scripts
----
-# Rad Skill
-`), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\ntai-schema-version: 1\nname: rad\ndescription: Write and debug Rad scripts\n---\n\n# Rad Skill\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Create tai.yaml manifest with includes
 	manifestContent := `include:
   - from: rad
     path: SYNTAX.md
@@ -444,17 +444,14 @@ bundles:
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Verify base skill files were copied
 	if !env.TargetFileExists("skills/rad/SKILL.md") {
 		t.Error("SKILL.md not copied")
 	}
 
-	// Verify tai.yaml was NOT copied (it's a build-time artifact)
 	if env.TargetFileExists("skills/rad/tai.yaml") {
 		t.Error("tai.yaml should NOT be copied to target")
 	}
 
-	// Verify source-based include was resolved
 	if !env.TargetFileExists("skills/rad/references/SYNTAX.md") {
 		t.Error("SYNTAX.md include not resolved")
 	}
@@ -463,13 +460,19 @@ bundles:
 		t.Errorf("SYNTAX.md content = %q, want '# Rad Syntax Reference'", syntaxContent)
 	}
 
-	// Verify directory include was resolved
 	if !env.TargetFileExists("skills/rad/scripts/examples/hello.rad") {
 		t.Error("examples directory include not resolved")
 	}
 	helloContent := env.ReadTargetFile("skills/rad/scripts/examples/hello.rad")
 	if helloContent != "print 'Hello, World!'" {
 		t.Errorf("hello.rad content = %q, want \"print 'Hello, World!'\"", helloContent)
+	}
+
+	// Verify SKILL.md was transformed
+	skillContent := env.ReadTargetFile("skills/rad/SKILL.md")
+	expectedSkill := "---\nname: rad\ndescription: Write and debug Rad scripts\n---\n\n# Rad Skill\n"
+	if skillContent != expectedSkill {
+		t.Errorf("SKILL.md content = %q, want %q", skillContent, expectedSkill)
 	}
 }
 
@@ -483,16 +486,14 @@ sources:
     path: ./assets
 `)
 
-	// Create a skill directory with tai.yaml that references non-existent source
 	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "bad-skill")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# Bad Skill"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\ntai-schema-version: 1\nname: Bad Skill\n---\n\n# Bad Skill"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Create tai.yaml manifest referencing non-existent source
 	manifestContent := `include:
   - from: nonexistent
     path: file.md
@@ -523,7 +524,6 @@ bundles:
 	asset, _ := sources["local"].ResolveAsset("skills/bad-skill")
 	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
 
-	// Should fail due to missing source
 	if err == nil {
 		t.Error("Install should fail when include references non-existent source")
 	}

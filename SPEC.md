@@ -273,6 +273,57 @@ options:
 scope: project  # or "user" or "local"
 ```
 
+### File Asset Formats
+
+#### Tai Frontmatter (All File Assets)
+
+All file assets (personas, delegates, skills, docs) MUST include tai frontmatter with `tai-schema-version: 1` as the schema discriminator. During installation, tai strips its own frontmatter and the adapter renders target-specific frontmatter (or none, for docs).
+
+```markdown
+---
+tai-schema-version: 1
+name: Senior SWE
+description: Experienced software engineer co-owner role.
+---
+
+# Senior SWE
+
+You are a senior software engineer...
+```
+
+**Frontmatter fields:**
+
+| Field | Personas | Delegates | Skills | Docs |
+|-------|----------|-----------|--------|------|
+| `tai-schema-version` | required | required | required | required |
+| `name` | required | required | required | optional |
+| `description` | optional | optional | optional | optional |
+| `tools` | — | optional | optional | — |
+
+- `tai-schema-version`: Must be `"1"`. Always stripped before installation.
+- `name`: Human-readable display name.
+- `description`: Short description of what this asset does.
+- `tools`: Comma-separated list of tools the delegate/skill may use.
+
+**Strict validation:** Only the fields listed above are allowed for each asset type. Unrecognized fields (e.g., `tools` on a persona) cause an immediate error. This catches typos and misunderstandings early.
+
+#### Adapter Transformation (Claude)
+
+| Asset Type | Installed frontmatter | Notes |
+|------------|----------------------|-------|
+| Personas | `name`, `description` | Claude output-style format |
+| Delegates | `name`, `description`, `tools` | Claude agent format |
+| Skills | `name`, `description`, `tools` | Same as delegates (SKILL.md in directories) |
+| Docs | none | Body only, no target frontmatter |
+
+#### Double Frontmatter in Docs
+
+If a doc's body itself contains `---` blocks (e.g., a doc wrapping a file with its own frontmatter), only the first frontmatter block (tai's) is stripped. The body's `---` blocks are preserved verbatim.
+
+#### Skills
+
+Skills are directories with a `SKILL.md` that uses tai frontmatter. During installation, the SKILL.md is transformed with target-specific frontmatter (name, description, tools). See the [Creating Skills](#creating-skills) section.
+
 ### Config Asset Definitions
 
 Config assets (MCPs and hooks) are defined as YAML files that describe entries to be merged into target configuration files.
@@ -625,7 +676,11 @@ tai installation is **additive**:
 
 When running `tai install <profile>` with an existing installation:
 1. Load current manifest
-2. Resolve new profile's assets
+2. Resolve new profile's assets:
+   a. Read source file and apply template substitution
+   b. Parse and validate tai frontmatter (all file types) — separates metadata from body
+   c. Run adapter's `TransformContent` — renders target-specific frontmatter (or strips it for docs)
+   d. Compute checksum on final transformed content
 3. Compare:
    - Files to add (in new, not in old)
    - Files to remove (in old, not in new)

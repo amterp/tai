@@ -1,4 +1,5 @@
 ---
+tai-schema-version: 1
 name: tai
 description: >
   Manage AI agent configurations with the tai CLI. Use this skill when asked to:
@@ -190,6 +191,51 @@ tai install <profile>              # Re-install to apply
 
 ---
 
+# Creating Personas & Delegates
+
+Personas and delegates are markdown files with required tai frontmatter.
+
+## Persona/Delegate Format
+
+```markdown
+---
+tai-schema-version: 1
+name: Senior SWE
+description: Experienced software engineer co-owner role.
+---
+
+# Senior SWE
+
+You are a senior software engineer...
+```
+
+## Frontmatter Fields
+
+| Field | Personas | Delegates | Skills | Docs |
+|-------|----------|-----------|--------|------|
+| `tai-schema-version` | required | required | required | required |
+| `name` | required | required | required | optional |
+| `description` | optional | optional | optional | optional |
+| `tools` | — | optional | optional | — |
+
+Only the fields listed above are allowed for each asset type. Unrecognized fields cause an error.
+
+## Docs Format
+
+Docs also require `tai-schema-version: 1` but `name` is optional. During installation, only the body is written (no target frontmatter).
+
+```markdown
+---
+tai-schema-version: 1
+---
+
+# Project Instructions
+
+Reference material here...
+```
+
+---
+
 # Creating Skills
 
 Skills are the most complex asset type—directories containing a `SKILL.md` with YAML frontmatter plus optional supporting files.
@@ -208,10 +254,12 @@ assets/skills/my-skill/
 
 ```yaml
 ---
-name: my-skill              # hyphen-case, max 64 chars
+tai-schema-version: 1
+name: my-skill
 description: >
   Concise description of what this skill does and when to use it.
   This description triggers skill activation—write it comprehensively.
+tools: Read, Glob, Grep
 ---
 
 # Skill Title
@@ -223,11 +271,10 @@ Instructions for the agent...
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| `name` | Yes | Lowercase, digits, hyphens only (hyphen-case) |
-| `description` | Yes | Under 1024 chars; triggers skill activation |
-| `license` | No | License terms if needed |
-| `allowed-tools` | No | Restrict available tools |
-| `metadata` | No | Additional structured data |
+| `tai-schema-version` | Yes | Must be `"1"`. Stripped during install. |
+| `name` | Yes | Human-readable display name |
+| `description` | No | Under 1024 chars; triggers skill activation |
+| `tools` | No | Comma-separated list of tools the skill may use |
 
 ## Core Principles
 

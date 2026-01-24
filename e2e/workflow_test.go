@@ -22,10 +22,9 @@ sources:
     path: ./assets
 `)
 
-	// Assets unique to each profile
-	env.SetupAsset("personas", "personal.md", "# Personal Persona")
-	env.SetupAsset("personas", "work.md", "# Work Persona")
-	env.SetupAsset("personas", "shared.md", "# Shared Persona")
+	env.SetupAsset("personas", "personal.md", "---\ntai-schema-version: 1\nname: Personal\n---\n\n# Personal Persona")
+	env.SetupAsset("personas", "work.md", "---\ntai-schema-version: 1\nname: Work\n---\n\n# Work Persona")
+	env.SetupAsset("personas", "shared.md", "---\ntai-schema-version: 1\nname: Shared\n---\n\n# Shared Persona")
 
 	env.SetupBundle("personal-bundle", `name: personal-bundle
 assets:
@@ -67,7 +66,6 @@ bundles:
 		t.Fatalf("Install personal failed: %v", err)
 	}
 
-	// Verify personal files
 	if !env.TargetFileExists("output-styles/personal.md") {
 		t.Error("personal.md not installed")
 	}
@@ -82,20 +80,13 @@ bundles:
 		t.Fatalf("Install work failed: %v", err)
 	}
 
-	// personal.md should be removed
 	if len(result.Removed) != 1 {
 		t.Errorf("Removed = %d, want 1", len(result.Removed))
 	}
-
-	// work.md should be added
 	if len(result.Added) != 1 {
 		t.Errorf("Added = %d, want 1", len(result.Added))
 	}
 
-	// shared.md should be updated (same file, different checksum context)
-	// or neither added nor removed if identical
-
-	// Verify final state
 	if env.TargetFileExists("output-styles/personal.md") {
 		t.Error("personal.md should be removed")
 	}
@@ -106,7 +97,6 @@ bundles:
 		t.Error("shared.md should still exist")
 	}
 
-	// Verify manifest
 	manifest, _ := installer.Status(adapter.Name())
 	if manifest.Profile != "work" {
 		t.Errorf("Profile = %q, want 'work'", manifest.Profile)
@@ -117,7 +107,6 @@ bundles:
 func TestE2EConflictResolution(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 
-	// Create existing unmanaged file
 	targetStylesDir := filepath.Join(env.TargetDir, "output-styles")
 	if err := os.MkdirAll(targetStylesDir, 0755); err != nil {
 		t.Fatal(err)
@@ -133,8 +122,8 @@ sources:
     path: ./assets
 `)
 
-	env.SetupAsset("personas", "conflict.md", "# New Content")
-	env.SetupAsset("personas", "noconflict.md", "# No Conflict")
+	env.SetupAsset("personas", "conflict.md", "---\ntai-schema-version: 1\nname: Conflict\n---\n\n# New Content")
+	env.SetupAsset("personas", "noconflict.md", "---\ntai-schema-version: 1\nname: Noconflict\n---\n\n# No Conflict")
 	env.SetupBundle("test", `name: test
 assets:
   - personas/conflict.md
@@ -177,7 +166,6 @@ bundles:
 		t.Errorf("Added = %d, want 1", len(result.Added))
 	}
 
-	// Original content should be preserved
 	content, _ := os.ReadFile(conflictPath)
 	if string(content) != "# Existing Unmanaged" {
 		t.Error("Conflict file was overwritten with skip-conflicts")
@@ -201,9 +189,9 @@ bundles:
 		t.Errorf("Added = %d, want 2", len(result.Added))
 	}
 
-	// Content should be overwritten
 	content, _ = os.ReadFile(conflictPath)
-	if string(content) != "# New Content" {
+	expectedContent := "---\nname: Conflict\n---\n\n# New Content"
+	if string(content) != expectedContent {
 		t.Errorf("Conflict file not overwritten with force: %s", string(content))
 	}
 }
@@ -218,7 +206,7 @@ sources:
     path: ./assets
 `)
 
-	env.SetupAsset("personas", "test.md", "# Test")
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Test")
 	env.SetupBundle("test", `name: test
 assets:
   - personas/test.md
@@ -243,17 +231,14 @@ bundles:
 		t.Fatalf("Dry run failed: %v", err)
 	}
 
-	// Should report what would happen
 	if len(result.Added) != 1 {
 		t.Errorf("Added = %d, want 1", len(result.Added))
 	}
 
-	// But file should NOT exist
 	if env.TargetFileExists("output-styles/test.md") {
 		t.Error("File created during dry run")
 	}
 
-	// Manifest should NOT exist
 	manifest, _ := installer.Status(adapter.Name())
 	if manifest != nil {
 		t.Error("Manifest created during dry run")
@@ -264,13 +249,12 @@ bundles:
 func TestE2EMultipleSources(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 
-	// Create a second source directory
 	secondaryPath := filepath.Join(env.Root, "secondary")
 	secondaryAssets := filepath.Join(secondaryPath, "personas")
 	if err := os.MkdirAll(secondaryAssets, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(secondaryAssets, "secondary.md"), []byte("# Secondary"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(secondaryAssets, "secondary.md"), []byte("---\ntai-schema-version: 1\nname: Secondary\n---\n\n# Secondary"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -282,7 +266,7 @@ sources:
     path: ` + secondaryPath + `
 `)
 
-	env.SetupAsset("personas", "local.md", "# Local")
+	env.SetupAsset("personas", "local.md", "---\ntai-schema-version: 1\nname: Local\n---\n\n# Local")
 	env.SetupBundle("combined", `name: combined
 assets:
   - personas/local.md
@@ -313,7 +297,6 @@ bundles:
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Both files should be installed
 	if !env.TargetFileExists("output-styles/local.md") {
 		t.Error("local.md not installed")
 	}
@@ -321,7 +304,6 @@ bundles:
 		t.Error("secondary.md not installed")
 	}
 
-	// Verify manifest tracks different sources
 	manifest, _ := installer.Status(adapter.Name())
 	sources_found := make(map[string]bool)
 	for _, f := range manifest.Files {
