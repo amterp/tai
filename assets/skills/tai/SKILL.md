@@ -111,19 +111,25 @@ default_profile: personal
 name: core
 description: Essential assets for daily work
 
+# Each asset requires explicit type and path
 assets:
-  - personas/senior-swe.md
-  - delegates/code-reviewer.md
-  - docs/CLAUDE.md
-  - skills/my-skill          # Reference skill by directory name
+  - type: persona
+    path: personas/senior-swe.md
+  - type: delegate
+    path: delegates/code-reviewer.md
+  - type: doc
+    path: docs/CLAUDE.md
+  - type: skill
+    path: skills/my-skill          # Reference skill by directory name
 
 # Include other bundles
 bundles:
   - base-setup
 
-# Reference assets from other sources
+# Reference assets from other sources via path prefix
 # assets:
-#   - work-shared:personas/company-style.md
+#   - type: persona
+#     path: work-shared:personas/company-style.md
 ```
 
 ### Profile Definition
@@ -140,7 +146,8 @@ bundles:
 
 # Individual assets (in addition to bundles)
 assets:
-  - personas/brainstormer.md
+  - type: persona
+    path: personas/brainstormer.md
 ```
 
 ## Templating
@@ -335,7 +342,7 @@ Include grep patterns for large files so agents can search efficiently.
 3. **Create** the directory structure under `assets/skills/`
 4. **Write** SKILL.md starting with a comprehensive description
 5. **Add** supporting files (scripts, references) as needed
-6. **Reference** in a bundle: `- skills/my-skill`
+6. **Reference** in a bundle: `- type: skill` / `path: skills/my-skill`
 7. **Install** and test: `tai install <profile>`
 
 ## Description Guidelines
@@ -410,3 +417,31 @@ This keeps skills portable—the `tai.yaml` in the skill references source names
 - Omit obvious information the agent already knows
 - Test instructions before including them
 - Structure for scanning (tables, bullet points, code blocks)
+
+## Migration: Structured Asset Entries (2026-01-23)
+
+Asset references in bundles and profiles changed from plain strings to structured entries with explicit `type` and `path` fields. This enables external sources with arbitrary directory layouts.
+
+### Before
+```yaml
+assets:
+  - personas/senior-swe.md
+  - work-shared:skills/rad
+```
+
+### After
+```yaml
+assets:
+  - type: persona
+    path: personas/senior-swe.md
+  - type: skill
+    path: work-shared:skills/rad
+```
+
+### Valid types
+`persona`, `delegate`, `skill`, `doc`
+
+### Mechanical conversion
+For each asset string in `assets:`:
+1. Determine the type from the first path segment (`personas/` → `persona`, `delegates/` → `delegate`, `skills/` → `skill`, `docs/` → `doc`)
+2. Replace the string with a mapping: `type: <singular>` and `path: <original string>`

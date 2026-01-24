@@ -20,10 +20,10 @@ func TestAdapterAssetMapping(t *testing.T) {
 	mapping := a.AssetMapping()
 
 	expected := map[string]string{
-		"personas":  "output-styles",
-		"delegates": "agents",
-		"skills":    "skills",
-		"docs":      "",
+		"persona":  "output-styles",
+		"delegate": "agents",
+		"skill":    "skills",
+		"doc":      "",
 	}
 
 	for k, v := range expected {
@@ -59,23 +59,23 @@ func TestAdapterMapAssetPath(t *testing.T) {
 		expected string
 	}{
 		{
-			asset:    &config.Asset{Type: "personas", Name: "senior-swe.md"},
+			asset:    &config.Asset{Type: "persona", Name: "senior-swe.md"},
 			expected: "output-styles/senior-swe.md",
 		},
 		{
-			asset:    &config.Asset{Type: "delegates", Name: "code-reviewer.md"},
+			asset:    &config.Asset{Type: "delegate", Name: "code-reviewer.md"},
 			expected: "agents/code-reviewer.md",
 		},
 		{
-			asset:    &config.Asset{Type: "skills", Name: "my-skill"},
+			asset:    &config.Asset{Type: "skill", Name: "my-skill"},
 			expected: "skills/my-skill",
 		},
 		{
-			asset:    &config.Asset{Type: "docs", Name: "CLAUDE.md"},
+			asset:    &config.Asset{Type: "doc", Name: "CLAUDE.md"},
 			expected: "CLAUDE.md",
 		},
 		{
-			asset:    &config.Asset{Type: "docs", Name: "RFC2119.md"},
+			asset:    &config.Asset{Type: "doc", Name: "RFC2119.md"},
 			expected: "RFC2119.md",
 		},
 	}

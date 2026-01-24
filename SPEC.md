@@ -205,16 +205,17 @@ Bundles are "shopping lists" of assets. They can reference individual assets or 
 name: core
 description: Essential assets for daily work
 
-# Assets can be referenced with source:path syntax
-# If source omitted, defaults to "local"
-# Both file assets and config assets use the same referencing syntax
+# Each asset requires an explicit type and path.
+# Path uses source:path syntax (source defaults to "local" if omitted).
 assets:
-  - personas/senior-swe.md
-  - delegates/code-reviewer.md
-  - docs/CLAUDE.md
-  - docs/RFC2119.md
-  - mcps/github              # Config asset: MCP server
-  - hooks/format-on-save     # Config asset: hook
+  - type: persona
+    path: personas/senior-swe.md
+  - type: delegate
+    path: delegates/code-reviewer.md
+  - type: doc
+    path: docs/CLAUDE.md
+  - type: doc
+    path: docs/RFC2119.md
 ```
 
 ```yaml
@@ -223,8 +224,10 @@ name: work-extras
 description: Additional assets from work sources
 
 assets:
-  - work-shared:personas/company-style.md
-  - work-shared:delegates/security-reviewer.md
+  - type: persona
+    path: work-shared:personas/company-style.md
+  - type: delegate
+    path: work-shared:delegates/security-reviewer.md
 ```
 
 ```yaml
@@ -239,7 +242,8 @@ bundles:
 
 # Plus additional individual assets
 assets:
-  - personas/brainstormer.md
+  - type: persona
+    path: personas/brainstormer.md
 ```
 
 ### Profile Definition
@@ -261,7 +265,8 @@ bundles:
 
 # Can also include individual assets directly
 assets:
-  - personas/brainstormer.md
+  - type: persona
+    path: personas/brainstormer.md
 
 # Optional: adapter-specific settings (passed to adapter during install/run)
 options:
@@ -944,7 +949,9 @@ vim ~/my-tai-config/assets/personas/new-style.md
 
 # Add to a bundle
 vim ~/my-tai-config/bundles/core.yaml
-# Add: - personas/new-style.md
+# Add:
+#   - type: persona
+#     path: personas/new-style.md
 
 # Re-install
 tai install personal

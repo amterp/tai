@@ -12,10 +12,10 @@ import (
 // allowedFields defines which frontmatter fields are permitted per asset type,
 // beyond tai-schema-version (which is always allowed and required).
 var allowedFields = map[string][]string{
-	config.AssetTypePersonas:  {frontmatter.FieldName, frontmatter.FieldDescription},
-	config.AssetTypeDelegates: {frontmatter.FieldName, frontmatter.FieldDescription, frontmatter.FieldTools},
-	config.AssetTypeSkills:    {frontmatter.FieldName, frontmatter.FieldDescription, frontmatter.FieldTools},
-	config.AssetTypeDocs:      {frontmatter.FieldName, frontmatter.FieldDescription},
+	config.AssetTypePersona:  {frontmatter.FieldName, frontmatter.FieldDescription},
+	config.AssetTypeDelegate: {frontmatter.FieldName, frontmatter.FieldDescription, frontmatter.FieldTools},
+	config.AssetTypeSkill:    {frontmatter.FieldName, frontmatter.FieldDescription, frontmatter.FieldTools},
+	config.AssetTypeDoc:      {frontmatter.FieldName, frontmatter.FieldDescription},
 }
 
 // validateAssetMetadata checks that parsed frontmatter satisfies tai's schema
@@ -46,7 +46,7 @@ func validateAssetMetadata(metadata map[string]string, assetType string) error {
 
 	// Check required fields
 	switch assetType {
-	case config.AssetTypePersonas, config.AssetTypeDelegates, config.AssetTypeSkills:
+	case config.AssetTypePersona, config.AssetTypeDelegate, config.AssetTypeSkill:
 		if strings.TrimSpace(metadata[frontmatter.FieldName]) == "" {
 			return fmt.Errorf("missing required field %q for %s", frontmatter.FieldName, assetType)
 		}

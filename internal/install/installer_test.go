@@ -31,9 +31,9 @@ func TestInstallerInstallSimple(t *testing.T) {
 	env.SetupAsset("delegates", "helper.md", "---\ntai-schema-version: 1\nname: Helper\n---\n\n# Helper Agent")
 
 	assets := []*config.Asset{
-		{Type: "personas", Name: "test.md", SourceName: "local",
+		{Type: "persona", Name: "test.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
-		{Type: "delegates", Name: "helper.md", SourceName: "local",
+		{Type: "delegate", Name: "helper.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "delegates", "helper.md")},
 	}
 
@@ -77,7 +77,7 @@ func TestInstallerInstallDryRun(t *testing.T) {
 	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Test Persona")
 
 	assets := []*config.Asset{
-		{Type: "personas", Name: "test.md", SourceName: "local",
+		{Type: "persona", Name: "test.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
 	}
 
@@ -100,7 +100,7 @@ func TestInstallerInstallUpdate(t *testing.T) {
 
 	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Version 1")
 	assets := []*config.Asset{
-		{Type: "personas", Name: "test.md", SourceName: "local",
+		{Type: "persona", Name: "test.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
 	}
 
@@ -135,7 +135,7 @@ func TestInstallerInstallUnchanged(t *testing.T) {
 
 	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Same\n---\n\n# Same Content")
 	assets := []*config.Asset{
-		{Type: "personas", Name: "test.md", SourceName: "local",
+		{Type: "persona", Name: "test.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
 	}
 
@@ -171,9 +171,9 @@ func TestInstallerInstallMixedUnchangedAndUpdated(t *testing.T) {
 	env.SetupAsset("personas", "updated.md", "---\ntai-schema-version: 1\nname: Updated\n---\n\n# Version 1")
 
 	assets := []*config.Asset{
-		{Type: "personas", Name: "unchanged.md", SourceName: "local",
+		{Type: "persona", Name: "unchanged.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "unchanged.md")},
-		{Type: "personas", Name: "updated.md", SourceName: "local",
+		{Type: "persona", Name: "updated.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "updated.md")},
 	}
 
@@ -211,9 +211,9 @@ func TestInstallerInstallRemoveStale(t *testing.T) {
 	env.SetupAsset("personas", "remove.md", "---\ntai-schema-version: 1\nname: Remove\n---\n\n# Remove")
 
 	assets := []*config.Asset{
-		{Type: "personas", Name: "keep.md", SourceName: "local",
+		{Type: "persona", Name: "keep.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "keep.md")},
-		{Type: "personas", Name: "remove.md", SourceName: "local",
+		{Type: "persona", Name: "remove.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "remove.md")},
 	}
 
@@ -223,7 +223,7 @@ func TestInstallerInstallRemoveStale(t *testing.T) {
 	}
 
 	assets = []*config.Asset{
-		{Type: "personas", Name: "keep.md", SourceName: "local",
+		{Type: "persona", Name: "keep.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "keep.md")},
 	}
 
@@ -250,7 +250,7 @@ func TestInstallerInstallWithTemplating(t *testing.T) {
 	env.SetupAsset("personas", "templated.md", "---\ntai-schema-version: 1\nname: Templated\n---\n\n# Persona for {{project_name}}")
 
 	assets := []*config.Asset{
-		{Type: "personas", Name: "templated.md", SourceName: "local",
+		{Type: "persona", Name: "templated.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "templated.md")},
 	}
 
@@ -287,7 +287,7 @@ func TestInstallerInstallWithExisting(t *testing.T) {
 	env.SetupAsset("docs", "CLAUDE.md", "---\ntai-schema-version: 1\n---\n\n# Header\n\n{{existing}}\n\n# Footer")
 
 	assets := []*config.Asset{
-		{Type: "docs", Name: "CLAUDE.md", SourceName: "local",
+		{Type: "doc", Name: "CLAUDE.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "CLAUDE.md")},
 	}
 
@@ -330,7 +330,7 @@ func TestInstallerInstallConflictUnmanaged(t *testing.T) {
 	env.SetupAsset("personas", "conflict.md", "---\ntai-schema-version: 1\nname: Conflict\n---\n\n# New Content")
 
 	assets := []*config.Asset{
-		{Type: "personas", Name: "conflict.md", SourceName: "local",
+		{Type: "persona", Name: "conflict.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "conflict.md")},
 	}
 
@@ -362,7 +362,7 @@ func TestInstallerInstallConflictSkip(t *testing.T) {
 	env.SetupAsset("personas", "conflict.md", "---\ntai-schema-version: 1\nname: Conflict\n---\n\n# New Content")
 
 	assets := []*config.Asset{
-		{Type: "personas", Name: "conflict.md", SourceName: "local",
+		{Type: "persona", Name: "conflict.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "conflict.md")},
 	}
 
@@ -387,7 +387,7 @@ func TestInstallerUninstall(t *testing.T) {
 	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Test")
 
 	assets := []*config.Asset{
-		{Type: "personas", Name: "test.md", SourceName: "local",
+		{Type: "persona", Name: "test.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
 	}
 
@@ -425,7 +425,7 @@ func TestInstallerUninstallWithBackup(t *testing.T) {
 	env.SetupAsset("docs", "CLAUDE.md", "---\ntai-schema-version: 1\n---\n\n# Wrapped\n{{existing}}")
 
 	assets := []*config.Asset{
-		{Type: "docs", Name: "CLAUDE.md", SourceName: "local",
+		{Type: "doc", Name: "CLAUDE.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "CLAUDE.md")},
 	}
 
@@ -461,7 +461,7 @@ func TestInstallerStatus(t *testing.T) {
 
 	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Test")
 	assets := []*config.Asset{
-		{Type: "personas", Name: "test.md", SourceName: "local",
+		{Type: "persona", Name: "test.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
 	}
 	_, err = installer.Install(adapter, "test-profile", assets, InstallOptions{})
@@ -499,7 +499,7 @@ func TestInstallerInstallSkillDirectory(t *testing.T) {
 	}
 
 	assets := []*config.Asset{
-		{Type: "skills", Name: "my-skill", SourceName: "local",
+		{Type: "skill", Name: "my-skill", SourceName: "local",
 			SourcePath: skillDir, IsDir: true},
 	}
 
@@ -561,7 +561,7 @@ func TestInstallerPreservesFilePermissions(t *testing.T) {
 	}
 
 	assets := []*config.Asset{
-		{Type: "docs", Name: "run.sh", SourceName: "local",
+		{Type: "doc", Name: "run.sh", SourceName: "local",
 			SourcePath: scriptPath},
 	}
 
@@ -596,7 +596,7 @@ func TestInstallerSkillDirectoryPreservesPermissions(t *testing.T) {
 	}
 
 	assets := []*config.Asset{
-		{Type: "skills", Name: "mixed-perms", SourceName: "local",
+		{Type: "skill", Name: "mixed-perms", SourceName: "local",
 			SourcePath: skillDir, IsDir: true},
 	}
 
@@ -629,7 +629,7 @@ func TestInstallAssetFallsBackTo0644WhenFileModeZero(t *testing.T) {
 
 	targetPath := filepath.Join(dir, "output.md")
 	resolved := &config.ResolvedAsset{
-		Asset:   config.Asset{Type: "docs", Name: "output.md"},
+		Asset:   config.Asset{Type: "doc", Name: "output.md"},
 		Content: []byte("# Hello"),
 	}
 
@@ -655,7 +655,7 @@ func TestInstallerPermissionChangeTriggersUpdate(t *testing.T) {
 	}
 
 	assets := []*config.Asset{
-		{Type: "docs", Name: "run.sh", SourceName: "local", SourcePath: scriptPath},
+		{Type: "doc", Name: "run.sh", SourceName: "local", SourcePath: scriptPath},
 	}
 
 	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
@@ -697,7 +697,7 @@ func TestInstallerPersonaWithFrontmatter(t *testing.T) {
 	env.SetupAsset("personas", "senior-swe.md", "---\ntai-schema-version: 1\nname: Senior SWE\ndescription: An experienced engineer\n---\n\n# Senior SWE\n\nYou are a senior engineer.\n")
 
 	assets := []*config.Asset{
-		{Type: "personas", Name: "senior-swe.md", SourceName: "local",
+		{Type: "persona", Name: "senior-swe.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "senior-swe.md")},
 	}
 
@@ -719,7 +719,7 @@ func TestInstallerDelegateWithFrontmatter(t *testing.T) {
 	env.SetupAsset("delegates", "reviewer.md", "---\ntai-schema-version: 1\nname: Code Reviewer\ndescription: Reviews code\n---\n\nReview all code changes.\n")
 
 	assets := []*config.Asset{
-		{Type: "delegates", Name: "reviewer.md", SourceName: "local",
+		{Type: "delegate", Name: "reviewer.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "delegates", "reviewer.md")},
 	}
 
@@ -741,7 +741,7 @@ func TestInstallerDelegateWithTools(t *testing.T) {
 	env.SetupAsset("delegates", "reviewer.md", "---\ntai-schema-version: 1\nname: Code Reviewer\ndescription: Reviews code\ntools: Read, Glob, Grep\n---\n\nReview all code changes.\n")
 
 	assets := []*config.Asset{
-		{Type: "delegates", Name: "reviewer.md", SourceName: "local",
+		{Type: "delegate", Name: "reviewer.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "delegates", "reviewer.md")},
 	}
 
@@ -764,7 +764,7 @@ func TestInstallerDocStripsOnlyTaiFrontmatter(t *testing.T) {
 	env.SetupAsset("docs", "NOTES.md", "---\ntai-schema-version: 1\nname: Notes\n---\n\n# Project Notes\n\nSome reference material.\n")
 
 	assets := []*config.Asset{
-		{Type: "docs", Name: "NOTES.md", SourceName: "local",
+		{Type: "doc", Name: "NOTES.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "NOTES.md")},
 	}
 
@@ -788,7 +788,7 @@ func TestInstallerDocPreservesBodyFrontmatter(t *testing.T) {
 	env.SetupAsset("docs", "REF.md", "---\ntai-schema-version: 1\n---\n\n---\ntitle: Reference\n---\n\n# Reference Doc\n")
 
 	assets := []*config.Asset{
-		{Type: "docs", Name: "REF.md", SourceName: "local",
+		{Type: "doc", Name: "REF.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "REF.md")},
 	}
 
@@ -817,7 +817,7 @@ func TestInstallerSkillDirectoryTransformsSKILLMd(t *testing.T) {
 	}
 
 	assets := []*config.Asset{
-		{Type: "skills", Name: "test-skill", SourceName: "local",
+		{Type: "skill", Name: "test-skill", SourceName: "local",
 			SourcePath: skillDir, IsDir: true},
 	}
 
@@ -842,7 +842,7 @@ func TestValidateAssetMetadataValid(t *testing.T) {
 		"name":               "My Asset",
 	}
 
-	for _, assetType := range []string{"personas", "delegates", "skills"} {
+	for _, assetType := range []string{"persona", "delegate", "skill"} {
 		if err := validateAssetMetadata(metadata, assetType); err != nil {
 			t.Errorf("validateAssetMetadata(%s) unexpected error: %v", assetType, err)
 		}
@@ -854,13 +854,13 @@ func TestValidateAssetMetadataDocAllowsMissingName(t *testing.T) {
 		"tai-schema-version": "1",
 	}
 
-	if err := validateAssetMetadata(metadata, "docs"); err != nil {
+	if err := validateAssetMetadata(metadata, "doc"); err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
 
 func TestValidateAssetMetadataNilMetadata(t *testing.T) {
-	err := validateAssetMetadata(nil, "personas")
+	err := validateAssetMetadata(nil, "persona")
 	if err == nil {
 		t.Fatal("expected error for nil metadata")
 	}
@@ -874,7 +874,7 @@ func TestValidateAssetMetadataMissingSchemaVersion(t *testing.T) {
 		"name": "Test",
 	}
 
-	err := validateAssetMetadata(metadata, "personas")
+	err := validateAssetMetadata(metadata, "persona")
 	if err == nil {
 		t.Fatal("expected error for missing tai-schema-version")
 	}
@@ -889,7 +889,7 @@ func TestValidateAssetMetadataUnsupportedVersion(t *testing.T) {
 		"name":               "Test",
 	}
 
-	err := validateAssetMetadata(metadata, "personas")
+	err := validateAssetMetadata(metadata, "persona")
 	if err == nil {
 		t.Fatal("expected error for unsupported version")
 	}
@@ -903,7 +903,7 @@ func TestValidateAssetMetadataMissingName(t *testing.T) {
 		"tai-schema-version": "1",
 	}
 
-	for _, assetType := range []string{"personas", "delegates", "skills"} {
+	for _, assetType := range []string{"persona", "delegate", "skill"} {
 		err := validateAssetMetadata(metadata, assetType)
 		if err == nil {
 			t.Errorf("validateAssetMetadata(%s) expected error for missing name", assetType)
@@ -921,7 +921,7 @@ func TestValidateAssetMetadataWhitespaceOnlyName(t *testing.T) {
 		"name":               "   \t  ",
 	}
 
-	err := validateAssetMetadata(metadata, "personas")
+	err := validateAssetMetadata(metadata, "persona")
 	if err == nil {
 		t.Fatal("expected error for whitespace-only name")
 	}
@@ -950,11 +950,11 @@ func TestValidateAssetMetadataRejectsUnknownField(t *testing.T) {
 		assetType string
 		field     string
 	}{
-		{"personas", "tools"},       // tools not allowed on personas
-		{"docs", "tools"},           // tools not allowed on docs
-		{"personas", "author"},      // completely unknown field
-		{"delegates", "priority"},   // completely unknown field
-		{"skills", "version"},       // not a tai frontmatter field
+		{"persona", "tools"},        // tools not allowed on personas
+		{"doc", "tools"},            // tools not allowed on docs
+		{"persona", "author"},       // completely unknown field
+		{"delegate", "priority"},    // completely unknown field
+		{"skill", "version"},        // not a tai frontmatter field
 	}
 
 	for _, tt := range tests {
@@ -980,7 +980,7 @@ func TestValidateAssetMetadataRejectsUnknownField(t *testing.T) {
 
 func TestValidateAssetMetadataAllowsValidFields(t *testing.T) {
 	// Delegates and skills allow tools
-	for _, assetType := range []string{"delegates", "skills"} {
+	for _, assetType := range []string{"delegate", "skill"} {
 		metadata := map[string]string{
 			"tai-schema-version": "1",
 			"name":               "Test",
@@ -998,8 +998,8 @@ func TestValidateAssetMetadataAllowsValidFields(t *testing.T) {
 		"name":               "Test",
 		"description":        "A description",
 	}
-	if err := validateAssetMetadata(metadata, "personas"); err != nil {
-		t.Errorf("validateAssetMetadata(personas) with valid fields: unexpected error: %v", err)
+	if err := validateAssetMetadata(metadata, "persona"); err != nil {
+		t.Errorf("validateAssetMetadata(persona) with valid fields: unexpected error: %v", err)
 	}
 }
 
@@ -1012,7 +1012,7 @@ func TestInstallerRejectsMissingTaiSchemaVersion(t *testing.T) {
 	env.SetupAsset("personas", "bad.md", "# No Frontmatter")
 
 	assets := []*config.Asset{
-		{Type: "personas", Name: "bad.md", SourceName: "local",
+		{Type: "persona", Name: "bad.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "bad.md")},
 	}
 
@@ -1031,7 +1031,7 @@ func TestInstallerRejectsUnsupportedTaiSchemaVersion(t *testing.T) {
 	env.SetupAsset("personas", "bad.md", "---\ntai-schema-version: 99\nname: Bad\n---\n\n# Content")
 
 	assets := []*config.Asset{
-		{Type: "personas", Name: "bad.md", SourceName: "local",
+		{Type: "persona", Name: "bad.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "bad.md")},
 	}
 
@@ -1051,7 +1051,7 @@ func TestInstallerRejectsMissingNameForPersona(t *testing.T) {
 	env.SetupAsset("personas", "bad.md", "---\ntai-schema-version: 1\n---\n\n# No Name")
 
 	assets := []*config.Asset{
-		{Type: "personas", Name: "bad.md", SourceName: "local",
+		{Type: "persona", Name: "bad.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "bad.md")},
 	}
 
@@ -1071,7 +1071,7 @@ func TestInstallerDocAllowsMissingName(t *testing.T) {
 	env.SetupAsset("docs", "notes.md", "---\ntai-schema-version: 1\n---\n\n# Notes")
 
 	assets := []*config.Asset{
-		{Type: "docs", Name: "notes.md", SourceName: "local",
+		{Type: "doc", Name: "notes.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "notes.md")},
 	}
 
@@ -1106,13 +1106,13 @@ func TestInstallerOutputNeverContainsTaiSchemaVersion(t *testing.T) {
 	}
 
 	assets := []*config.Asset{
-		{Type: "personas", Name: "p.md", SourceName: "local",
+		{Type: "persona", Name: "p.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "p.md")},
-		{Type: "delegates", Name: "d.md", SourceName: "local",
+		{Type: "delegate", Name: "d.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "delegates", "d.md")},
-		{Type: "docs", Name: "doc.md", SourceName: "local",
+		{Type: "doc", Name: "doc.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "doc.md")},
-		{Type: "skills", Name: "s", SourceName: "local",
+		{Type: "skill", Name: "s", SourceName: "local",
 			SourcePath: skillDir, IsDir: true},
 	}
 
@@ -1150,7 +1150,7 @@ func TestInstallerSkillDirectoryRejectsInvalidSKILLMd(t *testing.T) {
 	}
 
 	assets := []*config.Asset{
-		{Type: "skills", Name: "bad-skill", SourceName: "local",
+		{Type: "skill", Name: "bad-skill", SourceName: "local",
 			SourcePath: skillDir, IsDir: true},
 	}
 

@@ -163,7 +163,8 @@ You are a helpful assistant.
 	e.SetupBundle("core", `name: core
 description: Core assets
 assets:
-  - personas/default.md
+  - type: persona
+    path: personas/default.md
 `)
 
 	e.SetupProfile("default", `name: default

@@ -34,16 +34,16 @@ func setupTestEnv(t *testing.T) (*testutil.TestEnv, map[string]*source.LoadedSou
 	bundles := map[string]*config.Bundle{
 		"core": {
 			Name: "core",
-			Assets: []string{
-				"personas/senior-swe.md",
-				"delegates/code-reviewer.md",
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "personas/senior-swe.md"},
+				{Type: "delegate", Path: "delegates/code-reviewer.md"},
 			},
 		},
 		"extras": {
 			Name: "extras",
-			Assets: []string{
-				"personas/brainstormer.md",
-				"docs/README.md",
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "personas/brainstormer.md"},
+				{Type: "doc", Path: "docs/README.md"},
 			},
 		},
 	}
@@ -109,7 +109,9 @@ func TestResolverResolveWithDirectAssets(t *testing.T) {
 			Name:    "mixed",
 			Target:  "claude",
 			Bundles: []string{"core"},
-			Assets:  []string{"docs/README.md"},
+			Assets: []config.AssetEntry{
+				{Type: "doc", Path: "docs/README.md"},
+			},
 		},
 	}
 
@@ -161,14 +163,14 @@ func TestResolverResolveOverrideLogging(t *testing.T) {
 	bundles := map[string]*config.Bundle{
 		"base": {
 			Name: "base",
-			Assets: []string{
-				"personas/senior-swe.md",
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "personas/senior-swe.md"},
 			},
 		},
 		"override": {
 			Name: "override",
-			Assets: []string{
-				"personas/senior-swe.md", // Same asset
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "personas/senior-swe.md"}, // Same asset
 			},
 		},
 	}
@@ -244,7 +246,9 @@ func TestResolverResolveMissingDirectAsset(t *testing.T) {
 			Name:    "bad",
 			Target:  "claude",
 			Bundles: []string{"core"},
-			Assets:  []string{"personas/nonexistent.md"},
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "personas/nonexistent.md"},
+			},
 		},
 	}
 

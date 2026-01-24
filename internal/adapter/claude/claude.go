@@ -42,10 +42,10 @@ func (a *Adapter) Name() string {
 // AssetMapping returns how tai asset types map to Claude paths.
 func (a *Adapter) AssetMapping() map[string]string {
 	return map[string]string{
-		config.AssetTypePersonas:  "output-styles",
-		config.AssetTypeDelegates: "agents",
-		config.AssetTypeSkills:    "skills",
-		config.AssetTypeDocs:      "", // Root level (CLAUDE.md, etc.)
+		config.AssetTypePersona:  "output-styles",
+		config.AssetTypeDelegate: "agents",
+		config.AssetTypeSkill:    "skills",
+		config.AssetTypeDoc:      "", // Root level (CLAUDE.md, etc.)
 	}
 }
 
@@ -77,9 +77,9 @@ func (a *Adapter) MapAssetPath(asset *config.Asset) string {
 // Docs are returned as body only (no target frontmatter).
 func (a *Adapter) TransformContent(asset *config.ResolvedAsset) ([]byte, error) {
 	switch asset.Type {
-	case config.AssetTypePersonas:
+	case config.AssetTypePersona:
 		return a.transformPersona(asset), nil
-	case config.AssetTypeDelegates, config.AssetTypeSkills:
+	case config.AssetTypeDelegate, config.AssetTypeSkill:
 		return a.transformAgent(asset), nil
 	default:
 		// Docs: body only, no target frontmatter

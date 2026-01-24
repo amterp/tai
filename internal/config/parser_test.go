@@ -148,8 +148,10 @@ func TestParseBundle(t *testing.T) {
 			content: `name: core
 description: Core assets
 assets:
-  - personas/senior-swe.md
-  - delegates/code-reviewer.md
+  - type: persona
+    path: personas/senior-swe.md
+  - type: delegate
+    path: delegates/code-reviewer.md
 `,
 			check: func(t *testing.T, b *Bundle) {
 				if b.Name != "core" {
@@ -168,7 +170,8 @@ bundles:
   - core
   - extras
 assets:
-  - personas/custom.md
+  - type: persona
+    path: personas/custom.md
 `,
 			check: func(t *testing.T, b *Bundle) {
 				if len(b.Bundles) != 2 {
@@ -183,11 +186,15 @@ assets:
 			name: "bundle with source prefix",
 			content: `name: work
 assets:
-  - work-shared:personas/company-style.md
+  - type: persona
+    path: work-shared:personas/company-style.md
 `,
 			check: func(t *testing.T, b *Bundle) {
-				if b.Assets[0] != "work-shared:personas/company-style.md" {
-					t.Errorf("asset = %q, want 'work-shared:personas/company-style.md'", b.Assets[0])
+				if b.Assets[0].Path != "work-shared:personas/company-style.md" {
+					t.Errorf("asset.Path = %q, want 'work-shared:personas/company-style.md'", b.Assets[0].Path)
+				}
+				if b.Assets[0].Type != "persona" {
+					t.Errorf("asset.Type = %q, want 'persona'", b.Assets[0].Type)
 				}
 			},
 		},
@@ -197,10 +204,27 @@ assets:
 			wantErr: true,
 		},
 		{
-			name: "empty asset",
+			name: "missing asset type",
 			content: `name: bad
 assets:
-  - ""
+  - path: personas/test.md
+`,
+			wantErr: true,
+		},
+		{
+			name: "missing asset path",
+			content: `name: bad
+assets:
+  - type: persona
+`,
+			wantErr: true,
+		},
+		{
+			name: "invalid asset type",
+			content: `name: bad
+assets:
+  - type: invalid
+    path: personas/test.md
 `,
 			wantErr: true,
 		},
@@ -263,11 +287,15 @@ bundles:
 			content: `name: minimal
 target: claude
 assets:
-  - personas/default.md
+  - type: persona
+    path: personas/default.md
 `,
 			check: func(t *testing.T, p *Profile) {
 				if len(p.Assets) != 1 {
 					t.Errorf("len(assets) = %d, want 1", len(p.Assets))
+				}
+				if p.Assets[0].Type != "persona" {
+					t.Errorf("asset.Type = %q, want 'persona'", p.Assets[0].Type)
 				}
 			},
 		},
@@ -365,12 +393,14 @@ func TestLoadBundlesFromDir(t *testing.T) {
 	env.SetupBundle("core", `name: core
 description: Core bundle
 assets:
-  - personas/default.md
+  - type: persona
+    path: personas/default.md
 `)
 	env.SetupBundle("extras", `name: extras
 description: Extra bundle
 assets:
-  - delegates/helper.md
+  - type: delegate
+    path: delegates/helper.md
 `)
 
 	bundles, err := LoadBundlesFromDir(filepath.Join(env.ConfigRepo, "bundles"))

@@ -202,12 +202,12 @@ func TestLoadedSourceResolveAsset(t *testing.T) {
 	}
 
 	// Resolve file asset
-	asset, err := ls.ResolveAsset("personas/test.md")
+	asset, err := ls.ResolveAsset("personas/test.md", config.AssetTypePersona)
 	if err != nil {
 		t.Fatalf("ResolveAsset failed: %v", err)
 	}
-	if asset.Type != "personas" {
-		t.Errorf("Type = %q, want 'personas'", asset.Type)
+	if asset.Type != "persona" {
+		t.Errorf("Type = %q, want 'persona'", asset.Type)
 	}
 	if asset.Name != "test.md" {
 		t.Errorf("Name = %q, want 'test.md'", asset.Name)
@@ -220,7 +220,7 @@ func TestLoadedSourceResolveAsset(t *testing.T) {
 	}
 
 	// Resolve skill (directory) asset
-	skillAsset, err := ls.ResolveAsset("skills/my-skill")
+	skillAsset, err := ls.ResolveAsset("skills/my-skill", config.AssetTypeSkill)
 	if err != nil {
 		t.Fatalf("ResolveAsset failed for skill: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestLoadedSourceResolveAsset(t *testing.T) {
 	}
 
 	// Non-existing asset
-	_, err = ls.ResolveAsset("personas/nonexistent.md")
+	_, err = ls.ResolveAsset("personas/nonexistent.md", config.AssetTypePersona)
 	if err == nil {
 		t.Error("expected error for non-existing asset")
 	}

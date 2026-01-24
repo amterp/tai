@@ -435,14 +435,14 @@ func (i *Installer) transformSkillMd(resolved *config.ResolvedAsset, skillTarget
 		return fmt.Errorf("parsing SKILL.md frontmatter: %w", err)
 	}
 
-	if err := validateAssetMetadata(parsed.Metadata, config.AssetTypeSkills); err != nil {
+	if err := validateAssetMetadata(parsed.Metadata, config.AssetTypeSkill); err != nil {
 		return fmt.Errorf("skill %s/SKILL.md: %w", resolved.Name, err)
 	}
 
 	// Build a synthetic ResolvedAsset so the adapter can transform it
 	synthetic := &config.ResolvedAsset{
 		Asset: config.Asset{
-			Type: config.AssetTypeSkills,
+			Type: config.AssetTypeSkill,
 			Name: "SKILL.md",
 		},
 		Content:  parsed.Body,

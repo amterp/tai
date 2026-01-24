@@ -1,0 +1,10 @@
+{
+  "_v": 1,
+  "id": "a_DYgTmuSQ",
+  "alias": "new-asset-bin-file-allow",
+  "alias_explicit": false,
+  "title": "new asset: bin file! allow using tai to place/install asset bin files into an arbitrary spot, that you then put on your path. allows leveraging the tai dependency model but for path scripts",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769229188157,
+  "updated_at_millis": 1769229188157
+}

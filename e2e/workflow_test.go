@@ -28,14 +28,18 @@ sources:
 
 	env.SetupBundle("personal-bundle", `name: personal-bundle
 assets:
-  - personas/personal.md
-  - personas/shared.md
+  - type: persona
+    path: personas/personal.md
+  - type: persona
+    path: personas/shared.md
 `)
 
 	env.SetupBundle("work-bundle", `name: work-bundle
 assets:
-  - personas/work.md
-  - personas/shared.md
+  - type: persona
+    path: personas/work.md
+  - type: persona
+    path: personas/shared.md
 `)
 
 	env.SetupProfile("personal", `name: personal
@@ -59,8 +63,8 @@ bundles:
 	adapter := claude.New(env.TargetDir)
 
 	// Install personal profile
-	personalAsset, _ := sources["local"].ResolveAsset("personas/personal.md")
-	sharedAsset, _ := sources["local"].ResolveAsset("personas/shared.md")
+	personalAsset, _ := sources["local"].ResolveAsset("personas/personal.md", config.AssetTypePersona)
+	sharedAsset, _ := sources["local"].ResolveAsset("personas/shared.md", config.AssetTypePersona)
 	_, err := installer.Install(adapter, "personal", []*config.Asset{personalAsset, sharedAsset}, install.InstallOptions{})
 	if err != nil {
 		t.Fatalf("Install personal failed: %v", err)
@@ -74,7 +78,7 @@ bundles:
 	}
 
 	// Switch to work profile
-	workAsset, _ := sources["local"].ResolveAsset("personas/work.md")
+	workAsset, _ := sources["local"].ResolveAsset("personas/work.md", config.AssetTypePersona)
 	result, err := installer.Install(adapter, "work", []*config.Asset{workAsset, sharedAsset}, install.InstallOptions{})
 	if err != nil {
 		t.Fatalf("Install work failed: %v", err)
@@ -126,8 +130,10 @@ sources:
 	env.SetupAsset("personas", "noconflict.md", "---\ntai-schema-version: 1\nname: Noconflict\n---\n\n# No Conflict")
 	env.SetupBundle("test", `name: test
 assets:
-  - personas/conflict.md
-  - personas/noconflict.md
+  - type: persona
+    path: personas/conflict.md
+  - type: persona
+    path: personas/noconflict.md
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -143,8 +149,8 @@ bundles:
 	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
-	conflictAsset, _ := sources["local"].ResolveAsset("personas/conflict.md")
-	noconflictAsset, _ := sources["local"].ResolveAsset("personas/noconflict.md")
+	conflictAsset, _ := sources["local"].ResolveAsset("personas/conflict.md", config.AssetTypePersona)
+	noconflictAsset, _ := sources["local"].ResolveAsset("personas/noconflict.md", config.AssetTypePersona)
 	assets := []*config.Asset{conflictAsset, noconflictAsset}
 
 	// Test 1: Without flags, should fail
@@ -209,7 +215,8 @@ sources:
 	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Test")
 	env.SetupBundle("test", `name: test
 assets:
-  - personas/test.md
+  - type: persona
+    path: personas/test.md
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -225,7 +232,7 @@ bundles:
 	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
-	asset, _ := sources["local"].ResolveAsset("personas/test.md")
+	asset, _ := sources["local"].ResolveAsset("personas/test.md", config.AssetTypePersona)
 	result, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{DryRun: true})
 	if err != nil {
 		t.Fatalf("Dry run failed: %v", err)
@@ -269,8 +276,10 @@ sources:
 	env.SetupAsset("personas", "local.md", "---\ntai-schema-version: 1\nname: Local\n---\n\n# Local")
 	env.SetupBundle("combined", `name: combined
 assets:
-  - personas/local.md
-  - secondary:personas/secondary.md
+  - type: persona
+    path: personas/local.md
+  - type: persona
+    path: secondary:personas/secondary.md
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -289,8 +298,8 @@ bundles:
 	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
-	localAsset, _ := sources["local"].ResolveAsset("personas/local.md")
-	secondaryAsset, _ := sources["secondary"].ResolveAsset("personas/secondary.md")
+	localAsset, _ := sources["local"].ResolveAsset("personas/local.md", config.AssetTypePersona)
+	secondaryAsset, _ := sources["secondary"].ResolveAsset("personas/secondary.md", config.AssetTypePersona)
 
 	_, err = installer.Install(adapter, "test", []*config.Asset{localAsset, secondaryAsset}, install.InstallOptions{})
 	if err != nil {

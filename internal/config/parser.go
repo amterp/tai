@@ -102,10 +102,9 @@ func validateBundle(bundle *Bundle, path string) error {
 		return fmt.Errorf("bundle at %s: missing name", path)
 	}
 
-	// Validate asset paths
-	for i, asset := range bundle.Assets {
-		if asset == "" {
-			return fmt.Errorf("bundle %q: empty asset at index %d", bundle.Name, i)
+	for i, entry := range bundle.Assets {
+		if err := validateAssetEntry(entry, i); err != nil {
+			return fmt.Errorf("bundle %q: %w", bundle.Name, err)
 		}
 	}
 
@@ -143,6 +142,26 @@ func validateProfile(profile *Profile, path string) error {
 		return fmt.Errorf("profile %q: must specify at least one bundle or asset", profile.Name)
 	}
 
+	for i, entry := range profile.Assets {
+		if err := validateAssetEntry(entry, i); err != nil {
+			return fmt.Errorf("profile %q: %w", profile.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// validateAssetEntry validates a single asset entry.
+func validateAssetEntry(entry AssetEntry, index int) error {
+	if entry.Type == "" {
+		return fmt.Errorf("asset[%d]: missing type", index)
+	}
+	if !IsValidAssetType(entry.Type) {
+		return fmt.Errorf("asset[%d]: invalid type %q", index, entry.Type)
+	}
+	if entry.Path == "" {
+		return fmt.Errorf("asset[%d]: missing path", index)
+	}
 	return nil
 }
 

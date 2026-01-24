@@ -26,8 +26,10 @@ sources:
 	env.SetupAsset("delegates", "helper.md", "---\ntai-schema-version: 1\nname: Helper\n---\n\n# Helper")
 	env.SetupBundle("test", `name: test
 assets:
-  - personas/test.md
-  - delegates/helper.md
+  - type: persona
+    path: personas/test.md
+  - type: delegate
+    path: delegates/helper.md
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -44,8 +46,8 @@ bundles:
 	adapter := claude.New(env.TargetDir)
 
 	// Install first
-	asset1, _ := sources["local"].ResolveAsset("personas/test.md")
-	asset2, _ := sources["local"].ResolveAsset("delegates/helper.md")
+	asset1, _ := sources["local"].ResolveAsset("personas/test.md", config.AssetTypePersona)
+	asset2, _ := sources["local"].ResolveAsset("delegates/helper.md", config.AssetTypeDelegate)
 	_, err := installer.Install(adapter, "test", []*config.Asset{asset1, asset2}, install.InstallOptions{})
 	if err != nil {
 		t.Fatalf("Install failed: %v", err)
@@ -107,7 +109,8 @@ sources:
 	env.SetupAsset("docs", "CLAUDE.md", "---\ntai-schema-version: 1\n---\n\n# Wrapped\n{{existing}}\n# End")
 	env.SetupBundle("test", `name: test
 assets:
-  - docs/CLAUDE.md
+  - type: doc
+    path: docs/CLAUDE.md
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -124,7 +127,7 @@ bundles:
 	adapter := claude.New(env.TargetDir)
 
 	// Install (wraps existing content)
-	asset, _ := sources["local"].ResolveAsset("docs/CLAUDE.md")
+	asset, _ := sources["local"].ResolveAsset("docs/CLAUDE.md", config.AssetTypeDoc)
 	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
 	if err != nil {
 		t.Fatalf("Install failed: %v", err)
@@ -168,7 +171,8 @@ sources:
 	env.SetupAsset("personas", "managed.md", "---\ntai-schema-version: 1\nname: Managed\n---\n\n# Managed")
 	env.SetupBundle("test", `name: test
 assets:
-  - personas/managed.md
+  - type: persona
+    path: personas/managed.md
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -185,7 +189,7 @@ bundles:
 	adapter := claude.New(env.TargetDir)
 
 	// Install
-	asset, _ := sources["local"].ResolveAsset("personas/managed.md")
+	asset, _ := sources["local"].ResolveAsset("personas/managed.md", config.AssetTypePersona)
 	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
 	if err != nil {
 		t.Fatalf("Install failed: %v", err)

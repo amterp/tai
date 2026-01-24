@@ -17,29 +17,35 @@ type Source struct {
 	Path string `yaml:"path"`
 }
 
+// AssetEntry represents a structured asset reference in a bundle or profile.
+type AssetEntry struct {
+	Type string `yaml:"type"` // Singular: "persona", "delegate", "skill", "doc"
+	Path string `yaml:"path"` // "source:path" or just "path" (defaults to "local" source)
+}
+
 // Bundle represents a named collection of assets.
 type Bundle struct {
-	Version     int      `yaml:"version,omitempty"` // Schema version (optional, defaults to 1)
-	Name        string   `yaml:"name"`
-	Description string   `yaml:"description"`
-	Bundles     []string `yaml:"bundles"` // Included bundles (bundle names)
-	Assets      []string `yaml:"assets"`  // Asset paths (source:path or just path for local)
+	Version     int          `yaml:"version,omitempty"` // Schema version (optional, defaults to 1)
+	Name        string       `yaml:"name"`
+	Description string       `yaml:"description"`
+	Bundles     []string     `yaml:"bundles"` // Included bundles (bundle names)
+	Assets      []AssetEntry `yaml:"assets"`  // Structured asset entries
 }
 
 // Profile represents a bundle bound to a specific target.
 type Profile struct {
-	Version     int               `yaml:"version,omitempty"` // Schema version (optional, defaults to 1)
-	Name        string            `yaml:"name"`
-	Description string            `yaml:"description"`
-	Target      string            `yaml:"target"` // e.g., "claude", "cursor"
-	Bundles     []string          `yaml:"bundles"`
-	Assets      []string          `yaml:"assets"`  // Direct asset references
-	Options     map[string]any    `yaml:"options"` // Adapter-specific options
+	Version     int            `yaml:"version,omitempty"` // Schema version (optional, defaults to 1)
+	Name        string         `yaml:"name"`
+	Description string         `yaml:"description"`
+	Target      string         `yaml:"target"` // e.g., "claude", "cursor"
+	Bundles     []string       `yaml:"bundles"`
+	Assets      []AssetEntry   `yaml:"assets"`  // Direct asset references
+	Options     map[string]any `yaml:"options"` // Adapter-specific options
 }
 
 // Asset represents an atomic configuration unit.
 type Asset struct {
-	Type       string // "personas", "delegates", "skills", "docs"
+	Type       string // "persona", "delegate", "skill", "doc"
 	Name       string // Filename or directory name
 	SourceName string // Source this asset came from
 	SourcePath string // Full filesystem path to the asset
@@ -70,17 +76,17 @@ type ResolvedAsset struct {
 	FileMode    fs.FileMode       // Source file permissions (zero means default 0644)
 }
 
-// AssetType constants.
+// AssetType constants (singular form).
 const (
-	AssetTypePersonas  = "personas"
-	AssetTypeDelegates = "delegates"
-	AssetTypeSkills    = "skills"
-	AssetTypeDocs      = "docs"
+	AssetTypePersona  = "persona"
+	AssetTypeDelegate = "delegate"
+	AssetTypeSkill    = "skill"
+	AssetTypeDoc      = "doc"
 )
 
-// ValidAssetTypes returns all valid asset type names.
+// ValidAssetTypes returns all valid asset type names (singular).
 func ValidAssetTypes() []string {
-	return []string{AssetTypePersonas, AssetTypeDelegates, AssetTypeSkills, AssetTypeDocs}
+	return []string{AssetTypePersona, AssetTypeDelegate, AssetTypeSkill, AssetTypeDoc}
 }
 
 // IsValidAssetType checks if the given type is valid.
@@ -91,4 +97,36 @@ func IsValidAssetType(t string) bool {
 		}
 	}
 	return false
+}
+
+// AssetTypeDirName maps a singular asset type to its directory name.
+func AssetTypeDirName(t string) string {
+	switch t {
+	case AssetTypePersona:
+		return "personas"
+	case AssetTypeDelegate:
+		return "delegates"
+	case AssetTypeSkill:
+		return "skills"
+	case AssetTypeDoc:
+		return "docs"
+	default:
+		return t
+	}
+}
+
+// AssetTypeFromDirName maps a directory name back to its singular asset type.
+func AssetTypeFromDirName(d string) string {
+	switch d {
+	case "personas":
+		return AssetTypePersona
+	case "delegates":
+		return AssetTypeDelegate
+	case "skills":
+		return AssetTypeSkill
+	case "docs":
+		return AssetTypeDoc
+	default:
+		return d
+	}
 }

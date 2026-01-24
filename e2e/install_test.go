@@ -57,9 +57,12 @@ These are the project instructions.
 	env.SetupBundle("core", `name: core
 description: Core assets for work
 assets:
-  - personas/senior-swe.md
-  - delegates/code-reviewer.md
-  - docs/CLAUDE.md
+  - type: persona
+    path: personas/senior-swe.md
+  - type: delegate
+    path: delegates/code-reviewer.md
+  - type: doc
+    path: docs/CLAUDE.md
 `)
 
 	env.SetupProfile("work", `name: work
@@ -86,10 +89,10 @@ bundles:
 	// Resolve bundle assets manually for the test
 	bundle := bundles["core"]
 	var assets []*config.Asset
-	for _, assetRef := range bundle.Assets {
-		sourceName, assetPath := config.ParseAssetReference(assetRef)
+	for _, entry := range bundle.Assets {
+		sourceName, assetPath := config.ParseAssetReference(entry.Path)
 		src := sources[sourceName]
-		asset, _ := src.ResolveAsset(assetPath)
+		asset, _ := src.ResolveAsset(assetPath, entry.Type)
 		assets = append(assets, asset)
 	}
 
@@ -162,7 +165,8 @@ sources:
 	env.SetupAsset("personas", "original.md", "---\ntai-schema-version: 1\nname: Original\n---\n\n# Original")
 	env.SetupBundle("v1", `name: v1
 assets:
-  - personas/original.md
+  - type: persona
+    path: personas/original.md
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -178,7 +182,7 @@ bundles:
 	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
-	asset, _ := sources["local"].ResolveAsset("personas/original.md")
+	asset, _ := sources["local"].ResolveAsset("personas/original.md", config.AssetTypePersona)
 	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
 	if err != nil {
 		t.Fatalf("First install failed: %v", err)
@@ -188,12 +192,13 @@ bundles:
 	env.SetupAsset("personas", "new.md", "---\ntai-schema-version: 1\nname: New\n---\n\n# New")
 	env.SetupBundle("v1", `name: v1
 assets:
-  - personas/new.md
+  - type: persona
+    path: personas/new.md
 `)
 
 	sources, _ = loader.LoadAll(taiConfig.Sources)
 
-	newAsset, _ := sources["local"].ResolveAsset("personas/new.md")
+	newAsset, _ := sources["local"].ResolveAsset("personas/new.md", config.AssetTypePersona)
 	result, err := installer.Install(adapter, "test", []*config.Asset{newAsset}, install.InstallOptions{})
 	if err != nil {
 		t.Fatalf("Second install failed: %v", err)
@@ -227,7 +232,8 @@ sources:
 	env.SetupAsset("personas", "templated.md", "---\ntai-schema-version: 1\nname: Templated\n---\n\n# Project: {{project_name}}")
 	env.SetupBundle("test", `name: test
 assets:
-  - personas/templated.md
+  - type: persona
+    path: personas/templated.md
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -243,7 +249,7 @@ bundles:
 	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
-	asset, _ := sources["local"].ResolveAsset("personas/templated.md")
+	asset, _ := sources["local"].ResolveAsset("personas/templated.md", config.AssetTypePersona)
 	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{
 		Variables: template.Variables{"project_name": "MyApp"},
 	})
@@ -278,7 +284,8 @@ sources:
 	env.SetupAsset("docs", "CLAUDE.md", "---\ntai-schema-version: 1\n---\n\n# Header\n\n{{existing}}\n\n# Footer")
 	env.SetupBundle("test", `name: test
 assets:
-  - docs/CLAUDE.md
+  - type: doc
+    path: docs/CLAUDE.md
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -294,7 +301,7 @@ bundles:
 	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
-	asset, _ := sources["local"].ResolveAsset("docs/CLAUDE.md")
+	asset, _ := sources["local"].ResolveAsset("docs/CLAUDE.md", config.AssetTypeDoc)
 	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
 	if err != nil {
 		t.Fatalf("Install failed: %v", err)
@@ -335,7 +342,8 @@ sources:
 
 	env.SetupBundle("test", `name: test
 assets:
-  - skills/my-skill
+  - type: skill
+    path: skills/my-skill
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -351,7 +359,7 @@ bundles:
 	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
-	asset, _ := sources["local"].ResolveAsset("skills/my-skill")
+	asset, _ := sources["local"].ResolveAsset("skills/my-skill", config.AssetTypeSkill)
 	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
 	if err != nil {
 		t.Fatalf("Install failed: %v", err)
@@ -422,7 +430,8 @@ sources:
 
 	env.SetupBundle("test", `name: test
 assets:
-  - skills/rad
+  - type: skill
+    path: skills/rad
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -438,7 +447,7 @@ bundles:
 	installer := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
 	adapter := claude.New(env.TargetDir)
 
-	asset, _ := sources["local"].ResolveAsset("skills/rad")
+	asset, _ := sources["local"].ResolveAsset("skills/rad", config.AssetTypeSkill)
 	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
 	if err != nil {
 		t.Fatalf("Install failed: %v", err)
@@ -505,7 +514,8 @@ sources:
 
 	env.SetupBundle("test", `name: test
 assets:
-  - skills/bad-skill
+  - type: skill
+    path: skills/bad-skill
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -521,7 +531,7 @@ bundles:
 	installer := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
 	adapter := claude.New(env.TargetDir)
 
-	asset, _ := sources["local"].ResolveAsset("skills/bad-skill")
+	asset, _ := sources["local"].ResolveAsset("skills/bad-skill", config.AssetTypeSkill)
 	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
 
 	if err == nil {

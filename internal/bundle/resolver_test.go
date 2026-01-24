@@ -36,9 +36,9 @@ func TestResolverResolveSimple(t *testing.T) {
 	bundles := map[string]*config.Bundle{
 		"core": {
 			Name: "core",
-			Assets: []string{
-				"personas/senior-swe.md",
-				"delegates/code-reviewer.md",
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "personas/senior-swe.md"},
+				{Type: "delegate", Path: "delegates/code-reviewer.md"},
 			},
 		},
 	}
@@ -63,15 +63,15 @@ func TestResolverResolveWithIncludes(t *testing.T) {
 	bundles := map[string]*config.Bundle{
 		"base": {
 			Name: "base",
-			Assets: []string{
-				"personas/senior-swe.md",
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "personas/senior-swe.md"},
 			},
 		},
 		"extended": {
 			Name:    "extended",
 			Bundles: []string{"base"},
-			Assets: []string{
-				"delegates/code-reviewer.md",
+			Assets: []config.AssetEntry{
+				{Type: "delegate", Path: "delegates/code-reviewer.md"},
 			},
 		},
 	}
@@ -123,22 +123,22 @@ func TestResolverResolveDiamondDependency(t *testing.T) {
 	bundles := map[string]*config.Bundle{
 		"a": {
 			Name: "a",
-			Assets: []string{
-				"personas/senior-swe.md",
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "personas/senior-swe.md"},
 			},
 		},
 		"b": {
 			Name:    "b",
 			Bundles: []string{"a"},
-			Assets: []string{
-				"delegates/code-reviewer.md",
+			Assets: []config.AssetEntry{
+				{Type: "delegate", Path: "delegates/code-reviewer.md"},
 			},
 		},
 		"c": {
 			Name:    "c",
 			Bundles: []string{"a"},
-			Assets: []string{
-				"docs/README.md",
+			Assets: []config.AssetEntry{
+				{Type: "doc", Path: "docs/README.md"},
 			},
 		},
 		"d": {
@@ -187,8 +187,8 @@ func TestResolverResolveMissingAsset(t *testing.T) {
 	bundles := map[string]*config.Bundle{
 		"bad": {
 			Name: "bad",
-			Assets: []string{
-				"personas/nonexistent.md",
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "personas/nonexistent.md"},
 			},
 		},
 	}
@@ -206,8 +206,8 @@ func TestResolverResolveMissingSource(t *testing.T) {
 	bundles := map[string]*config.Bundle{
 		"bad": {
 			Name: "bad",
-			Assets: []string{
-				"unknown-source:personas/test.md",
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "unknown-source:personas/test.md"},
 			},
 		},
 	}
@@ -228,14 +228,14 @@ func TestResolverResolveMultiple(t *testing.T) {
 	bundles := map[string]*config.Bundle{
 		"core": {
 			Name: "core",
-			Assets: []string{
-				"personas/senior-swe.md",
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "personas/senior-swe.md"},
 			},
 		},
 		"extras": {
 			Name: "extras",
-			Assets: []string{
-				"delegates/code-reviewer.md",
+			Assets: []config.AssetEntry{
+				{Type: "delegate", Path: "delegates/code-reviewer.md"},
 			},
 		},
 	}
@@ -272,14 +272,14 @@ func TestResolverResolveMultipleWithOverride(t *testing.T) {
 	bundles := map[string]*config.Bundle{
 		"base": {
 			Name: "base",
-			Assets: []string{
-				"personas/senior-swe.md",
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "personas/senior-swe.md"},
 			},
 		},
 		"override": {
 			Name: "override",
-			Assets: []string{
-				"personas/senior-swe.md", // Same asset, should override
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "personas/senior-swe.md"}, // Same asset, should override
 			},
 		},
 	}
@@ -307,10 +307,10 @@ func TestResolverAssetOrder(t *testing.T) {
 	bundles := map[string]*config.Bundle{
 		"ordered": {
 			Name: "ordered",
-			Assets: []string{
-				"personas/senior-swe.md",
-				"personas/brainstormer.md",
-				"delegates/code-reviewer.md",
+			Assets: []config.AssetEntry{
+				{Type: "persona", Path: "personas/senior-swe.md"},
+				{Type: "persona", Path: "personas/brainstormer.md"},
+				{Type: "delegate", Path: "delegates/code-reviewer.md"},
 			},
 		},
 	}
@@ -322,7 +322,7 @@ func TestResolverAssetOrder(t *testing.T) {
 	}
 
 	// Check order is preserved
-	expected := []string{"personas/senior-swe.md", "personas/brainstormer.md", "delegates/code-reviewer.md"}
+	expected := []string{"persona/senior-swe.md", "persona/brainstormer.md", "delegate/code-reviewer.md"}
 	for i, asset := range resolved.Assets {
 		actual := asset.Type + "/" + asset.Name
 		if actual != expected[i] {

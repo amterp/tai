@@ -91,7 +91,7 @@ default_profile: personal
 
 ### Bundle Definition
 
-Bundles are "shopping lists" of assets:
+Bundles are "shopping lists" of assets. Each asset entry requires an explicit `type` and `path`:
 
 ```yaml
 # bundles/core.yaml
@@ -99,20 +99,24 @@ name: core
 description: Essential assets for daily work
 
 assets:
-  - personas/senior-swe.md
-  - delegates/code-reviewer.md
-  - docs/CLAUDE.md
+  - type: persona
+    path: personas/senior-swe.md
+  - type: delegate
+    path: delegates/code-reviewer.md
+  - type: doc
+    path: docs/CLAUDE.md
 
 # Bundles can include other bundles
 bundles:
   - base-setup
 ```
 
-Reference assets from other sources with `source:path` syntax:
+Reference assets from other sources with `source:path` syntax in the path field:
 
 ```yaml
 assets:
-  - work-shared:personas/company-style.md
+  - type: persona
+    path: work-shared:personas/company-style.md
 ```
 
 ### Profile Definition
@@ -131,7 +135,8 @@ bundles:
 
 # Can also include individual assets
 assets:
-  - personas/brainstormer.md
+  - type: persona
+    path: personas/brainstormer.md
 ```
 
 ### Asset File Formats
@@ -339,7 +344,8 @@ Reference skills in bundles by directory name:
 
 ```yaml
 assets:
-  - skills/my-skill
+  - type: skill
+    path: skills/my-skill
 ```
 
 ### Skill Includes

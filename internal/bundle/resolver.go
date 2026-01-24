@@ -73,8 +73,8 @@ func (r *Resolver) resolveWithPath(name string, path []string) (*ResolvedBundle,
 	}
 
 	// Then, resolve direct assets (these override included bundle assets)
-	for _, assetRef := range bundle.Assets {
-		asset, err := r.resolveAssetRef(assetRef)
+	for _, entry := range bundle.Assets {
+		asset, err := r.resolveAssetRef(entry)
 		if err != nil {
 			return nil, fmt.Errorf("bundle %q: %w", name, err)
 		}
@@ -98,16 +98,16 @@ func (r *Resolver) resolveWithPath(name string, path []string) (*ResolvedBundle,
 	return result, nil
 }
 
-// resolveAssetRef resolves an asset reference string to an Asset.
-func (r *Resolver) resolveAssetRef(ref string) (*config.Asset, error) {
-	sourceName, assetPath := config.ParseAssetReference(ref)
+// resolveAssetRef resolves a structured asset entry to an Asset.
+func (r *Resolver) resolveAssetRef(entry config.AssetEntry) (*config.Asset, error) {
+	sourceName, assetPath := config.ParseAssetReference(entry.Path)
 
 	src, ok := r.sources[sourceName]
 	if !ok {
-		return nil, fmt.Errorf("source not found: %s (in asset ref %q)", sourceName, ref)
+		return nil, fmt.Errorf("source not found: %s (in asset ref %q)", sourceName, entry.Path)
 	}
 
-	asset, err := src.ResolveAsset(assetPath)
+	asset, err := src.ResolveAsset(assetPath, entry.Type)
 	if err != nil {
 		return nil, fmt.Errorf("resolving asset %q from source %q: %w", assetPath, sourceName, err)
 	}
