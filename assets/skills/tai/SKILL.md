@@ -418,6 +418,51 @@ This keeps skills portable—the `tai.yaml` in the skill references source names
 - Test instructions before including them
 - Structure for scanning (tables, bullet points, code blocks)
 
+## Migration: Required Tai Frontmatter (2026-01-23)
+
+All file assets (personas, delegates, skills, docs) now require a `tai-schema-version: 1` frontmatter block. Assets without it will fail to install.
+
+### What to add
+
+For each asset type, add or update the YAML frontmatter at the top of the file:
+
+**Personas / Delegates:**
+```yaml
+---
+tai-schema-version: 1
+name: My Asset Name
+description: Optional description.
+---
+```
+Delegates and skills may also include `tools: Tool1, Tool2`.
+
+**Docs:**
+```yaml
+---
+tai-schema-version: 1
+---
+```
+`name` and `description` are optional for docs. Only the body is written during install.
+
+**Skills (SKILL.md):**
+```yaml
+---
+tai-schema-version: 1
+name: my-skill
+description: What this skill does.
+tools: Read, Glob, Grep
+---
+```
+
+### Mechanical conversion
+For each file asset missing the frontmatter:
+1. If the file has no `---` block, add one at the top with at minimum `tai-schema-version: 1`
+2. If it already has frontmatter, add `tai-schema-version: 1` as the first field
+3. Ensure `name` is present (required for all types except docs)
+4. Remove any unrecognized fields — only `tai-schema-version`, `name`, `description`, and `tools` (delegates/skills only) are allowed
+
+---
+
 ## Migration: Structured Asset Entries (2026-01-23)
 
 Asset references in bundles and profiles changed from plain strings to structured entries with explicit `type` and `path` fields. This enables external sources with arbitrary directory layouts.
