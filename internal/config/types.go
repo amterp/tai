@@ -1,7 +1,12 @@
 // Package config provides types and parsing for tai configuration files.
 package config
 
-import "io/fs"
+import (
+	"fmt"
+	"io/fs"
+
+	"gopkg.in/yaml.v3"
+)
 
 // TaiConfig represents the top-level tai.yaml configuration file.
 type TaiConfig struct {
@@ -21,6 +26,24 @@ type Source struct {
 type AssetEntry struct {
 	Type string `yaml:"type"` // Singular: "persona", "delegate", "skill", "doc"
 	Path string `yaml:"path"` // "source:path" or just "path" (defaults to "local" source)
+}
+
+// UnmarshalYAML detects the old string-based asset format and provides a clear migration error.
+func (ae *AssetEntry) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		return fmt.Errorf("asset entry %q must be a mapping with 'type' and 'path' fields, e.g.:\n"+
+			"  - type: skill\n"+
+			"    path: %s", node.Value, node.Value)
+	}
+
+	// Avoid infinite recursion by decoding into a plain struct.
+	type raw AssetEntry
+	var r raw
+	if err := node.Decode(&r); err != nil {
+		return err
+	}
+	*ae = AssetEntry(r)
+	return nil
 }
 
 // Bundle represents a named collection of assets.

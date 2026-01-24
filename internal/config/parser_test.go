@@ -228,6 +228,15 @@ assets:
 `,
 			wantErr: true,
 		},
+		{
+			name: "old string-based asset format gives helpful error",
+			content: `name: legacy
+assets:
+  - skills/my-skill
+  - personas/senior-swe.md
+`,
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
