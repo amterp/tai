@@ -485,6 +485,172 @@ bundles:
 	}
 }
 
+// TestE2EInstallNoSchemaVersion tests that assets without tai-schema-version install correctly.
+func TestE2EInstallNoSchemaVersion(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	// Assets without tai-schema-version
+	env.SetupAsset("personas", "modern.md", `---
+name: Modern Persona
+description: No schema version needed
+---
+
+# Modern Persona
+
+Works without tai-schema-version.
+`)
+
+	env.SetupAsset("docs", "bare.md", `# Bare Doc
+
+No frontmatter at all.
+`)
+
+	env.SetupBundle("test", `name: test
+assets:
+  - type: persona
+    path: personas/modern.md
+  - type: doc
+    path: docs/bare.md
+`)
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
+	adapter := claude.New(env.TargetDir)
+
+	var assets []*config.Asset
+	for _, entry := range []struct {
+		path     string
+		assetTyp string
+	}{
+		{"personas/modern.md", config.AssetTypePersona},
+		{"docs/bare.md", config.AssetTypeDoc},
+	} {
+		asset, err := sources["local"].ResolveAsset(entry.path, entry.assetTyp)
+		if err != nil {
+			t.Fatalf("ResolveAsset(%s): %v", entry.path, err)
+		}
+		assets = append(assets, asset)
+	}
+
+	result, err := installer.Install(adapter, "test", assets, install.InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if len(result.Added) != 2 {
+		t.Errorf("Added = %d, want 2", len(result.Added))
+	}
+
+	// Persona gets target frontmatter without tai-schema-version
+	personaContent := env.ReadTargetFile("output-styles/modern.md")
+	expectedPersona := "---\nname: Modern Persona\ndescription: No schema version needed\n---\n\n# Modern Persona\n\nWorks without tai-schema-version.\n"
+	if personaContent != expectedPersona {
+		t.Errorf("persona content = %q, want %q", personaContent, expectedPersona)
+	}
+
+	// Doc with no frontmatter — body is entire file
+	docContent := env.ReadTargetFile("bare.md")
+	expectedDoc := "# Bare Doc\n\nNo frontmatter at all.\n"
+	if docContent != expectedDoc {
+		t.Errorf("doc content = %q, want %q", docContent, expectedDoc)
+	}
+}
+
+// TestE2EInstallSkillWithFieldMapping tests skill includes with field remapping.
+func TestE2EInstallSkillWithFieldMapping(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	// External source with a SKILL.md using non-tai field names
+	extSource := filepath.Join(env.Root, "ext-source")
+	if err := os.MkdirAll(extSource, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(extSource, "SKILL.md"), []byte(`---
+title: External Tool
+summary: Helps with external things
+tools: Read, Bash
+---
+
+# External Tool Instructions
+`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+  - name: ext
+    path: ` + extSource + `
+`)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "ext-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// tai.yaml with field mapping
+	manifestContent := `include:
+  - from: ext
+    path: SKILL.md
+    dest: SKILL.md
+    fields:
+      name: title
+      description: summary
+`
+	if err := os.WriteFile(filepath.Join(skillDir, "tai.yaml"), []byte(manifestContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	env.SetupBundle("test", `name: test
+assets:
+  - type: skill
+    path: skills/ext-skill
+`)
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adapter := claude.New(env.TargetDir)
+
+	asset, _ := sources["local"].ResolveAsset("skills/ext-skill", config.AssetTypeSkill)
+	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	// SKILL.md should have mapped fields: title→name, summary→description
+	// "tools" passes through unchanged since it's already a tai field name
+	skillContent := env.ReadTargetFile("skills/ext-skill/SKILL.md")
+	expectedSkill := "---\nname: External Tool\ndescription: Helps with external things\ntools: Read, Bash\n---\n\n# External Tool Instructions\n"
+	if skillContent != expectedSkill {
+		t.Errorf("SKILL.md content = %q, want %q", skillContent, expectedSkill)
+	}
+}
+
 // TestE2EInstallSkillWithIncludesMissingSource tests error handling for missing include source.
 func TestE2EInstallSkillWithIncludesMissingSource(t *testing.T) {
 	env := testutil.NewTestEnv(t)

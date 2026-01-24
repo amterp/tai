@@ -9,6 +9,7 @@ import (
 
 	"github.com/amterp/tai/internal/adapter/claude"
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/source"
 	"github.com/amterp/tai/internal/template"
 	"github.com/amterp/tai/internal/testutil"
 )
@@ -864,37 +865,39 @@ func TestValidateAssetMetadataNilMetadata(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for nil metadata")
 	}
-	if !strings.Contains(err.Error(), "missing frontmatter") {
-		t.Errorf("error = %q, want mention of 'missing frontmatter'", err.Error())
+	if !strings.Contains(err.Error(), "name") {
+		t.Errorf("error = %q, want mention of 'name'", err.Error())
 	}
 }
 
-func TestValidateAssetMetadataMissingSchemaVersion(t *testing.T) {
+func TestValidateAssetMetadataDocNilMetadataValid(t *testing.T) {
+	if err := validateAssetMetadata(nil, "doc"); err != nil {
+		t.Errorf("doc with nil metadata should be valid, got: %v", err)
+	}
+}
+
+func TestValidateAssetMetadataSchemaVersionOptional(t *testing.T) {
+	// Schema version is recognized-but-optional; assets without it are valid
 	metadata := map[string]string{
 		"name": "Test",
 	}
 
-	err := validateAssetMetadata(metadata, "persona")
-	if err == nil {
-		t.Fatal("expected error for missing tai-schema-version")
-	}
-	if !strings.Contains(err.Error(), "tai-schema-version") {
-		t.Errorf("error = %q, want mention of tai-schema-version", err.Error())
+	for _, assetType := range []string{"persona", "delegate", "skill"} {
+		if err := validateAssetMetadata(metadata, assetType); err != nil {
+			t.Errorf("validateAssetMetadata(%s) without schema version: unexpected error: %v", assetType, err)
+		}
 	}
 }
 
-func TestValidateAssetMetadataUnsupportedVersion(t *testing.T) {
+func TestValidateAssetMetadataIgnoresTaiSchemaVersion(t *testing.T) {
+	// tai-schema-version is treated as any other unknown field — silently ignored
 	metadata := map[string]string{
 		"tai-schema-version": "99",
 		"name":               "Test",
 	}
 
-	err := validateAssetMetadata(metadata, "persona")
-	if err == nil {
-		t.Fatal("expected error for unsupported version")
-	}
-	if !strings.Contains(err.Error(), "unsupported") {
-		t.Errorf("error = %q, want mention of 'unsupported'", err.Error())
+	if err := validateAssetMetadata(metadata, "persona"); err != nil {
+		t.Errorf("unexpected error (tai-schema-version should be ignored): %v", err)
 	}
 }
 
@@ -945,35 +948,26 @@ func TestValidateAssetMetadataUnknownAssetType(t *testing.T) {
 	}
 }
 
-func TestValidateAssetMetadataRejectsUnknownField(t *testing.T) {
+func TestValidateAssetMetadataIgnoresUnknownFields(t *testing.T) {
 	tests := []struct {
 		assetType string
 		field     string
 	}{
-		{"persona", "tools"},        // tools not allowed on personas
-		{"doc", "tools"},            // tools not allowed on docs
-		{"persona", "author"},       // completely unknown field
-		{"delegate", "priority"},    // completely unknown field
-		{"skill", "version"},        // not a tai frontmatter field
+		{"persona", "tools"},     // tools not recognized on personas
+		{"doc", "tools"},         // tools not recognized on docs
+		{"persona", "author"},    // completely unknown field
+		{"delegate", "priority"}, // completely unknown field
+		{"skill", "version"},     // not a tai frontmatter field
 	}
 
 	for _, tt := range tests {
 		metadata := map[string]string{
-			"tai-schema-version": "1",
-			"name":               "Test",
-			tt.field:             "some value",
+			"name":   "Test",
+			tt.field: "some value",
 		}
 
-		err := validateAssetMetadata(metadata, tt.assetType)
-		if err == nil {
-			t.Errorf("validateAssetMetadata(%s) with field %q: expected error", tt.assetType, tt.field)
-			continue
-		}
-		if !strings.Contains(err.Error(), "unknown field") {
-			t.Errorf("error = %q, want mention of 'unknown field'", err.Error())
-		}
-		if !strings.Contains(err.Error(), tt.field) {
-			t.Errorf("error = %q, want mention of field %q", err.Error(), tt.field)
+		if err := validateAssetMetadata(metadata, tt.assetType); err != nil {
+			t.Errorf("validateAssetMetadata(%s) with field %q: unexpected error: %v", tt.assetType, tt.field, err)
 		}
 	}
 }
@@ -1005,10 +999,10 @@ func TestValidateAssetMetadataAllowsValidFields(t *testing.T) {
 
 // --- Integration validation tests ---
 
-func TestInstallerRejectsMissingTaiSchemaVersion(t *testing.T) {
+func TestInstallerRejectsMissingName(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Asset without any frontmatter
+	// Asset without any frontmatter — no name field
 	env.SetupAsset("personas", "bad.md", "# No Frontmatter")
 
 	assets := []*config.Asset{
@@ -1018,29 +1012,33 @@ func TestInstallerRejectsMissingTaiSchemaVersion(t *testing.T) {
 
 	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
 	if err == nil {
-		t.Fatal("expected error for missing frontmatter")
+		t.Fatal("expected error for missing name")
 	}
-	if !strings.Contains(err.Error(), "tai-schema-version") {
-		t.Errorf("error = %q, want mention of tai-schema-version", err.Error())
+	if !strings.Contains(err.Error(), "name") {
+		t.Errorf("error = %q, want mention of 'name'", err.Error())
 	}
 }
 
-func TestInstallerRejectsUnsupportedTaiSchemaVersion(t *testing.T) {
+func TestInstallerIgnoresTaiSchemaVersion(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	env.SetupAsset("personas", "bad.md", "---\ntai-schema-version: 99\nname: Bad\n---\n\n# Content")
+	// tai-schema-version (any value) is treated as an unknown field — ignored
+	env.SetupAsset("personas", "versioned.md", "---\ntai-schema-version: 99\nname: Versioned\n---\n\n# Content")
 
 	assets := []*config.Asset{
-		{Type: "persona", Name: "bad.md", SourceName: "local",
-			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "bad.md")},
+		{Type: "persona", Name: "versioned.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "versioned.md")},
 	}
 
 	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
-	if err == nil {
-		t.Fatal("expected error for unsupported schema version")
+	if err != nil {
+		t.Fatalf("Install should succeed (tai-schema-version is ignored), got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unsupported") {
-		t.Errorf("error = %q, want mention of 'unsupported'", err.Error())
+
+	// Verify tai-schema-version is stripped from output (adapter doesn't render it)
+	content := env.ReadTargetFile("output-styles/versioned.md")
+	if strings.Contains(content, "tai-schema-version") {
+		t.Error("installed file should not contain tai-schema-version")
 	}
 }
 
@@ -1067,7 +1065,7 @@ func TestInstallerRejectsMissingNameForPersona(t *testing.T) {
 func TestInstallerDocAllowsMissingName(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Docs only require tai-schema-version, name is optional
+	// Docs have no required fields — name is optional
 	env.SetupAsset("docs", "notes.md", "---\ntai-schema-version: 1\n---\n\n# Notes")
 
 	assets := []*config.Asset{
@@ -1139,7 +1137,7 @@ func TestInstallerOutputNeverContainsTaiSchemaVersion(t *testing.T) {
 func TestInstallerSkillDirectoryRejectsInvalidSKILLMd(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Skill directory with a SKILL.md that has no tai-schema-version
+	// Skill directory with a SKILL.md that has no frontmatter (no name)
 	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "bad-skill")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
@@ -1156,9 +1154,332 @@ func TestInstallerSkillDirectoryRejectsInvalidSKILLMd(t *testing.T) {
 
 	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
 	if err == nil {
-		t.Fatal("expected error for SKILL.md without frontmatter")
+		t.Fatal("expected error for SKILL.md without name")
 	}
-	if !strings.Contains(err.Error(), "tai-schema-version") {
-		t.Errorf("error = %q, want mention of tai-schema-version", err.Error())
+	if !strings.Contains(err.Error(), "name") {
+		t.Errorf("error = %q, want mention of 'name'", err.Error())
 	}
+}
+
+func TestInstallerSkillNoSchemaVersion(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Skill with name but no tai-schema-version — should succeed
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "no-version")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\nname: No Version Skill\ndescription: Works without schema version\n---\n\n# No Version\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skill", Name: "no-version", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install should succeed without tai-schema-version, got: %v", err)
+	}
+
+	content := env.ReadTargetFile("skills/no-version/SKILL.md")
+	expected := "---\nname: No Version Skill\ndescription: Works without schema version\n---\n\n# No Version\n"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
+	}
+}
+
+func TestInstallerPersonaNoSchemaVersion(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Persona with name but no tai-schema-version — should succeed
+	env.SetupAsset("personas", "minimal.md", "---\nname: Minimal\n---\n\n# Minimal Persona")
+
+	assets := []*config.Asset{
+		{Type: "persona", Name: "minimal.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "minimal.md")},
+	}
+
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install should succeed without tai-schema-version, got: %v", err)
+	}
+	if len(result.Added) != 1 {
+		t.Errorf("len(Added) = %d, want 1", len(result.Added))
+	}
+
+	content := env.ReadTargetFile("output-styles/minimal.md")
+	expected := "---\nname: Minimal\n---\n\n# Minimal Persona"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
+	}
+}
+
+func TestInstallerDocNoFrontmatter(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Doc with no frontmatter at all — should succeed, body is entire file
+	env.SetupAsset("docs", "plain.md", "# Just a doc\n\nNo frontmatter here.\n")
+
+	assets := []*config.Asset{
+		{Type: "doc", Name: "plain.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "plain.md")},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install should succeed for doc without frontmatter, got: %v", err)
+	}
+
+	content := env.ReadTargetFile("plain.md")
+	expected := "# Just a doc\n\nNo frontmatter here.\n"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
+	}
+}
+
+func TestInstallerSkillWithFieldMapping(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	// Create an external source with a SKILL.md using non-tai field names
+	externalSource := filepath.Join(env.Root, "external")
+	if err := os.MkdirAll(externalSource, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(externalSource, "SKILL.md"),
+		[]byte("---\ntitle: External Skill\nsummary: An externally-sourced skill\n---\n\n# External Skill Content\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create skill directory with tai.yaml that includes the external SKILL.md with field mapping
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "mapped-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	manifestContent := `include:
+  - from: external
+    path: SKILL.md
+    dest: SKILL.md
+    fields:
+      name: title
+      description: summary
+`
+	if err := os.WriteFile(filepath.Join(skillDir, "tai.yaml"), []byte(manifestContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	sources := map[string]*source.LoadedSource{
+		"external": {
+			Source:       config.Source{Name: "external", Path: externalSource},
+			ResolvedPath: externalSource,
+		},
+	}
+
+	manifestStore := NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adapter := claude.New(env.TargetDir)
+
+	assets := []*config.Asset{
+		{Type: "skill", Name: "mapped-skill", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install with field mapping failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("skills/mapped-skill/SKILL.md")
+	expected := "---\nname: External Skill\ndescription: An externally-sourced skill\n---\n\n# External Skill Content\n"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
+	}
+}
+
+func TestInstallerSkillFieldMappingLocalValueWins(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	// Source file has both "title" and "name" — local "name" should win
+	externalSource := filepath.Join(env.Root, "external")
+	if err := os.MkdirAll(externalSource, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(externalSource, "SKILL.md"),
+		[]byte("---\nname: Local Name\ntitle: Mapped Title\n---\n\n# Content\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "precedence")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	manifestContent := `include:
+  - from: external
+    path: SKILL.md
+    dest: SKILL.md
+    fields:
+      name: title
+`
+	if err := os.WriteFile(filepath.Join(skillDir, "tai.yaml"), []byte(manifestContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	sources := map[string]*source.LoadedSource{
+		"external": {
+			Source:       config.Source{Name: "external", Path: externalSource},
+			ResolvedPath: externalSource,
+		},
+	}
+
+	manifestStore := NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adapter := claude.New(env.TargetDir)
+
+	assets := []*config.Asset{
+		{Type: "skill", Name: "precedence", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	// "name" was already set, so mapping from "title" should not override it.
+	// "title" is deleted since it was the mapping source.
+	content := env.ReadTargetFile("skills/precedence/SKILL.md")
+	expected := "---\nname: Local Name\n---\n\n# Content\n"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
+	}
+}
+
+// --- findSkillMdFields and isRootSkillMdDest tests ---
+
+func TestIsRootSkillMdDest(t *testing.T) {
+	tests := []struct {
+		name string
+		inc  config.Include
+		want bool
+	}{
+		{
+			name: "explicit dest SKILL.md",
+			inc:  config.Include{From: "src", Path: "README.md", Dest: "SKILL.md"},
+			want: true,
+		},
+		{
+			name: "trailing slash root with path to SKILL.md",
+			inc:  config.Include{From: "src", Path: "docs/SKILL.md", Dest: "./"},
+			want: true,
+		},
+		{
+			name: "bare trailing slash with path to SKILL.md",
+			inc:  config.Include{From: "src", Path: "SKILL.md", Dest: "/"},
+			want: true,
+		},
+		{
+			name: "trailing slash with non-SKILL.md path",
+			inc:  config.Include{From: "src", Path: "docs/README.md", Dest: "./"},
+			want: false,
+		},
+		{
+			name: "subdirectory trailing slash with SKILL.md path",
+			inc:  config.Include{From: "src", Path: "SKILL.md", Dest: "subdir/"},
+			want: false,
+		},
+		{
+			name: "explicit dest in subdirectory",
+			inc:  config.Include{From: "src", Path: "SKILL.md", Dest: "sub/SKILL.md"},
+			want: false,
+		},
+		{
+			name: "URL-based trailing slash root with SKILL.md",
+			inc:  config.Include{URL: "https://example.com/path/SKILL.md", Dest: "./"},
+			want: true,
+		},
+		{
+			name: "URL-based trailing slash with other file",
+			inc:  config.Include{URL: "https://example.com/path/other.md", Dest: "./"},
+			want: false,
+		},
+		{
+			name: "URL-based subdirectory trailing slash with SKILL.md",
+			inc:  config.Include{URL: "https://example.com/SKILL.md", Dest: "sub/"},
+			want: false,
+		},
+		{
+			name: "URL with query params",
+			inc:  config.Include{URL: "https://example.com/SKILL.md?raw=true", Dest: "./"},
+			want: true,
+		},
+		{
+			name: "unrelated include",
+			inc:  config.Include{From: "src", Path: "SYNTAX.md", Dest: "references/"},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isRootSkillMdDest(tt.inc)
+			if got != tt.want {
+				t.Errorf("isRootSkillMdDest() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFindSkillMdFields(t *testing.T) {
+	t.Run("nil manifest", func(t *testing.T) {
+		result := findSkillMdFields(nil)
+		if result != nil {
+			t.Errorf("expected nil, got %v", result)
+		}
+	})
+
+	t.Run("no matching include", func(t *testing.T) {
+		manifest := &config.SkillManifest{
+			Include: []config.Include{
+				{From: "src", Path: "SYNTAX.md", Dest: "references/"},
+			},
+		}
+		result := findSkillMdFields(manifest)
+		if result != nil {
+			t.Errorf("expected nil, got %v", result)
+		}
+	})
+
+	t.Run("matching include with fields", func(t *testing.T) {
+		manifest := &config.SkillManifest{
+			Include: []config.Include{
+				{From: "src", Path: "SYNTAX.md", Dest: "references/"},
+				{From: "ext", Path: "SKILL.md", Dest: "SKILL.md", Fields: map[string]string{
+					"name": "title",
+				}},
+			},
+		}
+		result := findSkillMdFields(manifest)
+		if result == nil {
+			t.Fatal("expected non-nil fields")
+		}
+		if result["name"] != "title" {
+			t.Errorf("fields[name] = %q, want 'title'", result["name"])
+		}
+	})
+
+	t.Run("matching include without fields", func(t *testing.T) {
+		manifest := &config.SkillManifest{
+			Include: []config.Include{
+				{From: "ext", Path: "SKILL.md", Dest: "SKILL.md"},
+			},
+		}
+		result := findSkillMdFields(manifest)
+		if result != nil {
+			t.Errorf("expected nil for include without fields, got %v", result)
+		}
+	})
 }

@@ -78,7 +78,7 @@ Sources → Assets → Bundles → Profiles → Install Pipeline → Target Conf
 
 ### Adapter Interface
 
-Adapters translate tai concepts to target-specific formats. They implement `TransformContent()` to strip tai frontmatter (`tai-schema-version`) and render the target's expected format. The Claude adapter maps:
+Adapters translate tai concepts to target-specific formats. They implement `TransformContent()` to render the target's expected frontmatter from parsed tai metadata. The Claude adapter maps:
 - `personas/` → `output-styles/` (renders `name`, `description` frontmatter)
 - `delegates/` → `agents/` (renders `name`, `description`, `tools` frontmatter)
 - `skills/` → `skills/` (SKILL.md gets `name`, `description`, `tools` frontmatter)

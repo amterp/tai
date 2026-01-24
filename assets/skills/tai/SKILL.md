@@ -1,5 +1,4 @@
 ---
-tai-schema-version: 1
 name: tai
 description: >
   Manage AI agent configurations with the tai CLI. Use this skill when asked to:
@@ -206,7 +205,6 @@ Personas and delegates are markdown files with required tai frontmatter.
 
 ```markdown
 ---
-tai-schema-version: 1
 name: Senior SWE
 description: Experienced software engineer co-owner role.
 ---
@@ -220,22 +218,17 @@ You are a senior software engineer...
 
 | Field | Personas | Delegates | Skills | Docs |
 |-------|----------|-----------|--------|------|
-| `tai-schema-version` | required | required | required | required |
 | `name` | required | required | required | optional |
 | `description` | optional | optional | optional | optional |
 | `tools` | — | optional | optional | — |
 
-Only the fields listed above are allowed for each asset type. Unrecognized fields cause an error.
+Unknown fields are silently ignored. Schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file.
 
 ## Docs Format
 
-Docs also require `tai-schema-version: 1` but `name` is optional. During installation, only the body is written (no target frontmatter).
+Docs can have no frontmatter at all — the entire file becomes the body. During installation, only the body is written (no target frontmatter).
 
 ```markdown
----
-tai-schema-version: 1
----
-
 # Project Instructions
 
 Reference material here...
@@ -261,7 +254,6 @@ assets/skills/my-skill/
 
 ```yaml
 ---
-tai-schema-version: 1
 name: my-skill
 description: >
   Concise description of what this skill does and when to use it.
@@ -278,7 +270,6 @@ Instructions for the agent...
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| `tai-schema-version` | Yes | Must be `"1"`. Stripped during install. |
 | `name` | Yes | Human-readable display name |
 | `description` | No | Under 1024 chars; triggers skill activation |
 | `tools` | No | Comma-separated list of tools the skill may use |
@@ -390,12 +381,28 @@ include:
   - from: scripts-repo
     path: helpers/
     dest: scripts/
+
+  # Include with field remapping (for SKILL.md from external sources)
+  - from: external-repo
+    path: SKILL.md
+    dest: SKILL.md
+    fields:
+      name: title            # Source's "title" → tai's "name"
+      description: summary   # Source's "summary" → tai's "description"
 ```
 
 ### Destination Rules
 
 - `dest: dir/` (trailing slash) → preserves original filename
 - `dest: dir/file.md` (no trailing slash) → exact target path
+
+### Field Mapping
+
+When including a SKILL.md from an external source that uses different field names, use `fields` to remap them to tai's vocabulary. The mapping format is `tai_field: source_field`.
+
+- Only applies to the include that targets SKILL.md at the skill root
+- If the source file already has the tai field name set, the explicit value wins
+- Unknown source fields referenced by the mapping are silently ignored
 
 ### Defining Sources
 
@@ -418,48 +425,11 @@ This keeps skills portable—the `tai.yaml` in the skill references source names
 - Test instructions before including them
 - Structure for scanning (tables, bullet points, code blocks)
 
-## Migration: Required Tai Frontmatter (2026-01-23)
+## Migration: Per-file tai-schema-version Removed (2026-01-24)
 
-All file assets (personas, delegates, skills, docs) now require a `tai-schema-version: 1` frontmatter block. Assets without it will fail to install.
+`tai-schema-version` is no longer recognized as a special field. If present in existing files, it's treated as an unknown field and silently ignored. Schema version is tracked at the repo level (`version: 1` in `tai.yaml`).
 
-### What to add
-
-For each asset type, add or update the YAML frontmatter at the top of the file:
-
-**Personas / Delegates:**
-```yaml
----
-tai-schema-version: 1
-name: My Asset Name
-description: Optional description.
----
-```
-Delegates and skills may also include `tools: Tool1, Tool2`.
-
-**Docs:**
-```yaml
----
-tai-schema-version: 1
----
-```
-`name` and `description` are optional for docs. Only the body is written during install.
-
-**Skills (SKILL.md):**
-```yaml
----
-tai-schema-version: 1
-name: my-skill
-description: What this skill does.
-tools: Read, Glob, Grep
----
-```
-
-### Mechanical conversion
-For each file asset missing the frontmatter:
-1. If the file has no `---` block, add one at the top with at minimum `tai-schema-version: 1`
-2. If it already has frontmatter, add `tai-schema-version: 1` as the first field
-3. Ensure `name` is present (required for all types except docs)
-4. Remove any unrecognized fields — only `tai-schema-version`, `name`, `description`, and `tools` (delegates/skills only) are allowed
+The only hard requirement is `name` (for personas, delegates, and skills). Docs can have no frontmatter at all.
 
 ---
 

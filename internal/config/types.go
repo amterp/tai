@@ -82,9 +82,9 @@ type Asset struct {
 //     The adapter's TransformContent receives this stripped body and may
 //     prepend target-specific frontmatter (e.g., Claude's name/description/tools).
 //     After TransformContent, Content holds the final bytes to write to disk.
-//   - Metadata holds the parsed tai frontmatter fields (tai-schema-version, name,
-//     description, tools). The adapter reads Metadata to produce target frontmatter.
-//     tai-schema-version is never written to the target — it's a build-time discriminator.
+//   - Metadata holds the parsed tai frontmatter fields (name, description, tools).
+//     The adapter reads Metadata to produce target frontmatter.
+//     Unknown fields are silently ignored during validation.
 //
 // For directory assets (skills), Content and Metadata are nil; the directory is
 // copied and SKILL.md is transformed separately via transformSkillMd.

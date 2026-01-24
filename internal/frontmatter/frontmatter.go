@@ -11,14 +11,10 @@ import (
 
 // Field name constants for tai frontmatter.
 const (
-	FieldTaiSchemaVersion = "tai-schema-version"
-	FieldName             = "name"
-	FieldDescription      = "description"
-	FieldTools            = "tools"
+	FieldName        = "name"
+	FieldDescription = "description"
+	FieldTools       = "tools"
 )
-
-// CurrentTaiSchemaVersion is the only supported schema version.
-const CurrentTaiSchemaVersion = "1"
 
 var separator = []byte("---")
 

@@ -282,11 +282,10 @@ scope: project  # or "user" or "local"
 
 #### Tai Frontmatter (All File Assets)
 
-All file assets (personas, delegates, skills, docs) MUST include tai frontmatter with `tai-schema-version: 1` as the schema discriminator. During installation, tai strips its own frontmatter and the adapter renders target-specific frontmatter (or none, for docs).
+File assets (personas, delegates, skills, docs) use YAML frontmatter to declare metadata. During installation, tai strips its own frontmatter and the adapter renders target-specific frontmatter (or none, for docs). Docs may have no frontmatter at all.
 
 ```markdown
 ---
-tai-schema-version: 1
 name: Senior SWE
 description: Experienced software engineer co-owner role.
 ---
@@ -300,17 +299,15 @@ You are a senior software engineer...
 
 | Field | Personas | Delegates | Skills | Docs |
 |-------|----------|-----------|--------|------|
-| `tai-schema-version` | required | required | required | required |
 | `name` | required | required | required | optional |
 | `description` | optional | optional | optional | optional |
 | `tools` | — | optional | optional | — |
 
-- `tai-schema-version`: Must be `"1"`. Always stripped before installation.
 - `name`: Human-readable display name.
 - `description`: Short description of what this asset does.
 - `tools`: Comma-separated list of tools the delegate/skill may use.
 
-**Strict validation:** Only the fields listed above are allowed for each asset type. Unrecognized fields (e.g., `tools` on a persona) cause an immediate error. This catches typos and misunderstandings early.
+Unknown fields are silently ignored to support forward compatibility and external sources with their own metadata. The schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file.
 
 #### Adapter Transformation (Claude)
 
@@ -856,8 +853,25 @@ include:
 | `path` | Yes* | Path within source |
 | `url` | Yes* | URL to fetch (mutually exclusive with `from`) |
 | `dest` | Yes | Destination within skill directory |
+| `fields` | No | Map of tai field names to source field names for frontmatter remapping |
 
 *Either `from`+`path` OR `url` must be specified.
+
+#### Field Mapping
+
+When including a SKILL.md from an external source whose frontmatter uses different field names, the `fields` mapping renames them to tai's vocabulary before validation and transformation:
+
+```yaml
+include:
+  - from: external
+    path: SKILL.md
+    dest: SKILL.md
+    fields:
+      name: title          # Source "title" → tai "name"
+      description: summary # Source "summary" → tai "description"
+```
+
+Precedence: if the source file already has the tai field name set, the explicit value wins over the mapping.
 
 ### Destination Semantics
 

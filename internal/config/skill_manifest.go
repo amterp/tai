@@ -28,6 +28,11 @@ type Include struct {
 	// If ends with "/", preserves the original filename/dirname.
 	// Otherwise, uses the exact path specified.
 	Dest string `yaml:"dest"`
+
+	// Fields maps tai field names to source field names for frontmatter remapping.
+	// For example, {"name": "title"} means the source file's "title" field
+	// should be treated as tai's "name" field.
+	Fields map[string]string `yaml:"fields"`
 }
 
 // Validate checks that the include is well-formed.

@@ -5,8 +5,11 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
@@ -390,8 +393,11 @@ func (i *Installer) installAsset(resolved *config.ResolvedAsset, fullTargetPath 
 			}
 		}
 
+		// Detect field mapping for SKILL.md from includes
+		fieldMapping := findSkillMdFields(manifest)
+
 		// Transform SKILL.md with target-specific frontmatter
-		if err := i.transformSkillMd(resolved, fullTargetPath, adap); err != nil {
+		if err := i.transformSkillMd(resolved, fullTargetPath, adap, fieldMapping); err != nil {
 			return err
 		}
 
@@ -414,7 +420,11 @@ func (i *Installer) installAsset(resolved *config.ResolvedAsset, fullTargetPath 
 // and validates its tai frontmatter, transforms it through the adapter, and
 // writes the result back. This gives skill SKILL.md files target-specific
 // frontmatter (name, description, tools) just like standalone file assets.
-func (i *Installer) transformSkillMd(resolved *config.ResolvedAsset, skillTargetPath string, adap adapter.Adapter) error {
+//
+// If fieldMapping is non-nil, it remaps source field names to tai field names
+// before validation — e.g., {"name": "title"} renames the source's "title"
+// field to tai's "name" field.
+func (i *Installer) transformSkillMd(resolved *config.ResolvedAsset, skillTargetPath string, adap adapter.Adapter, fieldMapping map[string]string) error {
 	skillMdPath := filepath.Join(skillTargetPath, "SKILL.md")
 	info, err := os.Stat(skillMdPath)
 	if os.IsNotExist(err) {
@@ -433,6 +443,35 @@ func (i *Installer) transformSkillMd(resolved *config.ResolvedAsset, skillTarget
 	parsed, err := frontmatter.Parse(content)
 	if err != nil {
 		return fmt.Errorf("parsing SKILL.md frontmatter: %w", err)
+	}
+
+	// Apply field mapping: renames source field names to tai field names.
+	// We snapshot values first to avoid non-determinism from map iteration
+	// order when mappings reference each other's fields.
+	if len(fieldMapping) > 0 {
+		if parsed.Metadata == nil {
+			parsed.Metadata = make(map[string]string)
+		}
+		// Snapshot source values before mutating
+		snapped := make(map[string]string, len(fieldMapping))
+		for _, sourceField := range fieldMapping {
+			if val, ok := parsed.Metadata[sourceField]; ok {
+				snapped[sourceField] = val
+			}
+		}
+		// Apply mappings using snapshotted values
+		for taiField, sourceField := range fieldMapping {
+			if taiField == sourceField {
+				continue
+			}
+			if val, ok := snapped[sourceField]; ok {
+				// Explicit tai field value wins over mapping
+				if _, exists := parsed.Metadata[taiField]; !exists {
+					parsed.Metadata[taiField] = val
+				}
+				delete(parsed.Metadata, sourceField)
+			}
+		}
 	}
 
 	if err := validateAssetMetadata(parsed.Metadata, config.AssetTypeSkill); err != nil {
@@ -455,6 +494,44 @@ func (i *Installer) transformSkillMd(resolved *config.ResolvedAsset, skillTarget
 	}
 
 	return os.WriteFile(skillMdPath, transformed, mode)
+}
+
+// findSkillMdFields returns the Fields mapping from the include that targets
+// SKILL.md at the root of the skill directory, if any.
+func findSkillMdFields(manifest *config.SkillManifest) map[string]string {
+	if manifest == nil {
+		return nil
+	}
+	for _, inc := range manifest.Include {
+		if isRootSkillMdDest(inc) {
+			return inc.Fields
+		}
+	}
+	return nil
+}
+
+// isRootSkillMdDest determines if an include's destination resolves to SKILL.md
+// at the root of the skill directory.
+func isRootSkillMdDest(inc config.Include) bool {
+	if strings.HasSuffix(inc.Dest, "/") {
+		// Trailing-slash mode: only root-level destinations qualify
+		// (i.e., "./" or just "/", not "subdir/")
+		destDir := strings.TrimSuffix(inc.Dest, "/")
+		if destDir != "" && destDir != "." {
+			return false // Subdirectory — not root SKILL.md
+		}
+		// Check if the source filename is SKILL.md
+		if inc.URL != "" {
+			parsed, err := url.Parse(inc.URL)
+			if err != nil {
+				return false
+			}
+			return path.Base(parsed.Path) == "SKILL.md"
+		}
+		return filepath.Base(inc.Path) == "SKILL.md"
+	}
+	// Explicit dest: must be exactly "SKILL.md" (no subdirectory)
+	return inc.Dest == "SKILL.md"
 }
 
 // restoreBackup restores a backup file.
