@@ -156,12 +156,55 @@ func validateAssetEntry(entry AssetEntry, index int) error {
 	if entry.Type == "" {
 		return fmt.Errorf("asset[%d]: missing type", index)
 	}
+
+	// Provide helpful migration message for removed "doc" type
+	if entry.Type == "doc" {
+		return fmt.Errorf("asset[%d]: type 'doc' has been removed; use 'file' with 'dest: \"\"' for root-level files", index)
+	}
+
 	if !IsValidAssetType(entry.Type) {
 		return fmt.Errorf("asset[%d]: invalid type %q", index, entry.Type)
 	}
 	if entry.Path == "" {
 		return fmt.Errorf("asset[%d]: missing path", index)
 	}
+
+	// Validate dest field
+	if entry.Type == AssetTypeFile {
+		// For file type, dest specifies where the file lands in the target.
+		// Empty string means target root (e.g., ~/.claude/), which is valid.
+		// In YAML, both missing and explicit empty string result in "", so we
+		// can't distinguish them. This is acceptable: users who forget dest
+		// get root-level installation, which is documented as the default.
+
+		// Validate dest path if non-empty
+		if entry.Dest != "" {
+			if err := validateDestPath(entry.Dest); err != nil {
+				return fmt.Errorf("asset[%d]: %w", index, err)
+			}
+		}
+	} else if entry.Dest != "" {
+		// dest is only valid for file type
+		return fmt.Errorf("asset[%d]: 'dest' field is only valid for 'file' type, not %q", index, entry.Type)
+	}
+
+	return nil
+}
+
+// validateDestPath validates a destination path.
+func validateDestPath(dest string) error {
+	// Reject absolute paths
+	if strings.HasPrefix(dest, "/") {
+		return fmt.Errorf("dest cannot be an absolute path: %q", dest)
+	}
+
+	// Reject path traversal (.. as a path segment, not as part of a filename)
+	for _, segment := range strings.Split(dest, "/") {
+		if segment == ".." {
+			return fmt.Errorf("dest cannot contain path traversal (..): %q", dest)
+		}
+	}
+
 	return nil
 }
 

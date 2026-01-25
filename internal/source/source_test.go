@@ -16,7 +16,7 @@ func TestLoaderLoad(t *testing.T) {
 	env.SetupAsset("personas", "senior-swe.md", "# Senior SWE Persona")
 	env.SetupAsset("personas", "brainstormer.md", "# Brainstormer Persona")
 	env.SetupAsset("delegates", "code-reviewer.md", "# Code Reviewer")
-	env.SetupAsset("docs", "README.md", "# Docs")
+	env.SetupAsset("files", "README.md", "# Files")
 
 	// Create a skill directory
 	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "my-skill")
@@ -56,8 +56,8 @@ func TestLoaderLoad(t *testing.T) {
 	if len(ls.Assets["skills"]) != 1 {
 		t.Errorf("len(skills) = %d, want 1", len(ls.Assets["skills"]))
 	}
-	if len(ls.Assets["docs"]) != 1 {
-		t.Errorf("len(docs) = %d, want 1", len(ls.Assets["docs"]))
+	if len(ls.Assets["files"]) != 1 {
+		t.Errorf("len(files) = %d, want 1", len(ls.Assets["files"]))
 	}
 }
 

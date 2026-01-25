@@ -64,7 +64,7 @@ func (r *Resolver) resolveWithPath(name string, path []string) (*ResolvedBundle,
 		}
 
 		for _, asset := range included.Assets {
-			assetKey := asset.Type + "/" + asset.Name
+			assetKey := assetDedupeKey(asset)
 			if _, exists := assetMap[assetKey]; !exists {
 				order = append(order, assetKey)
 			}
@@ -79,7 +79,7 @@ func (r *Resolver) resolveWithPath(name string, path []string) (*ResolvedBundle,
 			return nil, fmt.Errorf("bundle %q: %w", name, err)
 		}
 
-		assetKey := asset.Type + "/" + asset.Name
+		assetKey := assetDedupeKey(asset)
 		if _, exists := assetMap[assetKey]; !exists {
 			order = append(order, assetKey)
 		}
@@ -112,6 +112,9 @@ func (r *Resolver) resolveAssetRef(entry config.AssetEntry) (*config.Asset, erro
 		return nil, fmt.Errorf("resolving asset %q from source %q: %w", assetPath, sourceName, err)
 	}
 
+	// Propagate Dest from entry to asset (used by file type)
+	asset.Dest = entry.Dest
+
 	return asset, nil
 }
 
@@ -130,7 +133,7 @@ func (r *Resolver) ResolveMultiple(names []string) (*ResolvedBundle, []Override,
 		}
 
 		for _, asset := range resolved.Assets {
-			assetKey := asset.Type + "/" + asset.Name
+			assetKey := assetDedupeKey(asset)
 			if existing, exists := assetMap[assetKey]; exists {
 				// Record the override with correct bundle names
 				overrides = append(overrides, Override{
@@ -166,4 +169,14 @@ type Override struct {
 	ToBundle   string
 	FromSource string
 	ToSource   string
+}
+
+// assetDedupeKey returns a key for deduplicating assets.
+// For file types, the key includes dest since the same file can be installed
+// to multiple destinations. For other types, it's just type/name.
+func assetDedupeKey(asset *config.Asset) string {
+	if asset.Type == config.AssetTypeFile {
+		return asset.Type + "/" + asset.Name + "@" + asset.Dest
+	}
+	return asset.Type + "/" + asset.Name
 }

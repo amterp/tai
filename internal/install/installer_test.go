@@ -285,11 +285,11 @@ func TestInstallerInstallWithExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	env.SetupAsset("docs", "CLAUDE.md", "---\ntai-schema-version: 1\n---\n\n# Header\n\n{{existing}}\n\n# Footer")
+	env.SetupAsset("files", "CLAUDE.md", "# Header\n\n{{existing}}\n\n# Footer")
 
 	assets := []*config.Asset{
-		{Type: "doc", Name: "CLAUDE.md", SourceName: "local",
-			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "CLAUDE.md")},
+		{Type: "file", Name: "CLAUDE.md", SourceName: "local", Dest: "",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "CLAUDE.md")},
 	}
 
 	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
@@ -304,7 +304,7 @@ func TestInstallerInstallWithExisting(t *testing.T) {
 		t.Error("BackupPath is empty")
 	}
 
-	// Docs produce body only (no target frontmatter)
+	// Files are copied as-is (after template substitution)
 	content := env.ReadTargetFile("CLAUDE.md")
 	expected := "# Header\n\n# Existing Content\n\n# Footer"
 	if content != expected {
@@ -423,11 +423,11 @@ func TestInstallerUninstallWithBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	env.SetupAsset("docs", "CLAUDE.md", "---\ntai-schema-version: 1\n---\n\n# Wrapped\n{{existing}}")
+	env.SetupAsset("files", "CLAUDE.md", "# Wrapped\n{{existing}}")
 
 	assets := []*config.Asset{
-		{Type: "doc", Name: "CLAUDE.md", SourceName: "local",
-			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "CLAUDE.md")},
+		{Type: "file", Name: "CLAUDE.md", SourceName: "local", Dest: "",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "CLAUDE.md")},
 	}
 
 	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
@@ -555,14 +555,17 @@ func TestCopyFilePreservesPermissions(t *testing.T) {
 func TestInstallerPreservesFilePermissions(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Use a doc asset with executable permissions to test permission preservation
-	scriptPath := filepath.Join(env.ConfigRepo, "assets", "docs", "run.sh")
-	if err := os.WriteFile(scriptPath, []byte("---\ntai-schema-version: 1\n---\n\n#!/bin/bash\necho run"), 0755); err != nil {
+	// Use a file asset with executable permissions to test permission preservation
+	scriptPath := filepath.Join(env.ConfigRepo, "assets", "files", "run.sh")
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho run"), 0755); err != nil {
 		t.Fatal(err)
 	}
 
 	assets := []*config.Asset{
-		{Type: "doc", Name: "run.sh", SourceName: "local",
+		{Type: "file", Name: "run.sh", SourceName: "local", Dest: "",
 			SourcePath: scriptPath},
 	}
 
@@ -630,7 +633,7 @@ func TestInstallAssetFallsBackTo0644WhenFileModeZero(t *testing.T) {
 
 	targetPath := filepath.Join(dir, "output.md")
 	resolved := &config.ResolvedAsset{
-		Asset:   config.Asset{Type: "doc", Name: "output.md"},
+		Asset:   config.Asset{Type: "file", Name: "output.md", Dest: ""},
 		Content: []byte("# Hello"),
 	}
 
@@ -650,13 +653,16 @@ func TestInstallAssetFallsBackTo0644WhenFileModeZero(t *testing.T) {
 func TestInstallerPermissionChangeTriggersUpdate(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	scriptPath := filepath.Join(env.ConfigRepo, "assets", "docs", "run.sh")
-	if err := os.WriteFile(scriptPath, []byte("---\ntai-schema-version: 1\n---\n\n#!/bin/bash\necho v1"), 0644); err != nil {
+	scriptPath := filepath.Join(env.ConfigRepo, "assets", "files", "run.sh")
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho v1"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	assets := []*config.Asset{
-		{Type: "doc", Name: "run.sh", SourceName: "local", SourcePath: scriptPath},
+		{Type: "file", Name: "run.sh", SourceName: "local", Dest: "", SourcePath: scriptPath},
 	}
 
 	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
@@ -671,7 +677,7 @@ func TestInstallerPermissionChangeTriggersUpdate(t *testing.T) {
 	}
 
 	// Change source content and permissions
-	if err := os.WriteFile(scriptPath, []byte("---\ntai-schema-version: 1\n---\n\n#!/bin/bash\necho v2"), 0755); err != nil {
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho v2"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(scriptPath, 0755); err != nil {
@@ -758,15 +764,15 @@ func TestInstallerDelegateWithTools(t *testing.T) {
 	}
 }
 
-func TestInstallerDocStripsOnlyTaiFrontmatter(t *testing.T) {
+func TestInstallerFilesCopiedAsIs(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Doc with tai frontmatter — installed content should be body only
-	env.SetupAsset("docs", "NOTES.md", "---\ntai-schema-version: 1\nname: Notes\n---\n\n# Project Notes\n\nSome reference material.\n")
+	// File assets are copied as-is without any frontmatter processing
+	env.SetupAsset("files", "NOTES.md", "---\ntitle: Notes\n---\n\n# Project Notes\n\nSome reference material.\n")
 
 	assets := []*config.Asset{
-		{Type: "doc", Name: "NOTES.md", SourceName: "local",
-			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "NOTES.md")},
+		{Type: "file", Name: "NOTES.md", SourceName: "local", Dest: "",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "NOTES.md")},
 	}
 
 	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
@@ -774,23 +780,23 @@ func TestInstallerDocStripsOnlyTaiFrontmatter(t *testing.T) {
 		t.Fatalf("Install failed: %v", err)
 	}
 
+	// File content should be exactly as source (no frontmatter processing)
 	content := env.ReadTargetFile("NOTES.md")
-	expected := "# Project Notes\n\nSome reference material.\n"
+	expected := "---\ntitle: Notes\n---\n\n# Project Notes\n\nSome reference material.\n"
 	if content != expected {
 		t.Errorf("content = %q, want %q", content, expected)
 	}
 }
 
-func TestInstallerDocPreservesBodyFrontmatter(t *testing.T) {
+func TestInstallerFileWithCustomDest(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Doc whose body itself contains --- blocks (e.g., wrapping a file with its own frontmatter).
-	// Only the first (tai) frontmatter is stripped; the body's --- blocks are preserved.
-	env.SetupAsset("docs", "REF.md", "---\ntai-schema-version: 1\n---\n\n---\ntitle: Reference\n---\n\n# Reference Doc\n")
+	// File with custom destination path
+	env.SetupAsset("files", "config.json", `{"key": "value"}`)
 
 	assets := []*config.Asset{
-		{Type: "doc", Name: "REF.md", SourceName: "local",
-			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "REF.md")},
+		{Type: "file", Name: "config.json", SourceName: "local", Dest: "settings",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "config.json")},
 	}
 
 	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
@@ -798,8 +804,8 @@ func TestInstallerDocPreservesBodyFrontmatter(t *testing.T) {
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	content := env.ReadTargetFile("REF.md")
-	expected := "---\ntitle: Reference\n---\n\n# Reference Doc\n"
+	content := env.ReadTargetFile("settings/config.json")
+	expected := `{"key": "value"}`
 	if content != expected {
 		t.Errorf("content = %q, want %q", content, expected)
 	}
@@ -850,12 +856,13 @@ func TestValidateAssetMetadataValid(t *testing.T) {
 	}
 }
 
-func TestValidateAssetMetadataDocAllowsMissingName(t *testing.T) {
+func TestValidateAssetMetadataFileSkipsValidation(t *testing.T) {
+	// File type assets skip frontmatter validation entirely
 	metadata := map[string]string{
 		"tai-schema-version": "1",
 	}
 
-	if err := validateAssetMetadata(metadata, "doc"); err != nil {
+	if err := validateAssetMetadata(metadata, "file"); err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
@@ -870,9 +877,10 @@ func TestValidateAssetMetadataNilMetadata(t *testing.T) {
 	}
 }
 
-func TestValidateAssetMetadataDocNilMetadataValid(t *testing.T) {
-	if err := validateAssetMetadata(nil, "doc"); err != nil {
-		t.Errorf("doc with nil metadata should be valid, got: %v", err)
+func TestValidateAssetMetadataFileNilMetadataValid(t *testing.T) {
+	// File assets don't require frontmatter
+	if err := validateAssetMetadata(nil, "file"); err != nil {
+		t.Errorf("file with nil metadata should be valid, got: %v", err)
 	}
 }
 
@@ -954,7 +962,7 @@ func TestValidateAssetMetadataIgnoresUnknownFields(t *testing.T) {
 		field     string
 	}{
 		{"persona", "tools"},     // tools not recognized on personas
-		{"doc", "tools"},         // tools not recognized on docs
+		{"file", "tools"},        // tools not recognized on files
 		{"persona", "author"},    // completely unknown field
 		{"delegate", "priority"}, // completely unknown field
 		{"skill", "version"},     // not a tai frontmatter field
@@ -1062,25 +1070,27 @@ func TestInstallerRejectsMissingNameForPersona(t *testing.T) {
 	}
 }
 
-func TestInstallerDocAllowsMissingName(t *testing.T) {
+func TestInstallerFileSkipsValidation(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Docs have no required fields — name is optional
-	env.SetupAsset("docs", "notes.md", "---\ntai-schema-version: 1\n---\n\n# Notes")
+	// Files skip frontmatter validation — content is copied as-is
+	env.SetupAsset("files", "notes.md", "---\ntai-schema-version: 1\n---\n\n# Notes")
 
 	assets := []*config.Asset{
-		{Type: "doc", Name: "notes.md", SourceName: "local",
-			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "notes.md")},
+		{Type: "file", Name: "notes.md", SourceName: "local", Dest: "",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "notes.md")},
 	}
 
 	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
 	if err != nil {
-		t.Fatalf("Install should succeed for doc without name, got: %v", err)
+		t.Fatalf("Install should succeed for file, got: %v", err)
 	}
 
+	// File content is preserved exactly (no frontmatter stripping)
 	content := env.ReadTargetFile("notes.md")
-	if content != "# Notes" {
-		t.Errorf("content = %q, want %q", content, "# Notes")
+	expected := "---\ntai-schema-version: 1\n---\n\n# Notes"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
 	}
 }
 
@@ -1089,10 +1099,10 @@ func TestInstallerDocAllowsMissingName(t *testing.T) {
 func TestInstallerOutputNeverContainsTaiSchemaVersion(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Install all asset types and verify tai-schema-version is stripped from output
+	// Install transformed asset types and verify tai-schema-version is stripped from output
+	// (Note: file type is excluded because it preserves content as-is without transformation)
 	env.SetupAsset("personas", "p.md", "---\ntai-schema-version: 1\nname: P\ndescription: A persona\n---\n\n# Persona")
 	env.SetupAsset("delegates", "d.md", "---\ntai-schema-version: 1\nname: D\ntools: Read, Bash\n---\n\n# Delegate")
-	env.SetupAsset("docs", "doc.md", "---\ntai-schema-version: 1\nname: Doc\n---\n\n# Documentation")
 
 	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "s")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
@@ -1108,8 +1118,6 @@ func TestInstallerOutputNeverContainsTaiSchemaVersion(t *testing.T) {
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "p.md")},
 		{Type: "delegate", Name: "d.md", SourceName: "local",
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "delegates", "d.md")},
-		{Type: "doc", Name: "doc.md", SourceName: "local",
-			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "doc.md")},
 		{Type: "skill", Name: "s", SourceName: "local",
 			SourcePath: skillDir, IsDir: true},
 	}
@@ -1123,7 +1131,6 @@ func TestInstallerOutputNeverContainsTaiSchemaVersion(t *testing.T) {
 	filesToCheck := []string{
 		"output-styles/p.md",
 		"agents/d.md",
-		"doc.md",
 		"skills/s/SKILL.md",
 	}
 	for _, f := range filesToCheck {
@@ -1217,24 +1224,24 @@ func TestInstallerPersonaNoSchemaVersion(t *testing.T) {
 	}
 }
 
-func TestInstallerDocNoFrontmatter(t *testing.T) {
+func TestInstallerFileNoFrontmatter(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// Doc with no frontmatter at all — should succeed, body is entire file
-	env.SetupAsset("docs", "plain.md", "# Just a doc\n\nNo frontmatter here.\n")
+	// File with no frontmatter — content is copied exactly as-is
+	env.SetupAsset("files", "plain.md", "# Just a file\n\nNo frontmatter here.\n")
 
 	assets := []*config.Asset{
-		{Type: "doc", Name: "plain.md", SourceName: "local",
-			SourcePath: filepath.Join(env.ConfigRepo, "assets", "docs", "plain.md")},
+		{Type: "file", Name: "plain.md", SourceName: "local", Dest: "",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "plain.md")},
 	}
 
 	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
 	if err != nil {
-		t.Fatalf("Install should succeed for doc without frontmatter, got: %v", err)
+		t.Fatalf("Install should succeed for file, got: %v", err)
 	}
 
 	content := env.ReadTargetFile("plain.md")
-	expected := "# Just a doc\n\nNo frontmatter here.\n"
+	expected := "# Just a file\n\nNo frontmatter here.\n"
 	if content != expected {
 		t.Errorf("content = %q, want %q", content, expected)
 	}

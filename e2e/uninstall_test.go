@@ -106,11 +106,12 @@ sources:
     path: ./assets
 `)
 
-	env.SetupAsset("docs", "CLAUDE.md", "---\ntai-schema-version: 1\n---\n\n# Wrapped\n{{existing}}\n# End")
+	env.SetupAsset("files", "CLAUDE.md", "# Wrapped\n{{existing}}\n# End")
 	env.SetupBundle("test", `name: test
 assets:
-  - type: doc
-    path: docs/CLAUDE.md
+  - type: file
+    path: files/CLAUDE.md
+    dest: ""
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -127,7 +128,8 @@ bundles:
 	adapter := claude.New(env.TargetDir)
 
 	// Install (wraps existing content)
-	asset, _ := sources["local"].ResolveAsset("docs/CLAUDE.md", config.AssetTypeDoc)
+	asset, _ := sources["local"].ResolveAsset("files/CLAUDE.md", config.AssetTypeFile)
+	asset.Dest = "" // Root level
 	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
 	if err != nil {
 		t.Fatalf("Install failed: %v", err)

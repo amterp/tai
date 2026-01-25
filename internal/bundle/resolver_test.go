@@ -17,7 +17,7 @@ func setupTestEnv(t *testing.T) (*testutil.TestEnv, map[string]*source.LoadedSou
 	env.SetupAsset("personas", "senior-swe.md", "# Senior SWE")
 	env.SetupAsset("personas", "brainstormer.md", "# Brainstormer")
 	env.SetupAsset("delegates", "code-reviewer.md", "# Code Reviewer")
-	env.SetupAsset("docs", "README.md", "# README")
+	env.SetupAsset("files", "README.md", "# README")
 
 	// Load sources
 	loader := source.NewLoader(env.ConfigRepo)
@@ -138,7 +138,7 @@ func TestResolverResolveDiamondDependency(t *testing.T) {
 			Name:    "c",
 			Bundles: []string{"a"},
 			Assets: []config.AssetEntry{
-				{Type: "doc", Path: "docs/README.md"},
+				{Type: "file", Path: "files/README.md", Dest: ""},
 			},
 		},
 		"d": {

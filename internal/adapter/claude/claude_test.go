@@ -23,7 +23,6 @@ func TestAdapterAssetMapping(t *testing.T) {
 		"persona":  "output-styles",
 		"delegate": "agents",
 		"skill":    "skills",
-		"doc":      "",
 	}
 
 	for k, v := range expected {
@@ -71,12 +70,19 @@ func TestAdapterMapAssetPath(t *testing.T) {
 			expected: "skills/my-skill",
 		},
 		{
-			asset:    &config.Asset{Type: "doc", Name: "CLAUDE.md"},
+			// File type with empty dest goes to root
+			asset:    &config.Asset{Type: "file", Name: "CLAUDE.md", Dest: ""},
 			expected: "CLAUDE.md",
 		},
 		{
-			asset:    &config.Asset{Type: "doc", Name: "RFC2119.md"},
+			// File type with empty dest goes to root
+			asset:    &config.Asset{Type: "file", Name: "RFC2119.md", Dest: ""},
 			expected: "RFC2119.md",
+		},
+		{
+			// File type with dest goes to subdirectory
+			asset:    &config.Asset{Type: "file", Name: "config.json", Dest: "config"},
+			expected: "config/config.json",
 		},
 	}
 

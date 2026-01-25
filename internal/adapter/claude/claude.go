@@ -52,7 +52,7 @@ func (a *Adapter) AssetMapping() map[string]string {
 		config.AssetTypePersona:  "output-styles",
 		config.AssetTypeDelegate: "agents",
 		config.AssetTypeSkill:    "skills",
-		config.AssetTypeDoc:      "", // Root level (CLAUDE.md, etc.)
+		// Note: "file" type uses asset.Dest directly, not this mapping
 	}
 }
 
@@ -63,6 +63,15 @@ func (a *Adapter) TargetDir() string {
 
 // MapAssetPath maps a tai asset to a Claude target path.
 func (a *Adapter) MapAssetPath(asset *config.Asset) string {
+	// File type uses Dest directly
+	if asset.Type == config.AssetTypeFile {
+		if asset.Dest == "" {
+			// Root level
+			return asset.Name
+		}
+		return filepath.Join(asset.Dest, asset.Name)
+	}
+
 	mapping := a.AssetMapping()
 	targetType, ok := mapping[asset.Type]
 	if !ok {
@@ -70,26 +79,26 @@ func (a *Adapter) MapAssetPath(asset *config.Asset) string {
 		return filepath.Join(asset.Type, asset.Name)
 	}
 
-	if targetType == "" {
-		// Docs go to root level
-		return asset.Name
-	}
-
+	// Both file and directory assets use <target-type>/<asset-name>
+	// For directories, supporting files go inside this directory
 	return filepath.Join(targetType, asset.Name)
 }
 
 // TransformContent transforms asset content into Claude's expected format.
 // Personas get name + description frontmatter.
 // Delegates and skills get name + description + tools frontmatter.
-// Docs are returned as body only (no target frontmatter).
+// Files are returned as-is (no frontmatter processing).
 func (a *Adapter) TransformContent(asset *config.ResolvedAsset) ([]byte, error) {
 	switch asset.Type {
 	case config.AssetTypePersona:
 		return a.transformPersona(asset), nil
 	case config.AssetTypeDelegate, config.AssetTypeSkill:
 		return a.transformAgent(asset), nil
+	case config.AssetTypeFile:
+		// Files are copied as-is, no transformation
+		return asset.Content, nil
 	default:
-		// Docs: body only, no target frontmatter
+		// Unknown types: return content as-is
 		return asset.Content, nil
 	}
 }
@@ -198,6 +207,11 @@ func (a *Adapter) SettingsKey(assetType string) string {
 	default:
 		return ""
 	}
+}
+
+// MainFileName returns the main file name for a directory asset type.
+func (a *Adapter) MainFileName(assetType string) string {
+	return config.MainFileName(assetType)
 }
 
 // applyShowElements sets Claude's show* flags based on tai's show elements.

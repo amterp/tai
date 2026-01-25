@@ -24,8 +24,9 @@ type Source struct {
 
 // AssetEntry represents a structured asset reference in a bundle or profile.
 type AssetEntry struct {
-	Type string `yaml:"type"` // Singular: "persona", "delegate", "skill", "doc"
+	Type string `yaml:"type"` // Singular: "persona", "delegate", "skill", "file", "statusline"
 	Path string `yaml:"path"` // "source:path" or just "path" (defaults to "local" source)
+	Dest string `yaml:"dest"` // Target destination path (required for "file" type only)
 }
 
 // UnmarshalYAML detects the old string-based asset format and provides a clear migration error.
@@ -68,11 +69,12 @@ type Profile struct {
 
 // Asset represents an atomic configuration unit.
 type Asset struct {
-	Type       string // "persona", "delegate", "skill", "doc"
+	Type       string // "persona", "delegate", "skill", "file", "statusline"
 	Name       string // Filename or directory name
 	SourceName string // Source this asset came from
 	SourcePath string // Full filesystem path to the asset
-	IsDir      bool   // True for skills (which are directories)
+	IsDir      bool   // True for directory assets (any type can be a directory)
+	Dest       string // Target destination path (used by "file" type)
 }
 
 // ResolvedAsset is an Asset with its content loaded and ready for installation.
@@ -104,8 +106,17 @@ const (
 	AssetTypePersona    = "persona"
 	AssetTypeDelegate   = "delegate"
 	AssetTypeSkill      = "skill"
-	AssetTypeDoc        = "doc"
+	AssetTypeFile       = "file"
 	AssetTypeStatusLine = "statusline"
+)
+
+// MainFileName constants for directory assets.
+// Each directory asset type has a conventional main file.
+const (
+	MainFilePersona    = "PERSONA.md"
+	MainFileDelegate   = "DELEGATE.md"
+	MainFileSkill      = "SKILL.md"
+	MainFileStatusLine = "config.yaml"
 )
 
 // IsConfigAssetType returns true for asset types that are installed as config
@@ -121,7 +132,7 @@ func IsConfigAssetType(t string) bool {
 
 // ValidAssetTypes returns all valid asset type names (singular).
 func ValidAssetTypes() []string {
-	return []string{AssetTypePersona, AssetTypeDelegate, AssetTypeSkill, AssetTypeDoc, AssetTypeStatusLine}
+	return []string{AssetTypePersona, AssetTypeDelegate, AssetTypeSkill, AssetTypeFile, AssetTypeStatusLine}
 }
 
 // IsValidAssetType checks if the given type is valid.
@@ -143,8 +154,8 @@ func AssetTypeDirName(t string) string {
 		return "delegates"
 	case AssetTypeSkill:
 		return "skills"
-	case AssetTypeDoc:
-		return "docs"
+	case AssetTypeFile:
+		return "files"
 	case AssetTypeStatusLine:
 		return "statuslines"
 	default:
@@ -161,13 +172,34 @@ func AssetTypeFromDirName(d string) string {
 		return AssetTypeDelegate
 	case "skills":
 		return AssetTypeSkill
-	case "docs":
-		return AssetTypeDoc
+	case "files":
+		return AssetTypeFile
 	case "statuslines":
 		return AssetTypeStatusLine
 	default:
 		return d
 	}
+}
+
+// MainFileName returns the main file name for a directory asset type.
+// Returns empty string for types that don't support directory mode.
+// Note: StatusLine directory support is not yet implemented, so it's excluded here.
+func MainFileName(t string) string {
+	switch t {
+	case AssetTypePersona:
+		return MainFilePersona
+	case AssetTypeDelegate:
+		return MainFileDelegate
+	case AssetTypeSkill:
+		return MainFileSkill
+	default:
+		return ""
+	}
+}
+
+// SupportsDirectory returns true if the asset type can be a directory.
+func SupportsDirectory(t string) bool {
+	return MainFileName(t) != ""
 }
 
 // StatusLineConfig represents a parsed status line configuration asset.

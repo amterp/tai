@@ -17,13 +17,13 @@ tai is a CLI tool for managing AI agent configurations. It provides a framework 
 | **Persona** | A behavioral style/role | output-style |
 | **Delegate** | A specialized helper for tasks | agents (sub-agents) |
 | **Skill** | A procedural capability | skills |
-| **Doc** | Reference material | CLAUDE.md, supporting docs |
+| **File** | Loose file copied as-is | CLAUDE.md, supporting docs |
 | **StatusLine** | Status bar configuration | statusLine entry in settings.json |
 | **MCP** | Model Context Protocol server | MCP server entry in config |
 | **Hook** | Event-triggered shell command | Hook entry in settings |
 
 Additional terms:
-- **Asset**: An atomic configuration unit—a single persona, delegate, skill, doc, MCP, or hook.
+- **Asset**: An atomic configuration unit—a single persona, delegate, skill, file, MCP, or hook.
 - **Bundle**: A named collection of assets. Acts as a "shopping list" for composing related assets.
 - **Profile**: A bundle bound to a specific target. Profiles are what you actually install and run.
 - **Source**: A location providing assets—a local directory, another tai config repo, or (future) a git remote.
@@ -36,10 +36,10 @@ Assets come in two shapes based on how they're installed:
 
 | Shape | Asset Types | How Defined | How Installed |
 |-------|-------------|-------------|---------------|
-| **File assets** | personas, delegates, skills, docs | Files/directories in `assets/` | Copied to target paths |
+| **File assets** | personas, delegates, skills, files | Files/directories in `assets/` | Copied to target paths |
 | **Config assets** | statuslines, mcps, hooks | YAML in `assets/` | Merged into target JSON config files |
 
-**File assets** are the traditional model: you define a file (or directory for skills), and tai copies it to the appropriate location in the target's config directory.
+**File assets** are the traditional model: you define a file (or directory for personas, delegates, skills), and tai copies it to the appropriate location in the target's config directory. The `file` type copies content as-is without any transformation.
 
 **Config assets** are entries that get merged into JSON configuration files. The target (Claude Code, Cursor, etc.) reads these JSON files at runtime. tai must read the existing JSON, merge in the new entries, and write it back—being careful to preserve entries it doesn't manage.
 
@@ -82,7 +82,7 @@ This distinction matters because:
                               ▼ provides
 ┌─────────────────────────────────────────────────────────────┐
 │                         Assets                               │
-│  File: personas/, delegates/, skills/, docs/                │
+│  File: personas/, delegates/, skills/, files/               │
 │  Config: statuslines/, mcps/, hooks/                        │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -144,7 +144,7 @@ my-tai-config/
 │   │   └── pair-programmer.md
 │   ├── skills/           # Procedural capabilities (→ skills in Claude)
 │   │   └── council-participant/   # Skills follow agentskills.io standard
-│   ├── docs/             # Reference material (→ CLAUDE.md etc.)
+│   ├── files/            # Loose files copied as-is (→ target root or dest)
 │   │   ├── CLAUDE.md
 │   │   └── RFC2119.md
 │   ├── statuslines/      # Status line configs (→ statusLine in settings.json)
@@ -215,10 +215,12 @@ assets:
     path: personas/senior-swe.md
   - type: delegate
     path: delegates/code-reviewer.md
-  - type: doc
-    path: docs/CLAUDE.md
-  - type: doc
-    path: docs/RFC2119.md
+  - type: file
+    path: files/CLAUDE.md
+    dest: ""           # Empty dest = target root
+  - type: file
+    path: files/RFC2119.md
+    dest: ""           # Empty dest = target root
 ```
 
 ```yaml
@@ -283,9 +285,9 @@ scope: project  # or "user" or "local"
 
 ### File Asset Formats
 
-#### Tai Frontmatter (All File Assets)
+#### Tai Frontmatter (Personas, Delegates, Skills)
 
-File assets (personas, delegates, skills, docs) use YAML frontmatter to declare metadata. During installation, tai strips its own frontmatter and the adapter renders target-specific frontmatter (or none, for docs). Docs may have no frontmatter at all.
+Personas, delegates, and skills use YAML frontmatter to declare metadata. During installation, tai strips its own frontmatter and the adapter renders target-specific frontmatter. The `file` type is different—it copies content as-is without any frontmatter transformation.
 
 ```markdown
 ---
@@ -300,17 +302,19 @@ You are a senior software engineer...
 
 **Frontmatter fields:**
 
-| Field | Personas | Delegates | Skills | Docs |
-|-------|----------|-----------|--------|------|
-| `name` | required | required | required | optional |
-| `description` | optional | optional | optional | optional |
-| `tools` | — | optional | optional | — |
+| Field | Personas | Delegates | Skills |
+|-------|----------|-----------|--------|
+| `name` | required | required | required |
+| `description` | optional | optional | optional |
+| `tools` | — | optional | optional |
 
 - `name`: Human-readable display name.
 - `description`: Short description of what this asset does.
 - `tools`: Comma-separated list of tools the delegate/skill may use.
 
 Unknown fields are silently ignored to support forward compatibility and external sources with their own metadata. The schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file.
+
+**Note:** The `file` type has no frontmatter requirements—content is copied exactly as-is.
 
 #### Adapter Transformation (Claude)
 
@@ -319,15 +323,60 @@ Unknown fields are silently ignored to support forward compatibility and externa
 | Personas | `name`, `description` | Claude output-style format |
 | Delegates | `name`, `description`, `tools` | Claude agent format |
 | Skills | `name`, `description`, `tools` | Same as delegates (SKILL.md in directories) |
-| Docs | none | Body only, no target frontmatter |
+| Files | (none—content unchanged) | Copied byte-for-byte to `dest` location |
 
-#### Double Frontmatter in Docs
+#### The `file` Type
 
-If a doc's body itself contains `---` blocks (e.g., a doc wrapping a file with its own frontmatter), only the first frontmatter block (tai's) is stripped. The body's `---` blocks are preserved verbatim.
+The `file` type copies content exactly as-is—no frontmatter parsing, no transformation. Use it for loose files that don't belong to a specific asset category:
 
-#### Skills
+```yaml
+assets:
+  - type: file
+    path: files/CLAUDE.md
+    dest: ""              # Required: empty = target root (~/.claude/)
 
-Skills are directories with a `SKILL.md` that uses tai frontmatter. During installation, the SKILL.md is transformed with target-specific frontmatter (name, description, tools). See the [Creating Skills](#creating-skills) section.
+  - type: file
+    path: files/config.json
+    dest: "config"        # Goes to ~/.claude/config/config.json
+```
+
+**Key points:**
+- `dest` field is **required** for file type—forces explicit intent about where the file lands
+- `dest` is only valid for `file` type (rejected on other types)
+- Empty `dest` (`""`) means target root directory
+- Content is preserved byte-for-byte (frontmatter, if any, is NOT stripped)
+
+#### Directory Assets
+
+Personas, delegates, and skills can all be directories with a main file plus supporting files. This is useful when an asset needs additional resources (scripts, references, examples).
+
+| Asset Type | Main File | Directory Structure |
+|------------|-----------|---------------------|
+| Persona | `PERSONA.md` | `personas/my-persona/PERSONA.md` + supporting files |
+| Delegate | `DELEGATE.md` | `delegates/my-delegate/DELEGATE.md` + supporting files |
+| Skill | `SKILL.md` | `skills/my-skill/SKILL.md` + supporting files |
+
+During installation:
+1. The main file (PERSONA.md, DELEGATE.md, or SKILL.md) is transformed with target-specific frontmatter
+2. Supporting files are copied as-is, preserving directory structure
+
+**Example persona directory:**
+```
+assets/personas/senior-swe/
+├── PERSONA.md              # Main file (transformed)
+└── references/
+    └── coding-standards.md # Supporting file (copied as-is)
+```
+
+Installs to:
+```
+~/.claude/output-styles/senior-swe/
+├── senior-swe.md           # Main file renamed to match directory
+└── references/
+    └── coding-standards.md
+```
+
+Skills follow the agentskills.io standard and have additional features like includes. See the [Skill Includes](#skill-includes) section.
 
 ### Config Asset Definitions
 
@@ -643,7 +692,7 @@ The Claude adapter:
   - `personas/` → `output-styles/`
   - `delegates/` → `agents/`
   - `skills/` → `skills/`
-  - `docs/` → root level (CLAUDE.md, etc.)
+  - `files/` → location specified by `dest` field (empty = root level)
 - Installation is file copy (not symlink for reliability)
 - May use `--add-dir` for run-time config in future
 
@@ -715,7 +764,7 @@ files:
   # Files using {{existing}} templating track their backup
   - path: CLAUDE.md
     source: local
-    source_path: /Users/amterp/my-tai-config/assets/docs/CLAUDE.md
+    source_path: /Users/amterp/my-tai-config/assets/files/CLAUDE.md
     checksum: sha256:789ghi...
     backup_path: /Users/amterp/.claude/CLAUDE.md.tai-backup
     is_templated: true
@@ -1101,7 +1150,7 @@ bundles:
 ### Included in v0.1
 
 - [x] Config repo structure (tai.yaml, bundles/, profiles/, assets/)
-- [x] Target-agnostic asset structure (personas/, delegates/, skills/, docs/)
+- [x] Target-agnostic asset structure (personas/, delegates/, skills/, files/)
 - [x] Source types: local path, other tai repo
 - [x] Bundle and profile resolution with circular reference detection (fail-fast)
 - [x] Diamond dependency deduplication

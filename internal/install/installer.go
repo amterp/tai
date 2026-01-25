@@ -530,14 +530,14 @@ func (i *Installer) resolveAsset(
 	}
 
 	if asset.IsDir {
-		// Directory (skill) - compute directory checksum
+		// Directory asset - compute directory checksum
 		checksum, err := ComputeDirChecksum(asset.SourcePath)
 		if err != nil {
 			return nil, err
 		}
 		resolved.Checksum = checksum
 	} else {
-		// File - read content and capture permissions
+		// File asset - read content and capture permissions
 		srcInfo, err := os.Stat(asset.SourcePath)
 		if err != nil {
 			return nil, err
@@ -575,7 +575,14 @@ func (i *Installer) resolveAsset(
 			content = processed
 		}
 
-		// Parse and validate frontmatter for all file asset types
+		// File type assets skip frontmatter processing - they're copied as-is
+		if asset.Type == config.AssetTypeFile {
+			resolved.Content = content
+			resolved.Checksum = ComputeChecksum(resolved.Content)
+			return resolved, nil
+		}
+
+		// Parse and validate frontmatter for all other file asset types
 		parsed, err := frontmatter.Parse(content)
 		if err != nil {
 			return nil, fmt.Errorf("parsing frontmatter: %w", err)
@@ -648,32 +655,7 @@ func (i *Installer) installAsset(resolved *config.ResolvedAsset, fullTargetPath 
 	}
 
 	if resolved.IsDir {
-		// For skill directories, exclude the manifest file (it's a build-time artifact)
-		if err := copyDirExcluding(resolved.SourcePath, fullTargetPath, SkillManifestFilename); err != nil {
-			return err
-		}
-
-		// Load and process skill manifest if present
-		manifest, err := config.LoadSkillManifest(resolved.SourcePath)
-		if err != nil {
-			return fmt.Errorf("loading skill manifest: %w", err)
-		}
-		if manifest != nil && len(manifest.Include) > 0 {
-			resolver := NewIncludeResolver(i.sources, i.httpClient)
-			if err := resolver.ResolveIncludes(manifest, fullTargetPath); err != nil {
-				return fmt.Errorf("resolving includes: %w", err)
-			}
-		}
-
-		// Detect field mapping for SKILL.md from includes
-		fieldMapping := findSkillMdFields(manifest)
-
-		// Transform SKILL.md with target-specific frontmatter
-		if err := i.transformSkillMd(resolved, fullTargetPath, adap, fieldMapping); err != nil {
-			return err
-		}
-
-		return nil
+		return i.installDirAsset(resolved, fullTargetPath, adap)
 	}
 
 	// Write file content, preserving source permissions
@@ -688,38 +670,130 @@ func (i *Installer) installAsset(resolved *config.ResolvedAsset, fullTargetPath 
 	return os.Chmod(fullTargetPath, mode)
 }
 
-// transformSkillMd reads SKILL.md from the installed skill directory, parses
-// and validates its tai frontmatter, transforms it through the adapter, and
-// writes the result back. This gives skill SKILL.md files target-specific
-// frontmatter (name, description, tools) just like standalone file assets.
+// installDirAsset installs a directory asset (persona, delegate, skill, etc.).
+func (i *Installer) installDirAsset(resolved *config.ResolvedAsset, fullTargetPath string, adap adapter.Adapter) error {
+	mainFileName := adap.MainFileName(resolved.Type)
+	if mainFileName == "" {
+		return fmt.Errorf("directory assets not supported for type %q", resolved.Type)
+	}
+
+	// For skills, we need special handling:
+	// 1. Copy directory INCLUDING the main file (but excluding tai.yaml)
+	// 2. Resolve includes (which may replace the main file)
+	// 3. Transform the main file from the installed location
+	if resolved.Type == config.AssetTypeSkill {
+		return i.installSkillDirAsset(resolved, fullTargetPath, adap, mainFileName)
+	}
+
+	// For other directory types (persona, delegate):
+	// 1. Copy directory contents, excluding the main file
+	// 2. Copy and transform the main file from source
+	if err := copyDirExcluding(resolved.SourcePath, fullTargetPath, mainFileName); err != nil {
+		return err
+	}
+
+	// Transform the main file (read from source, write to target)
+	return i.transformMainFileFromSource(resolved, fullTargetPath, adap, mainFileName)
+}
+
+// installSkillDirAsset handles the special case of skill directories.
+// Skills need to copy the directory first, resolve includes (which may replace files),
+// then transform the main file from its installed location.
+func (i *Installer) installSkillDirAsset(resolved *config.ResolvedAsset, fullTargetPath string, adap adapter.Adapter, mainFileName string) error {
+	// Copy directory excluding only the manifest file (main file gets copied)
+	if err := copyDirExcluding(resolved.SourcePath, fullTargetPath, SkillManifestFilename); err != nil {
+		return err
+	}
+
+	// Load and process skill manifest if present
+	manifest, err := config.LoadSkillManifest(resolved.SourcePath)
+	if err != nil {
+		return fmt.Errorf("loading skill manifest: %w", err)
+	}
+	if manifest != nil && len(manifest.Include) > 0 {
+		resolver := NewIncludeResolver(i.sources, i.httpClient)
+		if err := resolver.ResolveIncludes(manifest, fullTargetPath); err != nil {
+			return fmt.Errorf("resolving includes: %w", err)
+		}
+	}
+
+	// Detect field mapping for SKILL.md from includes
+	fieldMapping := findSkillMdFields(manifest)
+
+	// Transform SKILL.md from installed location (after includes may have replaced it)
+	return i.transformMainFileInPlace(resolved, fullTargetPath, adap, mainFileName, fieldMapping)
+}
+
+// transformMainFileFromSource reads a main file from the source directory,
+// transforms it, and writes to the target directory.
+// Used for persona and delegate directory assets.
+func (i *Installer) transformMainFileFromSource(resolved *config.ResolvedAsset, dirTargetPath string, adap adapter.Adapter, mainFileName string) error {
+	srcMainFile := filepath.Join(resolved.SourcePath, mainFileName)
+	dstMainFile := filepath.Join(dirTargetPath, mainFileName)
+
+	srcInfo, err := os.Stat(srcMainFile)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("main file %s not found in %s directory %q", mainFileName, resolved.Type, resolved.Name)
+	}
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", mainFileName, err)
+	}
+	mode := srcInfo.Mode().Perm()
+
+	content, err := os.ReadFile(srcMainFile)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", mainFileName, err)
+	}
+
+	transformed, err := i.transformMainFileContent(content, resolved.Type, resolved.Name, mainFileName, nil, adap)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(dstMainFile, transformed, mode)
+}
+
+// transformMainFileInPlace reads a main file from the target directory (after
+// includes may have copied/replaced it), transforms it, and writes it back.
+// Used for skill directory assets.
 //
 // If fieldMapping is non-nil, it remaps source field names to tai field names
 // before validation — e.g., {"name": "title"} renames the source's "title"
 // field to tai's "name" field.
-func (i *Installer) transformSkillMd(resolved *config.ResolvedAsset, skillTargetPath string, adap adapter.Adapter, fieldMapping map[string]string) error {
-	skillMdPath := filepath.Join(skillTargetPath, "SKILL.md")
-	info, err := os.Stat(skillMdPath)
+func (i *Installer) transformMainFileInPlace(resolved *config.ResolvedAsset, dirTargetPath string, adap adapter.Adapter, mainFileName string, fieldMapping map[string]string) error {
+	mainFilePath := filepath.Join(dirTargetPath, mainFileName)
+
+	info, err := os.Stat(mainFilePath)
 	if os.IsNotExist(err) {
-		return nil // No SKILL.md — nothing to transform
+		return nil // No main file — nothing to transform
 	}
 	if err != nil {
-		return fmt.Errorf("reading SKILL.md: %w", err)
+		return fmt.Errorf("reading %s: %w", mainFileName, err)
 	}
 	mode := info.Mode().Perm()
 
-	content, err := os.ReadFile(skillMdPath)
+	content, err := os.ReadFile(mainFilePath)
 	if err != nil {
-		return fmt.Errorf("reading SKILL.md: %w", err)
+		return fmt.Errorf("reading %s: %w", mainFileName, err)
 	}
 
+	transformed, err := i.transformMainFileContent(content, resolved.Type, resolved.Name, mainFileName, fieldMapping, adap)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(mainFilePath, transformed, mode)
+}
+
+// transformMainFileContent parses, validates, and transforms main file content.
+// This is the shared logic used by both transformMainFileFromSource and transformMainFileInPlace.
+func (i *Installer) transformMainFileContent(content []byte, assetType, assetName, mainFileName string, fieldMapping map[string]string, adap adapter.Adapter) ([]byte, error) {
 	parsed, err := frontmatter.Parse(content)
 	if err != nil {
-		return fmt.Errorf("parsing SKILL.md frontmatter: %w", err)
+		return nil, fmt.Errorf("parsing %s frontmatter: %w", mainFileName, err)
 	}
 
 	// Apply field mapping: renames source field names to tai field names.
-	// We snapshot values first to avoid non-determinism from map iteration
-	// order when mappings reference each other's fields.
 	if len(fieldMapping) > 0 {
 		if parsed.Metadata == nil {
 			parsed.Metadata = make(map[string]string)
@@ -746,15 +820,15 @@ func (i *Installer) transformSkillMd(resolved *config.ResolvedAsset, skillTarget
 		}
 	}
 
-	if err := validateAssetMetadata(parsed.Metadata, config.AssetTypeSkill); err != nil {
-		return fmt.Errorf("skill %s/SKILL.md: %w", resolved.Name, err)
+	if err := validateAssetMetadata(parsed.Metadata, assetType); err != nil {
+		return nil, fmt.Errorf("%s %s/%s: %w", assetType, assetName, mainFileName, err)
 	}
 
 	// Build a synthetic ResolvedAsset so the adapter can transform it
 	synthetic := &config.ResolvedAsset{
 		Asset: config.Asset{
-			Type: config.AssetTypeSkill,
-			Name: "SKILL.md",
+			Type: assetType,
+			Name: mainFileName,
 		},
 		Content:  parsed.Body,
 		Metadata: parsed.Metadata,
@@ -762,11 +836,12 @@ func (i *Installer) transformSkillMd(resolved *config.ResolvedAsset, skillTarget
 
 	transformed, err := adap.TransformContent(synthetic)
 	if err != nil {
-		return fmt.Errorf("transforming SKILL.md: %w", err)
+		return nil, fmt.Errorf("transforming %s: %w", mainFileName, err)
 	}
 
-	return os.WriteFile(skillMdPath, transformed, mode)
+	return transformed, nil
 }
+
 
 // findSkillMdFields returns the Fields mapping from the include that targets
 // SKILL.md at the root of the skill directory, if any.

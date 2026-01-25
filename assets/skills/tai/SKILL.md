@@ -4,18 +4,18 @@ description: >
   Manage AI agent configurations with the tai CLI. Use this skill when asked to:
   manage tai config repos, sources, bundles, or profiles; install or uninstall
   configurations to targets like Claude Code; create, edit, or organize personas,
-  delegates, skills, or docs; or create new skills for tai-managed configurations.
+  delegates, skills, or files; or create new skills for tai-managed configurations.
 ---
 
 # Tai Configuration Management
 
-Tai organizes AI agent configurations (personas, delegates, skills, docs) into composable, version-controlled assets that install to targets like Claude Code.
+Tai organizes AI agent configurations (personas, delegates, skills, files) into composable, version-controlled assets that install to targets like Claude Code.
 
 ## Core Concepts
 
 | Term | Purpose |
 |------|---------|
-| **Asset** | Atomic config unit: persona, delegate, skill, or doc |
+| **Asset** | Atomic config unit: persona, delegate, skill, or file |
 | **Bundle** | Named collection of assets (a "shopping list") |
 | **Profile** | Bundle(s) bound to a specific target |
 | **Source** | Location providing assets (local dir or tai repo) |
@@ -32,7 +32,7 @@ Tai uses target-agnostic terminology. Here's how asset types map to Claude Code:
 | `persona` | `output-styles/` | Behavioral styles and roles |
 | `delegate` | `agents/` | Specialized helper agents |
 | `skill` | `skills/` | Procedural capabilities |
-| `doc` | (root) | Reference documentation |
+| `file` | (per `dest` field) | Loose files copied as-is |
 
 ## CLI Commands
 
@@ -89,7 +89,7 @@ my-tai-config/
 │   ├── personas/         # Behavioral styles (→ output-styles)
 │   ├── delegates/        # Specialized helpers (→ agents)
 │   ├── skills/           # Procedural capabilities (directories)
-│   └── docs/             # Reference material
+│   └── files/            # Loose files (copied as-is to dest)
 ├── bundles/              # Bundle definitions (YAML)
 └── profiles/             # Profile definitions (YAML)
 ```
@@ -127,8 +127,9 @@ assets:
     path: personas/senior-swe.md
   - type: delegate
     path: delegates/code-reviewer.md
-  - type: doc
-    path: docs/CLAUDE.md
+  - type: file
+    path: files/CLAUDE.md
+    dest: ""                       # Required for file type; empty = target root
   - type: skill
     path: skills/my-skill          # Reference skill by directory name
 
@@ -227,13 +228,15 @@ You are a senior software engineer...
 
 ## Frontmatter Fields
 
-| Field | Personas | Delegates | Skills | Docs |
-|-------|----------|-----------|--------|------|
-| `name` | required | required | required | optional |
-| `description` | optional | optional | optional | optional |
-| `tools` | — | optional | optional | — |
+| Field | Personas | Delegates | Skills |
+|-------|----------|-----------|--------|
+| `name` | required | required | required |
+| `description` | optional | optional | optional |
+| `tools` | — | optional | optional |
 
 Unknown fields are silently ignored. Schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file.
+
+**Note:** The `file` type has no frontmatter requirements—content is copied exactly as-is.
 
 ### YAML Escaping for Descriptions
 
@@ -250,15 +253,26 @@ description: >-
 
 The `>-` indicator means "folded block scalar, strip trailing newlines" — the text on subsequent lines is treated as a single string.
 
-## Docs Format
+## Files Format
 
-Docs can have no frontmatter at all — the entire file becomes the body. During installation, only the body is written (no target frontmatter).
+Files are copied exactly as-is—no frontmatter parsing, no transformation. The `dest` field is required and specifies where the file lands:
 
-```markdown
-# Project Instructions
+```yaml
+# In a bundle or profile
+assets:
+  - type: file
+    path: files/CLAUDE.md
+    dest: ""              # Empty = target root (~/.claude/CLAUDE.md)
 
-Reference material here...
+  - type: file
+    path: files/config.json
+    dest: "config"        # Goes to ~/.claude/config/config.json
 ```
+
+**Key points:**
+- `dest` is required for file type
+- Empty `dest` (`""`) means target root directory
+- Content is preserved byte-for-byte
 
 ---
 
@@ -377,7 +391,7 @@ description: >
   Manage AI agent configurations with the tai CLI. Use when asked to:
   manage tai config repos, sources, bundles, or profiles; install or
   uninstall configurations to targets; create or edit personas,
-  delegates, skills, or docs.
+  delegates, skills, or files.
 ```
 
 **Bad:**
@@ -455,7 +469,7 @@ This keeps skills portable—the `tai.yaml` in the skill references source names
 
 `tai-schema-version` is no longer recognized as a special field. If present in existing files, it's treated as an unknown field and silently ignored. Schema version is tracked at the repo level (`version: 1` in `tai.yaml`).
 
-The only hard requirement is `name` (for personas, delegates, and skills). Docs can have no frontmatter at all.
+The only hard requirement is `name` (for personas, delegates, and skills). Files have no frontmatter requirements—content is copied as-is.
 
 ---
 
@@ -480,9 +494,35 @@ assets:
 ```
 
 ### Valid types
-`persona`, `delegate`, `skill`, `doc`
+`persona`, `delegate`, `skill`, `file`
 
 ### Mechanical conversion
 For each asset string in `assets:`:
-1. Determine the type from the first path segment (`personas/` → `persona`, `delegates/` → `delegate`, `skills/` → `skill`, `docs/` → `doc`)
+1. Determine the type from the first path segment (`personas/` → `persona`, `delegates/` → `delegate`, `skills/` → `skill`, `files/` → `file`)
 2. Replace the string with a mapping: `type: <singular>` and `path: <original string>`
+3. For `file` type, add `dest: ""` (or appropriate destination)
+
+---
+
+## Migration: doc type replaced with file type (2026-01-25)
+
+The `doc` type has been replaced with `file`. The key difference:
+- `file` requires explicit `dest` field (where the file lands)
+- Content is copied exactly as-is (no frontmatter processing)
+
+### Before
+```yaml
+assets:
+  - type: doc
+    path: docs/CLAUDE.md
+```
+
+### After
+```yaml
+assets:
+  - type: file
+    path: files/CLAUDE.md
+    dest: ""              # Required: empty = target root
+```
+
+If you use `type: doc`, tai will show an error with migration instructions.

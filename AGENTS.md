@@ -35,16 +35,16 @@ golangci-lint run ./...          # Runs errcheck, govet, staticcheck, unused, in
 | **Persona** | Behavioral style/role | output-style |
 | **Delegate** | Specialized helper | agents (sub-agents) |
 | **Skill** | Procedural capability | skills |
-| **Doc** | Reference material | CLAUDE.md, .cursorrules |
+| **File** | Loose file copied as-is | CLAUDE.md, .cursorrules |
 | **StatusLine** | Status bar configuration | statusLine in settings.json |
 | **MCP** | Model Context Protocol server | MCP server entry (v0.2) |
 | **Hook** | Event-triggered command | Hook in settings (v0.2) |
-| **Asset** | Atomic configuration unit | Single persona/delegate/skill/doc/statusline/mcp/hook |
+| **Asset** | Atomic configuration unit | Single persona/delegate/skill/file/statusline/mcp/hook |
 | **Bundle** | Named collection of assets | Shopping list of related assets |
 | **Profile** | Bundle(s) + target | What you actually install |
 | **Source** | Asset provider | Local dir, tai repo |
 
-**Asset shapes:** File assets (personas, delegates, skills, docs) are copied to target paths. Config assets (statuslines, mcps, hooks) are merged into target JSON config files.
+**Asset shapes:** File assets (personas, delegates, skills, files) are copied to target paths. Config assets (statuslines, mcps, hooks) are merged into target JSON config files.
 
 ### Data Flow
 
@@ -83,7 +83,7 @@ Adapters translate tai concepts to target-specific formats. They implement `Tran
 - `personas/` → `output-styles/` (renders `name`, `description` frontmatter)
 - `delegates/` → `agents/` (renders `name`, `description`, `tools` frontmatter)
 - `skills/` → `skills/` (SKILL.md gets `name`, `description`, `tools` frontmatter)
-- `docs/` → root level (body only, no target frontmatter)
+- `files/` → location specified by `dest` field (content copied as-is, no transformation)
 - `statuslines/` → `statusLine` key in `settings.json` (tai format → Claude format)
 - `mcps/` → entries in `.mcp.json` or `~/.claude.json` (v0.2)
 - `hooks/` → entries in `settings.json` (v0.2)
@@ -94,10 +94,10 @@ Adapters translate tai concepts to target-specific formats. They implement `Tran
 my-tai-config/
 ├── tai.yaml            # Config manifest (version, sources, default_profile)
 ├── assets/             # Target-agnostic assets
-│   ├── personas/       # File assets
+│   ├── personas/       # File assets (can be files or directories)
 │   ├── delegates/
 │   ├── skills/
-│   ├── docs/
+│   ├── files/          # Loose files (copied as-is to dest)
 │   ├── statuslines/    # Config assets (settings.json)
 │   ├── mcps/           # Config assets (v0.2)
 │   └── hooks/

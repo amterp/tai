@@ -84,7 +84,7 @@ func (r *Resolver) resolveProfile(profile *config.Profile) (*ResolvedProfile, er
 	order := []string{}
 
 	for _, asset := range resolved.Assets {
-		key := asset.Type + "/" + asset.Name
+		key := assetDedupeKey(asset)
 		if _, exists := assetMap[key]; !exists {
 			order = append(order, key)
 		}
@@ -98,7 +98,7 @@ func (r *Resolver) resolveProfile(profile *config.Profile) (*ResolvedProfile, er
 			return nil, fmt.Errorf("profile %q: %w", profile.Name, err)
 		}
 
-		key := asset.Type + "/" + asset.Name
+		key := assetDedupeKey(asset)
 		if existing, exists := assetMap[key]; exists {
 			r.logger.Printf("Override: %s (bundle -> profile direct)", existing.Type+"/"+existing.Name)
 		}
@@ -136,6 +136,9 @@ func (r *Resolver) resolveAssetRef(entry config.AssetEntry) (*config.Asset, erro
 		return nil, fmt.Errorf("resolving asset %q from source %q: %w", assetPath, sourceName, err)
 	}
 
+	// Propagate Dest from entry to asset (used by file type)
+	asset.Dest = entry.Dest
+
 	return asset, nil
 }
 
@@ -152,4 +155,14 @@ func (r *Resolver) ListProfiles() []string {
 func (r *Resolver) GetProfile(name string) (*config.Profile, bool) {
 	p, ok := r.profiles[name]
 	return p, ok
+}
+
+// assetDedupeKey returns a key for deduplicating assets.
+// For file types, the key includes dest since the same file can be installed
+// to multiple destinations. For other types, it's just type/name.
+func assetDedupeKey(asset *config.Asset) string {
+	if asset.Type == config.AssetTypeFile {
+		return asset.Type + "/" + asset.Name + "@" + asset.Dest
+	}
+	return asset.Type + "/" + asset.Name
 }

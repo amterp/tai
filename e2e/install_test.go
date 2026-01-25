@@ -45,11 +45,7 @@ tools: Read, Glob, Grep
 You are a code reviewer.
 `)
 
-	env.SetupAsset("docs", "CLAUDE.md", `---
-tai-schema-version: 1
----
-
-# Project Instructions
+	env.SetupAsset("files", "CLAUDE.md", `# Project Instructions
 
 These are the project instructions.
 `)
@@ -61,8 +57,9 @@ assets:
     path: personas/senior-swe.md
   - type: delegate
     path: delegates/code-reviewer.md
-  - type: doc
-    path: docs/CLAUDE.md
+  - type: file
+    path: files/CLAUDE.md
+    dest: ""
 `)
 
 	env.SetupProfile("work", `name: work
@@ -93,6 +90,7 @@ bundles:
 		sourceName, assetPath := config.ParseAssetReference(entry.Path)
 		src := sources[sourceName]
 		asset, _ := src.ResolveAsset(assetPath, entry.Type)
+		asset.Dest = entry.Dest // Propagate dest for file type
 		assets = append(assets, asset)
 	}
 
@@ -132,11 +130,11 @@ bundles:
 		t.Errorf("delegate content = %q, want %q", delegateContent, expectedDelegate)
 	}
 
-	// Verify doc content is body only (tai frontmatter stripped, no target frontmatter)
-	docContent := env.ReadTargetFile("CLAUDE.md")
-	expectedDoc := "# Project Instructions\n\nThese are the project instructions.\n"
-	if docContent != expectedDoc {
-		t.Errorf("doc content = %q, want %q", docContent, expectedDoc)
+	// Verify file content is copied as-is (no frontmatter processing)
+	fileContent := env.ReadTargetFile("CLAUDE.md")
+	expectedFile := "# Project Instructions\n\nThese are the project instructions.\n"
+	if fileContent != expectedFile {
+		t.Errorf("file content = %q, want %q", fileContent, expectedFile)
 	}
 
 	// Verify manifest was created
@@ -281,11 +279,12 @@ sources:
     path: ./assets
 `)
 
-	env.SetupAsset("docs", "CLAUDE.md", "---\ntai-schema-version: 1\n---\n\n# Header\n\n{{existing}}\n\n# Footer")
+	env.SetupAsset("files", "CLAUDE.md", "# Header\n\n{{existing}}\n\n# Footer")
 	env.SetupBundle("test", `name: test
 assets:
-  - type: doc
-    path: docs/CLAUDE.md
+  - type: file
+    path: files/CLAUDE.md
+    dest: ""
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -301,7 +300,8 @@ bundles:
 	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
 	adapter := claude.New(env.TargetDir)
 
-	asset, _ := sources["local"].ResolveAsset("docs/CLAUDE.md", config.AssetTypeDoc)
+	asset, _ := sources["local"].ResolveAsset("files/CLAUDE.md", config.AssetTypeFile)
+	asset.Dest = "" // Root level
 	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
 	if err != nil {
 		t.Fatalf("Install failed: %v", err)
@@ -506,7 +506,7 @@ description: No schema version needed
 Works without tai-schema-version.
 `)
 
-	env.SetupAsset("docs", "bare.md", `# Bare Doc
+	env.SetupAsset("files", "bare.md", `# Bare Doc
 
 No frontmatter at all.
 `)
@@ -515,8 +515,9 @@ No frontmatter at all.
 assets:
   - type: persona
     path: personas/modern.md
-  - type: doc
-    path: docs/bare.md
+  - type: file
+    path: files/bare.md
+    dest: ""
 `)
 	env.SetupProfile("test", `name: test
 target: claude
@@ -536,14 +537,16 @@ bundles:
 	for _, entry := range []struct {
 		path     string
 		assetTyp string
+		dest     string
 	}{
-		{"personas/modern.md", config.AssetTypePersona},
-		{"docs/bare.md", config.AssetTypeDoc},
+		{"personas/modern.md", config.AssetTypePersona, ""},
+		{"files/bare.md", config.AssetTypeFile, ""},
 	} {
 		asset, err := sources["local"].ResolveAsset(entry.path, entry.assetTyp)
 		if err != nil {
 			t.Fatalf("ResolveAsset(%s): %v", entry.path, err)
 		}
+		asset.Dest = entry.dest
 		assets = append(assets, asset)
 	}
 
@@ -563,11 +566,11 @@ bundles:
 		t.Errorf("persona content = %q, want %q", personaContent, expectedPersona)
 	}
 
-	// Doc with no frontmatter — body is entire file
-	docContent := env.ReadTargetFile("bare.md")
-	expectedDoc := "# Bare Doc\n\nNo frontmatter at all.\n"
-	if docContent != expectedDoc {
-		t.Errorf("doc content = %q, want %q", docContent, expectedDoc)
+	// File asset with no frontmatter — copied as-is
+	fileContent := env.ReadTargetFile("bare.md")
+	expectedFile := "# Bare Doc\n\nNo frontmatter at all.\n"
+	if fileContent != expectedFile {
+		t.Errorf("file content = %q, want %q", fileContent, expectedFile)
 	}
 }
 

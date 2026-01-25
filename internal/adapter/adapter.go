@@ -54,6 +54,11 @@ type Adapter interface {
 	// settings file. For example, Claude uses "statusLine" for statusline configs.
 	// Returns empty string if the asset type doesn't map to a settings key.
 	SettingsKey(assetType string) string
+
+	// MainFileName returns the main file name for a directory asset type.
+	// For example, Claude returns "SKILL.md" for skills, "PERSONA.md" for personas.
+	// Returns empty string for types that don't support directory mode.
+	MainFileName(assetType string) string
 }
 
 // Registry holds all registered adapters.

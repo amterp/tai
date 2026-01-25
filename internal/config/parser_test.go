@@ -458,3 +458,38 @@ bundles:
 		t.Error("missing 'work' profile")
 	}
 }
+
+func TestValidateDestPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		dest    string
+		wantErr bool
+	}{
+		// Valid paths
+		{"empty string (root)", "", false},
+		{"simple directory", "config", false},
+		{"nested directory", "config/sub", false},
+		{"filename with dots", "version..1", false},
+		{"filename with multiple dots", "foo..bar..baz", false},
+		{"current dir explicit", ".", false},
+
+		// Invalid paths
+		{"absolute path", "/etc/passwd", true},
+		{"path traversal at start", "../etc/passwd", true},
+		{"path traversal in middle", "foo/../bar", true},
+		{"path traversal at end", "foo/bar/..", true},
+		{"just path traversal", "..", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateDestPath(tt.dest)
+			if tt.wantErr && err == nil {
+				t.Error("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}

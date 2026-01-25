@@ -19,7 +19,7 @@ func setupTestEnv(t *testing.T) (*testutil.TestEnv, map[string]*source.LoadedSou
 	env.SetupAsset("personas", "senior-swe.md", "# Senior SWE")
 	env.SetupAsset("personas", "brainstormer.md", "# Brainstormer")
 	env.SetupAsset("delegates", "code-reviewer.md", "# Code Reviewer")
-	env.SetupAsset("docs", "README.md", "# README")
+	env.SetupAsset("files", "README.md", "# README")
 
 	// Load sources
 	loader := source.NewLoader(env.ConfigRepo)
@@ -43,7 +43,7 @@ func setupTestEnv(t *testing.T) (*testutil.TestEnv, map[string]*source.LoadedSou
 			Name: "extras",
 			Assets: []config.AssetEntry{
 				{Type: "persona", Path: "personas/brainstormer.md"},
-				{Type: "doc", Path: "docs/README.md"},
+				{Type: "file", Path: "files/README.md", Dest: ""},
 			},
 		},
 	}
@@ -110,7 +110,7 @@ func TestResolverResolveWithDirectAssets(t *testing.T) {
 			Target:  "claude",
 			Bundles: []string{"core"},
 			Assets: []config.AssetEntry{
-				{Type: "doc", Path: "docs/README.md"},
+				{Type: "file", Path: "files/README.md", Dest: ""},
 			},
 		},
 	}

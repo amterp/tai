@@ -103,6 +103,8 @@ func (l *Loader) discoverAssets(ls *LoadedSource) error {
 }
 
 // discoverAssetsInDir discovers assets in a specific asset type directory.
+// Assets can be files OR directories. For directories, we check for the
+// conventional main file (PERSONA.md, DELEGATE.md, SKILL.md, config.yaml).
 func (l *Loader) discoverAssetsInDir(dir, assetType string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
@@ -121,15 +123,27 @@ func (l *Loader) discoverAssetsInDir(dir, assetType string) ([]string, error) {
 			continue
 		}
 
-		// Skills are directories, everything else are files
-		if assetType == config.AssetTypeSkill {
-			if entry.IsDir() {
+		if entry.IsDir() {
+			// Directory asset - check if this type supports directories
+			mainFile := config.MainFileName(assetType)
+			if mainFile == "" {
+				// This type doesn't support directories (e.g., "file" type)
+				continue
+			}
+
+			// Verify the main file exists
+			mainFilePath := filepath.Join(dir, name, mainFile)
+			if _, err := os.Stat(mainFilePath); err == nil {
 				assets = append(assets, name)
 			}
+			// If main file doesn't exist, silently skip this directory.
+			// This is intentional: random directories in assets/ are ignored
+			// rather than causing errors. However, if a user explicitly
+			// references this directory in a bundle, resolution will fail
+			// with a clear "asset not found" error.
 		} else {
-			if !entry.IsDir() {
-				assets = append(assets, name)
-			}
+			// File asset - all types support files (except we skip directories above)
+			assets = append(assets, name)
 		}
 	}
 
