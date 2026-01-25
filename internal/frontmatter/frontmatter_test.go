@@ -1,6 +1,7 @@
 package frontmatter
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -64,6 +65,24 @@ func TestParseMalformedYAML(t *testing.T) {
 	_, err := Parse(input)
 	if err == nil {
 		t.Error("expected error for malformed YAML")
+	}
+}
+
+func TestParseMalformedYAML_MappingValuesError_IncludesHint(t *testing.T) {
+	// This pattern triggers "mapping values are not allowed in this context"
+	input := []byte("---\nname: test\ndescription: Examples: user: hello\n---\n\nBody\n")
+
+	_, err := Parse(input)
+	if err == nil {
+		t.Fatal("expected error for malformed YAML")
+	}
+
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "Hint:") {
+		t.Errorf("error should contain hint, got: %v", errMsg)
+	}
+	if !strings.Contains(errMsg, ">-") {
+		t.Errorf("error should mention block scalar syntax, got: %v", errMsg)
 	}
 }
 

@@ -23,6 +23,17 @@ Tai organizes AI agent configurations (personas, delegates, skills, docs) into c
 
 **Data flow:** Sources → Assets → Bundles → Profiles → Target
 
+## Asset Types
+
+Tai uses target-agnostic terminology. Here's how asset types map to Claude Code:
+
+| Tai Type | Claude Directory | Purpose |
+|----------|------------------|---------|
+| `persona` | `output-styles/` | Behavioral styles and roles |
+| `delegate` | `agents/` | Specialized helper agents |
+| `skill` | `skills/` | Procedural capabilities |
+| `doc` | (root) | Reference documentation |
+
 ## CLI Commands
 
 ### Configuration
@@ -223,6 +234,21 @@ You are a senior software engineer...
 | `tools` | — | optional | optional | — |
 
 Unknown fields are silently ignored. Schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file.
+
+### YAML Escaping for Descriptions
+
+If your description contains colons followed by spaces (e.g., `user: "hello"`), YAML will misparse it as a nested mapping. Use a block scalar (`>-`) to avoid this:
+
+```yaml
+---
+name: my-delegate
+description: >-
+  Use this agent when... Examples: <example>user: "Do something"
+  assistant: "I'll help with that."</example>
+---
+```
+
+The `>-` indicator means "folded block scalar, strip trailing newlines" — the text on subsequent lines is treated as a single string.
 
 ## Docs Format
 

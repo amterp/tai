@@ -4,6 +4,8 @@ package frontmatter
 
 import (
 	"bytes"
+	"fmt"
+	"strings"
 	"unicode"
 
 	"gopkg.in/yaml.v3"
@@ -73,7 +75,7 @@ func Parse(content []byte) (*Parsed, error) {
 
 	var metadata map[string]string
 	if err := yaml.Unmarshal(yamlBlock, &metadata); err != nil {
-		return nil, err
+		return nil, improveYAMLError(err)
 	}
 	if metadata == nil {
 		metadata = make(map[string]string)
@@ -137,4 +139,13 @@ func sortedKeys(m map[string]string) []string {
 		}
 	}
 	return keys
+}
+
+// improveYAMLError wraps common YAML errors with actionable suggestions.
+func improveYAMLError(err error) error {
+	msg := err.Error()
+	if strings.Contains(msg, "mapping values are not allowed in this context") {
+		return fmt.Errorf("%w\n\nHint: If your description contains colons (e.g., \"user: ...\"), use a block scalar:\n  description: >-\n    Your description text here", err)
+	}
+	return err
 }
