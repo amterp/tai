@@ -211,6 +211,28 @@ func LoadBundlesFromDir(dir string) (map[string]*Bundle, error) {
 	return bundles, nil
 }
 
+// ParseStatusLineConfig parses a status line config YAML file.
+// Returns the parsed config and a flag indicating if it's in tai format.
+// If not tai format, the raw YAML content should be passed through to the target.
+func ParseStatusLineConfig(path string) (*StatusLineConfig, []byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading status line config: %w", err)
+	}
+
+	var cfg StatusLineConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, nil, fmt.Errorf("parsing status line config: %w", err)
+	}
+
+	// If no level field, treat as native format (pass through raw data)
+	if !cfg.IsTaiFormat() {
+		return nil, data, nil
+	}
+
+	return &cfg, nil, nil
+}
+
 // LoadProfilesFromDir loads all profile files from a directory.
 func LoadProfilesFromDir(dir string) (map[string]*Profile, error) {
 	profiles := make(map[string]*Profile)

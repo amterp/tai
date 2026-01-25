@@ -2,6 +2,8 @@
 package claude
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +11,11 @@ import (
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
 	fm "github.com/amterp/tai/internal/frontmatter"
+)
+
+// Settings key constants for Claude's settings.json
+const (
+	StatusLineSettingsKey = "statusLine"
 )
 
 func init() {
@@ -126,3 +133,89 @@ func (a *Adapter) Run(args []string) error {
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
+
+// SupportedConfigAssetTypes returns the config asset types Claude supports.
+func (a *Adapter) SupportedConfigAssetTypes() []string {
+	return []string{config.AssetTypeStatusLine}
+}
+
+// SettingsFilePath returns the path to Claude's settings file.
+func (a *Adapter) SettingsFilePath(scope string) string {
+	if scope == "project" {
+		// Project-scoped settings would be in .claude/settings.json
+		// but we need the working directory context for that
+		return ".claude/settings.json"
+	}
+	// User-scoped settings
+	return filepath.Join(a.targetDir, "settings.json")
+}
+
+// TransformStatusLine transforms a tai status line config to Claude's format.
+func (a *Adapter) TransformStatusLine(cfg *config.StatusLineConfig, rawNative []byte) (map[string]any, error) {
+	// If native format, parse and return as-is
+	if rawNative != nil {
+		var native map[string]any
+		if err := json.Unmarshal(rawNative, &native); err != nil {
+			// Try YAML if JSON fails
+			return nil, fmt.Errorf("native status line config is not valid JSON or YAML: %w", err)
+		}
+		return native, nil
+	}
+
+	// Transform tai format to Claude format
+	result := make(map[string]any)
+
+	switch cfg.Level {
+	case config.StatusLineLevelCustom:
+		result["type"] = "command"
+		result["command"] = cfg.Command
+		if cfg.Padding != nil {
+			result["padding"] = *cfg.Padding
+		}
+	case config.StatusLineLevelHidden:
+		result["style"] = "hidden"
+	case config.StatusLineLevelMinimal:
+		result["style"] = "minimal"
+		a.applyShowElements(result, cfg.Show)
+	case config.StatusLineLevelStandard:
+		result["style"] = "standard"
+		a.applyShowElements(result, cfg.Show)
+	case config.StatusLineLevelDetailed:
+		result["style"] = "detailed"
+		a.applyShowElements(result, cfg.Show)
+	default:
+		return nil, fmt.Errorf("unknown status line level: %s", cfg.Level)
+	}
+
+	return result, nil
+}
+
+// SettingsKey returns the JSON key name for a config asset type in Claude's settings.json.
+func (a *Adapter) SettingsKey(assetType string) string {
+	switch assetType {
+	case config.AssetTypeStatusLine:
+		return StatusLineSettingsKey
+	default:
+		return ""
+	}
+}
+
+// applyShowElements sets Claude's show* flags based on tai's show elements.
+func (a *Adapter) applyShowElements(result map[string]any, show []string) {
+	// Create a set of requested elements
+	showSet := make(map[string]bool)
+	for _, elem := range show {
+		showSet[elem] = true
+	}
+
+	// Map tai show elements to Claude's boolean flags
+	if len(show) > 0 {
+		// Only set flags if show is explicitly specified
+		result["showCost"] = showSet["cost"]
+		result["showModel"] = showSet["model"]
+		result["showTokens"] = showSet["tokens"]
+		result["showLatency"] = showSet["latency"]
+		// Note: "context" maps to nothing in current Claude Code; reserved for future use
+	}
+}
+

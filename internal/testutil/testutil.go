@@ -41,6 +41,7 @@ func NewTestEnv(t *testing.T) *TestEnv {
 		filepath.Join(env.ConfigRepo, "assets", "delegates"),
 		filepath.Join(env.ConfigRepo, "assets", "skills"),
 		filepath.Join(env.ConfigRepo, "assets", "docs"),
+		filepath.Join(env.ConfigRepo, "assets", "statuslines"),
 		filepath.Join(env.ConfigRepo, "bundles"),
 		filepath.Join(env.ConfigRepo, "profiles"),
 		env.TargetDir,

@@ -1,6 +1,7 @@
 package install
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -40,7 +41,13 @@ type InstallResult struct {
 	Removed   []string // Files removed
 	Skipped   []string // Files skipped due to conflicts
 	Errors    []error  // Non-fatal errors
+	Warnings  []string // Non-fatal warnings (e.g., unsupported asset types)
 	Manifest  *Manifest
+}
+
+// Logger is an interface for logging messages during installation.
+type Logger interface {
+	Printf(format string, args ...any)
 }
 
 // Conflict represents a file conflict.
@@ -55,7 +62,13 @@ type Installer struct {
 	configRepo    string
 	sources       map[string]*source.LoadedSource
 	httpClient    *http.Client
+	logger        Logger
 }
+
+// noopLogger discards all log messages.
+type noopLogger struct{}
+
+func (noopLogger) Printf(string, ...any) {}
 
 // NewInstaller creates a new installer.
 func NewInstaller(manifestStore *ManifestStore, configRepo string, sources map[string]*source.LoadedSource) *Installer {
@@ -64,7 +77,13 @@ func NewInstaller(manifestStore *ManifestStore, configRepo string, sources map[s
 		configRepo:    configRepo,
 		sources:       sources,
 		httpClient:    DefaultHTTPClient(),
+		logger:        noopLogger{},
 	}
+}
+
+// SetLogger sets the logger for the installer.
+func (i *Installer) SetLogger(logger Logger) {
+	i.logger = logger
 }
 
 // Install installs resolved assets to a target.
@@ -91,12 +110,46 @@ func (i *Installer) Install(
 		}
 	}
 
+	// Build map of existing config entries for quick lookup
+	existingConfigEntries := make(map[string]ConfigEntry)
+	if existing != nil {
+		for _, entry := range existing.ConfigEntries {
+			existingConfigEntries[entry.Type] = entry
+		}
+	}
+
+	// Separate file assets from config assets
+	var fileAssets []*config.Asset
+	var configAssets []*config.Asset
+
+	supportedConfigTypes := make(map[string]bool)
+	for _, t := range adap.SupportedConfigAssetTypes() {
+		supportedConfigTypes[t] = true
+	}
+
+	for _, asset := range assets {
+		if config.IsConfigAssetType(asset.Type) {
+			if !supportedConfigTypes[asset.Type] {
+				// Unsupported config asset type - warn and skip
+				warning := fmt.Sprintf("Asset type '%s' is not supported by target '%s' - skipping %s",
+					asset.Type, adap.Name(), asset.Name)
+				result.Warnings = append(result.Warnings, warning)
+				i.logger.Printf("Warning: %s", warning)
+				continue
+			}
+			configAssets = append(configAssets, asset)
+		} else {
+			fileAssets = append(fileAssets, asset)
+		}
+	}
+
 	// Prepare new manifest entries
 	var newEntries []ManifestEntry
+	var newConfigEntries []ConfigEntry
 	templateEngine := template.NewEngine(opts.Variables)
 
-	// Process each asset
-	for _, asset := range assets {
+	// Process file assets
+	for _, asset := range fileAssets {
 		targetPath := adap.MapAssetPath(asset)
 		fullTargetPath := filepath.Join(targetDir, targetPath)
 
@@ -158,6 +211,37 @@ func (i *Installer) Install(
 		delete(existingFiles, targetPath)
 	}
 
+	// Process config assets (statusline, etc.)
+	// For singleton config types like statusline, later assets override earlier ones
+	configByType := make(map[string]*config.Asset)
+	for _, asset := range configAssets {
+		if prev, exists := configByType[asset.Type]; exists {
+			i.logger.Printf("Override: %s/%s overrides %s/%s", asset.Type, asset.Name, prev.Type, prev.Name)
+		}
+		configByType[asset.Type] = asset
+	}
+
+	for assetType, asset := range configByType {
+		configEntry, err := i.installConfigAsset(adap, asset, existingConfigEntries, opts)
+		if err != nil {
+			return nil, fmt.Errorf("installing config asset %s/%s: %w", assetType, asset.Name, err)
+		}
+		if configEntry != nil {
+			existingEntry, wasManaged := existingConfigEntries[assetType]
+			if wasManaged {
+				if configEntry.Checksum == existingEntry.Checksum {
+					result.Unchanged = append(result.Unchanged, fmt.Sprintf("[%s] %s", assetType, asset.Name))
+				} else {
+					result.Updated = append(result.Updated, fmt.Sprintf("[%s] %s", assetType, asset.Name))
+				}
+			} else {
+				result.Added = append(result.Added, fmt.Sprintf("[%s] %s", assetType, asset.Name))
+			}
+			newConfigEntries = append(newConfigEntries, *configEntry)
+			delete(existingConfigEntries, assetType)
+		}
+	}
+
 	// Remove files that are no longer in the profile
 	for path, entry := range existingFiles {
 		fullPath := filepath.Join(targetDir, path)
@@ -186,8 +270,18 @@ func (i *Installer) Install(
 		}
 	}
 
+	// Remove config entries that are no longer in the profile
+	for assetType, entry := range existingConfigEntries {
+		result.Removed = append(result.Removed, fmt.Sprintf("[%s] %s", assetType, entry.Name))
+		if !opts.DryRun {
+			if err := i.uninstallConfigEntry(adap, entry); err != nil {
+				result.Errors = append(result.Errors, fmt.Errorf("removing config %s/%s: %w", assetType, entry.Name, err))
+			}
+		}
+	}
+
 	// Build and save new manifest
-	result.Manifest = BuildManifest(adap.Name(), profile, i.configRepo, newEntries)
+	result.Manifest = BuildManifest(adap.Name(), profile, i.configRepo, newEntries, newConfigEntries)
 	if !opts.DryRun {
 		if err := i.manifestStore.Save(result.Manifest); err != nil {
 			return nil, fmt.Errorf("saving manifest: %w", err)
@@ -195,6 +289,175 @@ func (i *Installer) Install(
 	}
 
 	return result, nil
+}
+
+// installConfigAsset installs a config asset (statusline, etc.) to the target's settings file.
+//
+// Tech debt note: This switch-statement approach requires modification in multiple places
+// when adding new config asset types (MCPs, hooks in v0.2). If this pattern proves unwieldy
+// with 2-3 config types, consider refactoring to a handler registry pattern where each
+// config type registers its own install/uninstall handlers.
+func (i *Installer) installConfigAsset(
+	adap adapter.Adapter,
+	asset *config.Asset,
+	existingConfigEntries map[string]ConfigEntry,
+	opts InstallOptions,
+) (*ConfigEntry, error) {
+	scope := "user" // TODO: get from profile options
+
+	switch asset.Type {
+	case config.AssetTypeStatusLine:
+		return i.installStatusLine(adap, asset, existingConfigEntries, scope, opts)
+	default:
+		return nil, fmt.Errorf("unsupported config asset type: %s", asset.Type)
+	}
+}
+
+// installStatusLine installs a status line config to the target's settings file.
+func (i *Installer) installStatusLine(
+	adap adapter.Adapter,
+	asset *config.Asset,
+	existingConfigEntries map[string]ConfigEntry,
+	scope string,
+	opts InstallOptions,
+) (*ConfigEntry, error) {
+	// Parse the status line config
+	cfg, rawNative, err := config.ParseStatusLineConfig(asset.SourcePath)
+	if err != nil {
+		return nil, fmt.Errorf("parsing status line config: %w", err)
+	}
+
+	// Validate if it's tai format
+	if cfg != nil {
+		if err := validateStatusLineConfig(cfg); err != nil {
+			return nil, fmt.Errorf("validating status line config: %w", err)
+		}
+	} else {
+		i.logger.Printf("Using native format status line (not tai format): %s", asset.Name)
+	}
+
+	// Transform to target format
+	statusLineData, err := adap.TransformStatusLine(cfg, rawNative)
+	if err != nil {
+		return nil, fmt.Errorf("transforming status line: %w", err)
+	}
+
+	// Compute checksum of the transformed config
+	configJSON, err := json.Marshal(statusLineData)
+	if err != nil {
+		return nil, fmt.Errorf("serializing status line config: %w", err)
+	}
+	checksum := ComputeChecksum(configJSON)
+
+	// Check for conflicts with existing unmanaged statusLine
+	settingsPath := adap.SettingsFilePath(scope)
+	_, wasManaged := existingConfigEntries[config.AssetTypeStatusLine]
+
+	if !wasManaged && !opts.DryRun {
+		// Check if settings file has existing statusLine that we don't manage
+		existingSettings, err := readJSONFile(settingsPath)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("reading settings file: %w", err)
+		}
+		if existingSettings != nil {
+			settingsKey := adap.SettingsKey(config.AssetTypeStatusLine)
+			if _, hasKey := existingSettings[settingsKey]; hasKey {
+				if !opts.Force {
+					return nil, fmt.Errorf("found existing %s in %s not managed by tai; use --force to override",
+						settingsKey, settingsPath)
+				}
+			}
+		}
+	}
+
+	// Install to settings file
+	if !opts.DryRun {
+		settingsKey := adap.SettingsKey(config.AssetTypeStatusLine)
+		if err := i.writeConfigToSettings(settingsPath, settingsKey, statusLineData); err != nil {
+			return nil, fmt.Errorf("writing status line to settings: %w", err)
+		}
+	}
+
+	return &ConfigEntry{
+		Type:         config.AssetTypeStatusLine,
+		Name:         asset.Name,
+		SourceName:   asset.SourceName,
+		SourcePath:   asset.SourcePath,
+		SettingsFile: settingsPath,
+		Checksum:     checksum,
+	}, nil
+}
+
+// uninstallConfigEntry removes a config entry from the target's settings file.
+func (i *Installer) uninstallConfigEntry(adap adapter.Adapter, entry ConfigEntry) error {
+	settingsKey := adap.SettingsKey(entry.Type)
+	if settingsKey == "" {
+		return fmt.Errorf("unsupported config asset type: %s", entry.Type)
+	}
+	return i.removeConfigFromSettings(entry.SettingsFile, settingsKey)
+}
+
+// writeConfigToSettings writes a config value to a settings JSON file.
+func (i *Installer) writeConfigToSettings(path, key string, value any) error {
+	settings, err := readJSONFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if settings == nil {
+		settings = make(map[string]any)
+	}
+
+	settings[key] = value
+
+	return writeJSONFile(path, settings)
+}
+
+// removeConfigFromSettings removes a config key from a settings JSON file.
+func (i *Installer) removeConfigFromSettings(path, key string) error {
+	settings, err := readJSONFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // Nothing to remove
+		}
+		return err
+	}
+
+	delete(settings, key)
+
+	// If settings is empty, we could remove the file, but it's safer to leave it
+	return writeJSONFile(path, settings)
+}
+
+// readJSONFile reads and parses a JSON file.
+func readJSONFile(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("parsing JSON: %w", err)
+	}
+	return result, nil
+}
+
+// writeJSONFile writes a map to a JSON file with nice formatting.
+func writeJSONFile(path string, data map[string]any) error {
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("creating directory: %w", err)
+	}
+
+	content, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("serializing JSON: %w", err)
+	}
+
+	// Add trailing newline
+	content = append(content, '\n')
+
+	return os.WriteFile(path, content, 0644)
 }
 
 // Uninstall removes all tai-managed files for a target.
@@ -210,6 +473,7 @@ func (i *Installer) Uninstall(adap adapter.Adapter) (*InstallResult, error) {
 		return result, nil // Nothing installed
 	}
 
+	// Remove file entries
 	for _, entry := range manifest.Files {
 		fullPath := filepath.Join(targetDir, entry.Path)
 		result.Removed = append(result.Removed, entry.Path)
@@ -232,6 +496,14 @@ func (i *Installer) Uninstall(adap adapter.Adapter) (*InstallResult, error) {
 			}
 			// Clean up empty parent directories
 			cleanEmptyDirs(fullPath, targetDir)
+		}
+	}
+
+	// Remove config entries
+	for _, entry := range manifest.ConfigEntries {
+		result.Removed = append(result.Removed, fmt.Sprintf("[%s] %s", entry.Type, entry.Name))
+		if err := i.uninstallConfigEntry(adap, entry); err != nil {
+			result.Errors = append(result.Errors, fmt.Errorf("removing config %s/%s: %w", entry.Type, entry.Name, err))
 		}
 	}
 

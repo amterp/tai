@@ -18,6 +18,7 @@ tai is a CLI tool for managing AI agent configurations. It provides a framework 
 | **Delegate** | A specialized helper for tasks | agents (sub-agents) |
 | **Skill** | A procedural capability | skills |
 | **Doc** | Reference material | CLAUDE.md, supporting docs |
+| **StatusLine** | Status bar configuration | statusLine entry in settings.json |
 | **MCP** | Model Context Protocol server | MCP server entry in config |
 | **Hook** | Event-triggered shell command | Hook entry in settings |
 
@@ -36,7 +37,7 @@ Assets come in two shapes based on how they're installed:
 | Shape | Asset Types | How Defined | How Installed |
 |-------|-------------|-------------|---------------|
 | **File assets** | personas, delegates, skills, docs | Files/directories in `assets/` | Copied to target paths |
-| **Config assets** | mcps, hooks | YAML fragments in `assets/` | Merged into target JSON config files |
+| **Config assets** | statuslines, mcps, hooks | YAML in `assets/` | Merged into target JSON config files |
 
 **File assets** are the traditional model: you define a file (or directory for skills), and tai copies it to the appropriate location in the target's config directory.
 
@@ -82,7 +83,7 @@ This distinction matters because:
 ┌─────────────────────────────────────────────────────────────┐
 │                         Assets                               │
 │  File: personas/, delegates/, skills/, docs/                │
-│  Config: mcps/, hooks/                                      │
+│  Config: statuslines/, mcps/, hooks/                        │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼ composed into
@@ -146,6 +147,8 @@ my-tai-config/
 │   ├── docs/             # Reference material (→ CLAUDE.md etc.)
 │   │   ├── CLAUDE.md
 │   │   └── RFC2119.md
+│   ├── statuslines/      # Status line configs (→ statusLine in settings.json)
+│   │   └── detailed.yaml
 │   ├── mcps/             # MCP server definitions (→ .mcp.json entries)
 │   │   ├── github.yaml
 │   │   └── postgres.yaml
@@ -328,7 +331,72 @@ Skills are directories with a `SKILL.md` that uses tai frontmatter. During insta
 
 ### Config Asset Definitions
 
-Config assets (MCPs and hooks) are defined as YAML files that describe entries to be merged into target configuration files.
+Config assets (status lines, MCPs, and hooks) are defined as YAML files that describe entries to be merged into target configuration files.
+
+#### StatusLine Definition
+
+Status line assets control the appearance and behavior of the AI tool's status bar. They can be defined in **tai format** (target-agnostic) or **native format** (target-specific passthrough).
+
+**Tai format** (recommended for portability):
+
+```yaml
+# my-tai-config/assets/statuslines/detailed.yaml
+level: detailed              # minimal | standard | detailed | hidden | custom
+show:                        # Elements to display (when level != hidden/custom)
+  - cost                     # Session/total cost
+  - model                    # Current model name
+  - tokens                   # Token usage
+  - latency                  # Response latency
+```
+
+```yaml
+# my-tai-config/assets/statuslines/custom.yaml
+level: custom                # Custom command mode
+command: ~/.scripts/statusline.sh
+padding: 2                   # Optional padding value
+```
+
+**Native format** (passed through to target as-is):
+
+If the YAML file does not contain a `level` field, it's treated as native format and passed through to the target without transformation. This allows using target-specific options that tai doesn't abstract.
+
+```yaml
+# Native Claude format - passed through as-is
+style: detailed
+showCost: true
+showModel: true
+```
+
+**StatusLine fields (tai format):**
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `level` | string | Yes | `minimal`, `standard`, `detailed`, `hidden`, or `custom` |
+| `show` | list | No | Elements to display: `cost`, `model`, `tokens`, `latency`, `context` |
+| `command` | string | custom only | Path to custom status line command |
+| `padding` | int | No | Padding value (only for `level: custom`) |
+
+**Validation rules:**
+- `level: custom` requires `command`, disallows `show`
+- `level: hidden` disallows both `show` and `command`
+- `level: minimal/standard/detailed` disallows `command`
+
+**Singleton behavior:** Only one status line can be active. When multiple status line assets are referenced in a profile, later ones override earlier ones (logged as info).
+
+**Adapter transformation (Claude):**
+
+| tai field | Claude equivalent |
+|-----------|------------------|
+| `level: detailed` | `style: "detailed"` |
+| `level: minimal` | `style: "minimal"` |
+| `level: hidden` | `style: "hidden"` |
+| `level: custom` | `type: "command"` |
+| `show: [cost]` | `showCost: true` |
+| `show: [model]` | `showModel: true` |
+| `show: [tokens]` | `showTokens: true` |
+| `show: [latency]` | `showLatency: true` |
+| `command: ...` | `command: ...` |
+| `padding: N` | `padding: N` |
 
 #### MCP Definition
 
@@ -583,12 +651,25 @@ The Claude adapter:
 
 | Asset Type | Scope | Target File |
 |------------|-------|-------------|
+| `statuslines` | user | `~/.claude/settings.json` |
+| `statuslines` | project | `.claude/settings.json` |
 | `mcps` | project | `.mcp.json` (project root) |
 | `mcps` | user | `~/.claude.json` |
 | `mcps` | local | `.claude.json` (project root) |
 | `hooks` | project | `.claude/settings.json` |
 | `hooks` | user | `~/.claude/settings.json` |
 | `hooks` | local | `.claude/settings.local.json` |
+
+**StatusLine installation:** The `statusLine` key in the target JSON file is set to the transformed config:
+```json
+{
+  "statusLine": {
+    "style": "detailed",
+    "showCost": true,
+    "showModel": true
+  }
+}
+```
 
 **MCP installation:** Entries are added to the `mcpServers` key in the target JSON file:
 ```json
@@ -641,6 +722,13 @@ files:
 
 # Config assets: tracked by type, name, and target file
 config_entries:
+  - type: statusline
+    name: detailed
+    source: local
+    source_path: /Users/amterp/my-tai-config/assets/statuslines/detailed.yaml
+    settings_file: ~/.claude/settings.json
+    checksum: sha256:status123... # Checksum of the installed JSON fragment
+
   - type: mcp
     name: github
     source: local
@@ -1027,15 +1115,17 @@ bundles:
 - [x] `tai run` pass-through
 - [x] Simple templating with `{{variable}}` substitution
 - [x] `{{existing}}` templating for wrapping existing file content with backup/restore
+- [x] StatusLine config assets with tai/native format support
 
 ### Deferred to Future Versions
 
 - [ ] **Config assets (MCPs, hooks)** - v0.2 target
+  - [x] StatusLine definitions (`assets/statuslines/`) - implemented in v0.1
   - [ ] MCP server definitions (`assets/mcps/`)
   - [ ] Hook definitions (`assets/hooks/`)
-  - [ ] JSON merge installation logic
-  - [ ] Scope handling (project/user/local)
-  - [ ] Config entry manifest tracking
+  - [x] JSON merge installation logic (for statusline)
+  - [ ] Scope handling (project/user/local) - partial (statusline supports user scope)
+  - [x] Config entry manifest tracking
 - [ ] Git remote sources
 - [ ] `--add-dir` runtime injection (vs. installing to ~/.claude)
 - [ ] Cursor adapter

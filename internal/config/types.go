@@ -101,15 +101,27 @@ type ResolvedAsset struct {
 
 // AssetType constants (singular form).
 const (
-	AssetTypePersona  = "persona"
-	AssetTypeDelegate = "delegate"
-	AssetTypeSkill    = "skill"
-	AssetTypeDoc      = "doc"
+	AssetTypePersona    = "persona"
+	AssetTypeDelegate   = "delegate"
+	AssetTypeSkill      = "skill"
+	AssetTypeDoc        = "doc"
+	AssetTypeStatusLine = "statusline"
 )
+
+// IsConfigAssetType returns true for asset types that are installed as config
+// entries in target settings files (rather than as standalone files).
+func IsConfigAssetType(t string) bool {
+	switch t {
+	case AssetTypeStatusLine:
+		return true
+	default:
+		return false
+	}
+}
 
 // ValidAssetTypes returns all valid asset type names (singular).
 func ValidAssetTypes() []string {
-	return []string{AssetTypePersona, AssetTypeDelegate, AssetTypeSkill, AssetTypeDoc}
+	return []string{AssetTypePersona, AssetTypeDelegate, AssetTypeSkill, AssetTypeDoc, AssetTypeStatusLine}
 }
 
 // IsValidAssetType checks if the given type is valid.
@@ -133,6 +145,8 @@ func AssetTypeDirName(t string) string {
 		return "skills"
 	case AssetTypeDoc:
 		return "docs"
+	case AssetTypeStatusLine:
+		return "statuslines"
 	default:
 		return t
 	}
@@ -149,7 +163,45 @@ func AssetTypeFromDirName(d string) string {
 		return AssetTypeSkill
 	case "docs":
 		return AssetTypeDoc
+	case "statuslines":
+		return AssetTypeStatusLine
 	default:
 		return d
 	}
 }
+
+// StatusLineConfig represents a parsed status line configuration asset.
+// This is the tai-agnostic format that gets transformed by adapters.
+type StatusLineConfig struct {
+	// Level controls the status line style: minimal, standard, detailed, hidden, or custom.
+	// This field is required for tai format detection.
+	Level string `yaml:"level"`
+
+	// Show lists elements to display when Level is minimal/standard/detailed.
+	// Valid values: cost, model, tokens, latency, context
+	Show []string `yaml:"show,omitempty"`
+
+	// Command is the custom command path (required when Level is "custom").
+	Command string `yaml:"command,omitempty"`
+
+	// Padding is optional padding value (only for Level "custom").
+	Padding *int `yaml:"padding,omitempty"`
+}
+
+// IsTaiFormat returns true if this config appears to be in tai format.
+// Tai format requires the "level" field; configs without it are treated as native.
+func (c *StatusLineConfig) IsTaiFormat() bool {
+	return c.Level != ""
+}
+
+// Valid status line levels.
+const (
+	StatusLineLevelMinimal  = "minimal"
+	StatusLineLevelStandard = "standard"
+	StatusLineLevelDetailed = "detailed"
+	StatusLineLevelHidden   = "hidden"
+	StatusLineLevelCustom   = "custom"
+)
+
+// Valid status line show elements.
+var ValidStatusLineShowElements = []string{"cost", "model", "tokens", "latency", "context"}

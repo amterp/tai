@@ -102,3 +102,145 @@ func TestAdapterMapAssetPathUnknownType(t *testing.T) {
 		t.Errorf("MapAssetPath for unknown type = %q, want %q", result, expected)
 	}
 }
+
+func TestAdapterSupportedConfigAssetTypes(t *testing.T) {
+	a := New("")
+	types := a.SupportedConfigAssetTypes()
+
+	if len(types) != 1 {
+		t.Errorf("len(SupportedConfigAssetTypes()) = %d, want 1", len(types))
+	}
+	if types[0] != "statusline" {
+		t.Errorf("SupportedConfigAssetTypes()[0] = %q, want 'statusline'", types[0])
+	}
+}
+
+func TestAdapterSettingsFilePath(t *testing.T) {
+	a := New("/custom/path")
+
+	userPath := a.SettingsFilePath("user")
+	if userPath != "/custom/path/settings.json" {
+		t.Errorf("SettingsFilePath('user') = %q, want '/custom/path/settings.json'", userPath)
+	}
+
+	projectPath := a.SettingsFilePath("project")
+	if projectPath != ".claude/settings.json" {
+		t.Errorf("SettingsFilePath('project') = %q, want '.claude/settings.json'", projectPath)
+	}
+}
+
+func TestAdapterTransformStatusLineDetailed(t *testing.T) {
+	a := New("")
+
+	cfg := &config.StatusLineConfig{
+		Level: "detailed",
+		Show:  []string{"cost", "model", "tokens"},
+	}
+
+	result, err := a.TransformStatusLine(cfg, nil)
+	if err != nil {
+		t.Fatalf("TransformStatusLine failed: %v", err)
+	}
+
+	if result["style"] != "detailed" {
+		t.Errorf("style = %v, want 'detailed'", result["style"])
+	}
+	if result["showCost"] != true {
+		t.Errorf("showCost = %v, want true", result["showCost"])
+	}
+	if result["showModel"] != true {
+		t.Errorf("showModel = %v, want true", result["showModel"])
+	}
+	if result["showTokens"] != true {
+		t.Errorf("showTokens = %v, want true", result["showTokens"])
+	}
+	if result["showLatency"] != false {
+		t.Errorf("showLatency = %v, want false", result["showLatency"])
+	}
+}
+
+func TestAdapterTransformStatusLineMinimal(t *testing.T) {
+	a := New("")
+
+	cfg := &config.StatusLineConfig{
+		Level: "minimal",
+		Show:  []string{"model"},
+	}
+
+	result, err := a.TransformStatusLine(cfg, nil)
+	if err != nil {
+		t.Fatalf("TransformStatusLine failed: %v", err)
+	}
+
+	if result["style"] != "minimal" {
+		t.Errorf("style = %v, want 'minimal'", result["style"])
+	}
+	if result["showModel"] != true {
+		t.Errorf("showModel = %v, want true", result["showModel"])
+	}
+	if result["showCost"] != false {
+		t.Errorf("showCost = %v, want false", result["showCost"])
+	}
+}
+
+func TestAdapterTransformStatusLineHidden(t *testing.T) {
+	a := New("")
+
+	cfg := &config.StatusLineConfig{
+		Level: "hidden",
+	}
+
+	result, err := a.TransformStatusLine(cfg, nil)
+	if err != nil {
+		t.Fatalf("TransformStatusLine failed: %v", err)
+	}
+
+	if result["style"] != "hidden" {
+		t.Errorf("style = %v, want 'hidden'", result["style"])
+	}
+}
+
+func TestAdapterTransformStatusLineCustom(t *testing.T) {
+	a := New("")
+
+	padding := 2
+	cfg := &config.StatusLineConfig{
+		Level:   "custom",
+		Command: "~/.scripts/statusline.sh",
+		Padding: &padding,
+	}
+
+	result, err := a.TransformStatusLine(cfg, nil)
+	if err != nil {
+		t.Fatalf("TransformStatusLine failed: %v", err)
+	}
+
+	if result["type"] != "command" {
+		t.Errorf("type = %v, want 'command'", result["type"])
+	}
+	if result["command"] != "~/.scripts/statusline.sh" {
+		t.Errorf("command = %v, want '~/.scripts/statusline.sh'", result["command"])
+	}
+	if result["padding"] != 2 {
+		t.Errorf("padding = %v, want 2", result["padding"])
+	}
+}
+
+func TestAdapterTransformStatusLineNativePassthrough(t *testing.T) {
+	a := New("")
+
+	// JSON native format
+	native := []byte(`{"style": "detailed", "showCost": true}`)
+
+	result, err := a.TransformStatusLine(nil, native)
+	if err != nil {
+		t.Fatalf("TransformStatusLine failed: %v", err)
+	}
+
+	if result["style"] != "detailed" {
+		t.Errorf("style = %v, want 'detailed'", result["style"])
+	}
+	if result["showCost"] != true {
+		t.Errorf("showCost = %v, want true", result["showCost"])
+	}
+}

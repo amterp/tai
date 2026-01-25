@@ -33,6 +33,27 @@ type Adapter interface {
 
 	// Run invokes the target with the given arguments.
 	Run(args []string) error
+
+	// SupportedConfigAssetTypes returns the config asset types this adapter supports.
+	// Config assets are installed as entries in target settings files rather than
+	// as standalone files. Returns empty slice if no config assets are supported.
+	// Example: Claude returns ["statusline"], Cursor returns []
+	SupportedConfigAssetTypes() []string
+
+	// SettingsFilePath returns the path to the settings file for a given scope.
+	// Scope is "user" (default) or "project".
+	// Returns empty string if the adapter doesn't use a settings file.
+	SettingsFilePath(scope string) string
+
+	// TransformStatusLine transforms a tai status line config to the target's format.
+	// Returns a map suitable for JSON serialization into the target's settings.
+	// If rawNative is provided, it's passed through as-is (native format).
+	TransformStatusLine(cfg *config.StatusLineConfig, rawNative []byte) (map[string]any, error)
+
+	// SettingsKey returns the JSON key name for a config asset type in the target's
+	// settings file. For example, Claude uses "statusLine" for statusline configs.
+	// Returns empty string if the asset type doesn't map to a settings key.
+	SettingsKey(assetType string) string
 }
 
 // Registry holds all registered adapters.

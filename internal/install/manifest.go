@@ -18,12 +18,13 @@ import (
 
 // Manifest tracks what tai has installed to a target.
 type Manifest struct {
-	Version     int             `yaml:"version"`     // Schema version
-	Target      string          `yaml:"target"`
-	Profile     string          `yaml:"profile"`
-	ConfigRepo  string          `yaml:"config_repo"`
-	InstalledAt time.Time       `yaml:"installed_at"`
-	Files       []ManifestEntry `yaml:"files"`
+	Version       int               `yaml:"version"`        // Schema version
+	Target        string            `yaml:"target"`
+	Profile       string            `yaml:"profile"`
+	ConfigRepo    string            `yaml:"config_repo"`
+	InstalledAt   time.Time         `yaml:"installed_at"`
+	Files         []ManifestEntry   `yaml:"files"`
+	ConfigEntries []ConfigEntry     `yaml:"config_entries,omitempty"` // Config assets (statusline, etc.)
 }
 
 // ManifestEntry represents a single installed file.
@@ -34,6 +35,18 @@ type ManifestEntry struct {
 	Checksum   string `yaml:"checksum"`    // SHA-256 checksum
 	BackupPath string `yaml:"backup_path"` // Path to backup (for {{existing}} files)
 	IsDir      bool   `yaml:"is_dir"`      // True for skill directories
+}
+
+// ConfigEntry represents an installed config asset (statusline, mcp, hook, etc.).
+// Config assets are installed as entries in target settings files rather than
+// as standalone files.
+type ConfigEntry struct {
+	Type         string `yaml:"type"`          // Asset type (e.g., "statusline")
+	Name         string `yaml:"name"`          // Asset name (filename without extension)
+	SourceName   string `yaml:"source"`        // Source name
+	SourcePath   string `yaml:"source_path"`   // Full filesystem path in source
+	SettingsFile string `yaml:"settings_file"` // Target settings file this was installed to
+	Checksum     string `yaml:"checksum"`      // SHA-256 checksum of the installed config
 }
 
 // ManifestStore handles loading and saving manifests.
@@ -192,14 +205,15 @@ func ComputeDirChecksum(path string) (string, error) {
 const ManifestVersion = 1
 
 // BuildManifest builds a manifest from resolved assets.
-func BuildManifest(target, profile, configRepo string, entries []ManifestEntry) *Manifest {
+func BuildManifest(target, profile, configRepo string, entries []ManifestEntry, configEntries []ConfigEntry) *Manifest {
 	return &Manifest{
-		Version:     ManifestVersion,
-		Target:      target,
-		Profile:     profile,
-		ConfigRepo:  configRepo,
-		InstalledAt: time.Now(),
-		Files:       entries,
+		Version:       ManifestVersion,
+		Target:        target,
+		Profile:       profile,
+		ConfigRepo:    configRepo,
+		InstalledAt:   time.Now(),
+		Files:         entries,
+		ConfigEntries: configEntries,
 	}
 }
 
