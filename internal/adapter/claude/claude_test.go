@@ -274,6 +274,9 @@ func TestAdapterProvideVariables(t *testing.T) {
 	if vars["target_name"] != "claude" {
 		t.Errorf("target_name = %q, want 'claude'", vars["target_name"])
 	}
+	if vars["target_name_display"] != "Claude" {
+		t.Errorf("target_name_display = %q, want 'Claude'", vars["target_name_display"])
+	}
 	if vars["target_agents_file"] != "CLAUDE.md" {
 		t.Errorf("target_agents_file = %q, want 'CLAUDE.md'", vars["target_agents_file"])
 	}

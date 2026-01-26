@@ -93,7 +93,7 @@ The Claude adapter maps:
 - `mcps/` → entries in `.mcp.json` or `~/.claude.json` (v0.2)
 - `hooks/` → entries in `settings.json` (v0.2)
 
-Claude's `ProvideVariables()` returns: `target_name: "claude"`, `target_agents_file: "CLAUDE.md"`
+Claude's `ProvideVariables()` returns: `target_name: "claude"`, `target_name_display: "Claude"`, `target_agents_file: "CLAUDE.md"`
 
 ## User Config Repo Structure
 

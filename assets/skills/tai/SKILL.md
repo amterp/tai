@@ -179,6 +179,7 @@ Adapters provide target-specific variables with the `target_` prefix:
 | Variable | Claude | Cursor (future) |
 |----------|--------|-----------------|
 | `target_name` | `claude` | `cursor` |
+| `target_name_display` | `Claude` | `Cursor` |
 | `target_agents_file` | `CLAUDE.md` | `.cursorrules` |
 
 Use these for target-aware file destinations:

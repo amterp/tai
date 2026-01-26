@@ -232,8 +232,9 @@ func (a *Adapter) MainFileName(assetType string) string {
 // ProvideVariables returns Claude-specific template variables.
 func (a *Adapter) ProvideVariables() template.Variables {
 	return template.Variables{
-		"target_name":        "claude",
-		"target_agents_file": "CLAUDE.md",
+		"target_name":         "claude",
+		"target_name_display": "Claude",
+		"target_agents_file":  "CLAUDE.md",
 	}
 }
 
