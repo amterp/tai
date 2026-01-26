@@ -1490,3 +1490,192 @@ func TestFindSkillMdFields(t *testing.T) {
 		}
 	})
 }
+
+// --- Templated dest path tests ---
+
+func TestInstallerFileWithTemplatedDest(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// File with templated dest using adapter-provided variable
+	env.SetupAsset("files", "AGENTS.md", "# Global Instructions\n\nBe helpful.")
+
+	assets := []*config.Asset{
+		{Type: "file", Name: "AGENTS.md", SourceName: "local",
+			Dest:       "{{target_agents_file}}",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "AGENTS.md")},
+	}
+
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if len(result.Added) != 1 {
+		t.Errorf("len(Added) = %d, want 1", len(result.Added))
+	}
+
+	// Dest should resolve to CLAUDE.md (from adapter's target_agents_file)
+	if !env.TargetFileExists("CLAUDE.md") {
+		t.Error("CLAUDE.md not created (expected from {{target_agents_file}})")
+	}
+
+	content := env.ReadTargetFile("CLAUDE.md")
+	expected := "# Global Instructions\n\nBe helpful."
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
+	}
+}
+
+func TestInstallerTemplatedDestWithUserOverride(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// File with templated dest - user variable should override adapter
+	env.SetupAsset("files", "AGENTS.md", "# Global Instructions")
+
+	assets := []*config.Asset{
+		{Type: "file", Name: "AGENTS.md", SourceName: "local",
+			Dest:       "{{target_agents_file}}",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "AGENTS.md")},
+	}
+
+	// User provides override via --var
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{
+		Variables: template.Variables{"target_agents_file": "CUSTOM.md"},
+	})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if len(result.Added) != 1 {
+		t.Errorf("len(Added) = %d, want 1", len(result.Added))
+	}
+
+	// User override should win
+	if !env.TargetFileExists("CUSTOM.md") {
+		t.Error("CUSTOM.md not created (expected from user override)")
+	}
+	if env.TargetFileExists("CLAUDE.md") {
+		t.Error("CLAUDE.md should not exist (user override should take precedence)")
+	}
+}
+
+func TestInstallerTemplatedDestUnknownVar(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// File with unknown template variable - should be left as-is (fail-safe)
+	env.SetupAsset("files", "test.md", "# Test")
+
+	assets := []*config.Asset{
+		{Type: "file", Name: "test.md", SourceName: "local",
+			Dest:       "{{unknown_var}}",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "test.md")},
+	}
+
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if len(result.Added) != 1 {
+		t.Errorf("len(Added) = %d, want 1", len(result.Added))
+	}
+
+	// Unknown variable left as-is
+	if !env.TargetFileExists("{{unknown_var}}/test.md") {
+		t.Error("file not created at literal {{unknown_var}}/test.md path")
+	}
+}
+
+func TestInstallerTemplatedDestWithSubdir(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Template variable in middle of dest path
+	env.SetupAsset("files", "config.json", `{"key": "value"}`)
+
+	assets := []*config.Asset{
+		{Type: "file", Name: "config.json", SourceName: "local",
+			Dest:       "{{target_name}}-config",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "config.json")},
+	}
+
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if len(result.Added) != 1 {
+		t.Errorf("len(Added) = %d, want 1", len(result.Added))
+	}
+
+	// Should resolve to claude-config/config.json
+	if !env.TargetFileExists("claude-config/config.json") {
+		t.Error("claude-config/config.json not created")
+	}
+}
+
+func TestInstallerTemplatedDestPathTraversalRejected(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	env.SetupAsset("files", "malicious.md", "# Malicious")
+
+	assets := []*config.Asset{
+		{Type: "file", Name: "malicious.md", SourceName: "local",
+			Dest:       "{{evil_path}}",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "malicious.md")},
+	}
+
+	// Attempt path traversal via template variable
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{
+		Variables: template.Variables{"evil_path": "../../../tmp/pwned"},
+	})
+	if err == nil {
+		t.Fatal("Install should have failed for path traversal attempt")
+	}
+	if !strings.Contains(err.Error(), "path traversal") {
+		t.Errorf("error should mention path traversal, got: %v", err)
+	}
+}
+
+func TestInstallerTemplatedDestAbsolutePathRejected(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	env.SetupAsset("files", "config.md", "# Config")
+
+	assets := []*config.Asset{
+		{Type: "file", Name: "config.md", SourceName: "local",
+			Dest:       "{{abs_path}}",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "config.md")},
+	}
+
+	// Attempt absolute path injection via template variable
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{
+		Variables: template.Variables{"abs_path": "/etc/passwd"},
+	})
+	if err == nil {
+		t.Fatal("Install should have failed for absolute path injection")
+	}
+	if !strings.Contains(err.Error(), "absolute paths not allowed") {
+		t.Errorf("error should mention absolute paths, got: %v", err)
+	}
+}
+
+func TestInstallerTemplatedDestExistingVarRejected(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	env.SetupAsset("files", "config.md", "# Config")
+
+	assets := []*config.Asset{
+		{Type: "file", Name: "config.md", SourceName: "local",
+			Dest:       "{{existing}}/subdir",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "config.md")},
+	}
+
+	// {{existing}} doesn't make sense in dest paths
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err == nil {
+		t.Fatal("Install should have failed for {{existing}} in dest path")
+	}
+	if !strings.Contains(err.Error(), "{{existing}} cannot be used in dest path") {
+		t.Errorf("error should explain {{existing}} limitation, got: %v", err)
+	}
+}

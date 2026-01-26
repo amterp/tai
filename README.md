@@ -242,6 +242,25 @@ Welcome to the {{project_name}} codebase.
 tai install work --var project_name=MyApp
 ```
 
+### Target-Aware Files
+
+Adapters provide target-specific variables (prefixed with `target_`), enabling files that adapt to each target:
+
+```yaml
+# bundles/core.yaml
+assets:
+  - type: file
+    path: files/AGENTS.md
+    dest: "{{target_agents_file}}"  # CLAUDE.md for Claude, .cursorrules for Cursor
+```
+
+| Variable | Claude | Cursor (future) |
+|----------|--------|-----------------|
+| `target_name` | `claude` | `cursor` |
+| `target_agents_file` | `CLAUDE.md` | `.cursorrules` |
+
+User variables (`--var`) override adapter variables on collision.
+
 ### The `{{existing}}` Variable
 
 Inject the current contents of a target file -- useful for wrapping existing configuration:

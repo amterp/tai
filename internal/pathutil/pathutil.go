@@ -81,3 +81,36 @@ type NotADirectoryError struct {
 func (e *NotADirectoryError) Error() string {
 	return "not a directory: " + e.Path
 }
+
+// ValidateRelativePath checks that a path is safe for use as a relative destination.
+// Returns an error if the path:
+// - Is empty
+// - Is absolute
+// - Contains path traversal sequences (..)
+func ValidateRelativePath(path string) error {
+	if path == "" {
+		return &InvalidPathError{Path: path, Reason: "path is empty"}
+	}
+
+	if filepath.IsAbs(path) {
+		return &InvalidPathError{Path: path, Reason: "absolute paths not allowed"}
+	}
+
+	// Check for path traversal - clean the path and see if it escapes
+	cleaned := filepath.Clean(path)
+	if strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) || cleaned == ".." {
+		return &InvalidPathError{Path: path, Reason: "path traversal not allowed"}
+	}
+
+	return nil
+}
+
+// InvalidPathError is returned when a path fails validation.
+type InvalidPathError struct {
+	Path   string
+	Reason string
+}
+
+func (e *InvalidPathError) Error() string {
+	return "invalid path '" + e.Path + "': " + e.Reason
+}

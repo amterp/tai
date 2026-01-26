@@ -87,3 +87,49 @@ func TestMakeAbsolute(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateRelativePath(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+		errMsg  string
+	}{
+		// Valid paths
+		{"simple file", "file.md", false, ""},
+		{"file in subdir", "subdir/file.md", false, ""},
+		{"deep path", "a/b/c/d.txt", false, ""},
+		{"dot in basename", "v1.0", false, ""},
+		{"current dir prefix", "./file.md", false, ""},
+
+		// Invalid: empty
+		{"empty", "", true, "path is empty"},
+
+		// Invalid: absolute paths
+		{"absolute unix", "/etc/passwd", true, "absolute paths not allowed"},
+		{"absolute with tilde", "~/file", false, ""}, // Not absolute in Go's view
+
+		// Invalid: path traversal
+		{"simple traversal", "../file", true, "path traversal not allowed"},
+		{"deep traversal", "../../etc/passwd", true, "path traversal not allowed"},
+		{"traversal in middle", "subdir/../../../etc/passwd", true, "path traversal not allowed"},
+		{"just dotdot", "..", true, "path traversal not allowed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateRelativePath(tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateRelativePath(%q) error = %v, wantErr %v", tt.path, err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && err != nil {
+				if ipErr, ok := err.(*InvalidPathError); ok {
+					if ipErr.Reason != tt.errMsg {
+						t.Errorf("ValidateRelativePath(%q) reason = %q, want %q", tt.path, ipErr.Reason, tt.errMsg)
+					}
+				}
+			}
+		})
+	}
+}

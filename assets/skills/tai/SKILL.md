@@ -172,6 +172,26 @@ Welcome to {{project_name}}.
 
 Install with: `tai install work --var project_name=MyApp`
 
+### Adapter-Provided Variables
+
+Adapters provide target-specific variables with the `target_` prefix:
+
+| Variable | Claude | Cursor (future) |
+|----------|--------|-----------------|
+| `target_name` | `claude` | `cursor` |
+| `target_agents_file` | `CLAUDE.md` | `.cursorrules` |
+
+Use these for target-aware file destinations:
+
+```yaml
+assets:
+  - type: file
+    path: files/AGENTS.md
+    dest: "{{target_agents_file}}"  # → CLAUDE.md for Claude
+```
+
+User variables (`--var`) override adapter variables on collision.
+
 ### The `{{existing}}` Variable
 
 Inject current target file contents (useful for wrapping existing config):

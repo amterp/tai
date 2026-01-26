@@ -80,9 +80,24 @@ func TestAdapterMapAssetPath(t *testing.T) {
 			expected: "RFC2119.md",
 		},
 		{
-			// File type with dest goes to subdirectory
+			// File type with directory dest (no extension) goes to subdirectory
 			asset:    &config.Asset{Type: "file", Name: "config.json", Dest: "config"},
 			expected: "config/config.json",
+		},
+		{
+			// File type with filename dest (has extension) uses dest as full path
+			asset:    &config.Asset{Type: "file", Name: "AGENTS.md", Dest: "CLAUDE.md"},
+			expected: "CLAUDE.md",
+		},
+		{
+			// File type with path+filename dest uses dest as full path
+			asset:    &config.Asset{Type: "file", Name: "settings.yaml", Dest: "config/app.yaml"},
+			expected: "config/app.yaml",
+		},
+		{
+			// File type with trailing slash dest is explicitly a directory
+			asset:    &config.Asset{Type: "file", Name: "data.json", Dest: "output/"},
+			expected: "output/data.json",
 		},
 	}
 
@@ -248,5 +263,18 @@ func TestAdapterTransformStatusLineNativePassthrough(t *testing.T) {
 	}
 	if result["showCost"] != true {
 		t.Errorf("showCost = %v, want true", result["showCost"])
+	}
+}
+
+func TestAdapterProvideVariables(t *testing.T) {
+	a := New("")
+
+	vars := a.ProvideVariables()
+
+	if vars["target_name"] != "claude" {
+		t.Errorf("target_name = %q, want 'claude'", vars["target_name"])
+	}
+	if vars["target_agents_file"] != "CLAUDE.md" {
+		t.Errorf("target_agents_file = %q, want 'CLAUDE.md'", vars["target_agents_file"])
 	}
 }

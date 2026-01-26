@@ -15,6 +15,7 @@ import (
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/frontmatter"
+	"github.com/amterp/tai/internal/pathutil"
 	"github.com/amterp/tai/internal/source"
 	"github.com/amterp/tai/internal/template"
 )
@@ -146,17 +147,40 @@ func (i *Installer) Install(
 	// Prepare new manifest entries
 	var newEntries []ManifestEntry
 	var newConfigEntries []ConfigEntry
-	templateEngine := template.NewEngine(opts.Variables)
+
+	// Merge adapter variables with user variables (user takes precedence)
+	mergedVars := template.MergeVariables(adap.ProvideVariables(), opts.Variables)
+	templateEngine := template.NewEngine(mergedVars)
 
 	// Process file assets
 	for _, asset := range fileAssets {
-		targetPath := adap.MapAssetPath(asset)
+		// For file assets with templated dest paths, substitute variables
+		workingAsset := asset
+		if asset.Type == config.AssetTypeFile && asset.Dest != "" && template.HasTemplateVars([]byte(asset.Dest)) {
+			// {{existing}} doesn't make sense in dest paths - it's for file content only
+			if template.HasExistingVar([]byte(asset.Dest)) {
+				return nil, fmt.Errorf("{{existing}} cannot be used in dest path for %s (it only works in file content)", asset.Name)
+			}
+			resolvedDest, err := templateEngine.ProcessString(asset.Dest)
+			if err != nil {
+				return nil, fmt.Errorf("processing dest template for %s: %w", asset.Name, err)
+			}
+			// Validate resolved path doesn't escape target directory
+			if err := pathutil.ValidateRelativePath(resolvedDest); err != nil {
+				return nil, fmt.Errorf("invalid resolved dest for %s: %w", asset.Name, err)
+			}
+			// Create a copy to avoid mutating the original
+			assetCopy := *asset
+			assetCopy.Dest = resolvedDest
+			workingAsset = &assetCopy
+		}
+		targetPath := adap.MapAssetPath(workingAsset)
 		fullTargetPath := filepath.Join(targetDir, targetPath)
 
 		// Resolve the asset to get content
-		resolved, err := i.resolveAsset(asset, targetPath, fullTargetPath, templateEngine, adap, opts.DryRun)
+		resolved, err := i.resolveAsset(workingAsset, targetPath, fullTargetPath, templateEngine, adap, opts.DryRun)
 		if err != nil {
-			return nil, fmt.Errorf("resolving asset %s: %w", asset.SourcePath, err)
+			return nil, fmt.Errorf("resolving asset %s: %w", workingAsset.SourcePath, err)
 		}
 
 		// Check for conflicts

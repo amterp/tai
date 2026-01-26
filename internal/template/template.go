@@ -10,6 +10,18 @@ import (
 // Variables holds the template variables available for substitution.
 type Variables map[string]string
 
+// MergeVariables combines multiple variable maps, with later maps taking precedence.
+// This establishes priority order: adapter vars < user vars (CLI --var).
+func MergeVariables(sources ...Variables) Variables {
+	result := make(Variables)
+	for _, src := range sources {
+		for k, v := range src {
+			result[k] = v
+		}
+	}
+	return result
+}
+
 // Engine handles template processing.
 type Engine struct {
 	variables Variables
@@ -22,6 +34,14 @@ func NewEngine(vars Variables) *Engine {
 
 // varPattern matches {{variable}} patterns.
 var varPattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
+
+// ProcessString applies template substitution to a string.
+// This is a convenience wrapper around Process for string inputs.
+// Use for substituting variables in paths or other short strings.
+func (e *Engine) ProcessString(s string) (string, error) {
+	result, err := e.Process([]byte(s), "")
+	return string(result), err
+}
 
 // Process applies template substitution to content.
 // Variables are referenced as {{variable_name}}.

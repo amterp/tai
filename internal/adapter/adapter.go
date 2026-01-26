@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/template"
 )
 
 // Adapter defines the interface for target-specific adapters.
@@ -59,6 +60,13 @@ type Adapter interface {
 	// For example, Claude returns "SKILL.md" for skills, "PERSONA.md" for personas.
 	// Returns empty string for types that don't support directory mode.
 	MainFileName(assetType string) string
+
+	// ProvideVariables returns target-specific template variables.
+	// These variables use the "target_" prefix convention:
+	//   - target_name: adapter name (e.g., "claude", "cursor")
+	//   - target_agents_file: global instructions filename (e.g., "CLAUDE.md")
+	// User-provided variables (via --var) take precedence over these.
+	ProvideVariables() template.Variables
 }
 
 // Registry holds all registered adapters.

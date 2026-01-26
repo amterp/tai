@@ -7,10 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
 	fm "github.com/amterp/tai/internal/frontmatter"
+	"github.com/amterp/tai/internal/template"
 )
 
 // Settings key constants for Claude's settings.json
@@ -66,9 +68,22 @@ func (a *Adapter) MapAssetPath(asset *config.Asset) string {
 	// File type uses Dest directly
 	if asset.Type == config.AssetTypeFile {
 		if asset.Dest == "" {
-			// Root level
+			// Root level with original name
 			return asset.Name
 		}
+		// Interpret dest based on its form:
+		// - Ends with "/" → explicit directory, use dest/name
+		// - Basename contains "." → full path (dest IS the final path)
+		// - Otherwise → directory, use dest/name
+		if strings.HasSuffix(asset.Dest, "/") {
+			return filepath.Join(strings.TrimSuffix(asset.Dest, "/"), asset.Name)
+		}
+		basename := filepath.Base(asset.Dest)
+		if strings.Contains(basename, ".") {
+			// Dest looks like a full file path (e.g., "CLAUDE.md", "subdir/config.json")
+			return asset.Dest
+		}
+		// Dest is a directory
 		return filepath.Join(asset.Dest, asset.Name)
 	}
 
@@ -212,6 +227,14 @@ func (a *Adapter) SettingsKey(assetType string) string {
 // MainFileName returns the main file name for a directory asset type.
 func (a *Adapter) MainFileName(assetType string) string {
 	return config.MainFileName(assetType)
+}
+
+// ProvideVariables returns Claude-specific template variables.
+func (a *Adapter) ProvideVariables() template.Variables {
+	return template.Variables{
+		"target_name":        "claude",
+		"target_agents_file": "CLAUDE.md",
+	}
 }
 
 // applyShowElements sets Claude's show* flags based on tai's show elements.

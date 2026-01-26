@@ -79,7 +79,12 @@ Sources → Assets → Bundles → Profiles → Install Pipeline → Target Conf
 
 ### Adapter Interface
 
-Adapters translate tai concepts to target-specific formats. They implement `TransformContent()` to render the target's expected frontmatter from parsed tai metadata. The Claude adapter maps:
+Adapters translate tai concepts to target-specific formats. Key methods:
+- `TransformContent()` - Renders target-specific frontmatter from parsed tai metadata
+- `ProvideVariables()` - Returns target-specific template variables (e.g., `target_name`, `target_agents_file`)
+- `MapAssetPath()` - Maps tai asset paths to target paths, interpreting `dest` for file assets
+
+The Claude adapter maps:
 - `personas/` → `output-styles/` (renders `name`, `description` frontmatter)
 - `delegates/` → `agents/` (renders `name`, `description`, `tools` frontmatter)
 - `skills/` → `skills/` (SKILL.md gets `name`, `description`, `tools` frontmatter)
@@ -87,6 +92,8 @@ Adapters translate tai concepts to target-specific formats. They implement `Tran
 - `statuslines/` → `statusLine` key in `settings.json` (tai format → Claude format)
 - `mcps/` → entries in `.mcp.json` or `~/.claude.json` (v0.2)
 - `hooks/` → entries in `settings.json` (v0.2)
+
+Claude's `ProvideVariables()` returns: `target_name: "claude"`, `target_agents_file: "CLAUDE.md"`
 
 ## User Config Repo Structure
 

@@ -928,6 +928,60 @@ When installing, pass variables via the `--var` flag:
 tai install work --var project_name=MyApp
 ```
 
+### Variable Sources
+
+Variables come from multiple sources with a defined priority order (later wins):
+
+| Source | Priority | Example |
+|--------|----------|---------|
+| Adapter-provided | Lowest | `target_name`, `target_agents_file` |
+| CLI `--var` | Highest | `--var project_name=MyApp` |
+
+**Future expansion** may add intermediate layers: `Adapter → tai.yaml globals → profile options → CLI --var`
+
+### Adapter-Provided Variables
+
+Adapters provide target-specific variables with the `target_` prefix:
+
+| Variable | Claude | Cursor (future) |
+|----------|--------|-----------------|
+| `target_name` | `claude` | `cursor` |
+| `target_agents_file` | `CLAUDE.md` | `.cursorrules` |
+
+These variables enable target-aware assets. For example, a single "global instructions" file can be named appropriately per target:
+
+```yaml
+# bundles/core.yaml
+assets:
+  - type: file
+    path: files/AGENTS.md
+    dest: "{{target_agents_file}}"  # Resolves to CLAUDE.md for Claude
+```
+
+**Naming convention:** The `target_` prefix indicates adapter-provided variables. Future tai-provided variables may use `tai_*` (e.g., `tai_version`, `tai_config_repo`).
+
+### Dest Path Templates
+
+File assets can use template variables in the `dest` field:
+
+```yaml
+assets:
+  - type: file
+    path: files/agents.md
+    dest: "{{target_agents_file}}"  # Full path (has extension)
+
+  - type: file
+    path: files/config.json
+    dest: "{{target_name}}-config"  # Directory path (no extension)
+```
+
+**Dest interpretation:**
+- If dest has an extension in the basename (e.g., `CLAUDE.md`, `subdir/app.yaml`) → treated as full path
+- If dest has no extension (e.g., `config`, `subdir`) → treated as directory, filename appended
+- If dest ends with `/` (e.g., `output/`) → explicitly a directory
+
+This allows a single file asset definition to install to different locations per target.
+
 ### Special Variables
 
 #### `{{existing}}`

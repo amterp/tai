@@ -200,3 +200,110 @@ func TestEngineProcessNoVars(t *testing.T) {
 		t.Errorf("result = %q, want %q", string(result), string(content))
 	}
 }
+
+func TestMergeVariables(t *testing.T) {
+	tests := []struct {
+		name     string
+		sources  []Variables
+		expected Variables
+	}{
+		{
+			name:     "empty sources",
+			sources:  []Variables{},
+			expected: Variables{},
+		},
+		{
+			name:     "single source",
+			sources:  []Variables{{"a": "1", "b": "2"}},
+			expected: Variables{"a": "1", "b": "2"},
+		},
+		{
+			name: "later wins on collision",
+			sources: []Variables{
+				{"a": "first", "b": "first"},
+				{"a": "second"},
+			},
+			expected: Variables{"a": "second", "b": "first"},
+		},
+		{
+			name: "three sources",
+			sources: []Variables{
+				{"a": "1"},
+				{"b": "2"},
+				{"c": "3"},
+			},
+			expected: Variables{"a": "1", "b": "2", "c": "3"},
+		},
+		{
+			name: "nil source skipped",
+			sources: []Variables{
+				{"a": "1"},
+				nil,
+				{"b": "2"},
+			},
+			expected: Variables{"a": "1", "b": "2"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := MergeVariables(tt.sources...)
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("MergeVariables() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestProcessString(t *testing.T) {
+	tests := []struct {
+		name     string
+		vars     Variables
+		input    string
+		expected string
+	}{
+		{
+			name:     "simple substitution",
+			vars:     Variables{"name": "claude"},
+			input:    "target_{{name}}",
+			expected: "target_claude",
+		},
+		{
+			name:     "no variables",
+			vars:     Variables{},
+			input:    "plain string",
+			expected: "plain string",
+		},
+		{
+			name:     "unknown variable left as-is",
+			vars:     Variables{},
+			input:    "{{unknown}}",
+			expected: "{{unknown}}",
+		},
+		{
+			name:     "multiple variables",
+			vars:     Variables{"a": "1", "b": "2"},
+			input:    "{{a}}/{{b}}",
+			expected: "1/2",
+		},
+		{
+			name:     "empty string input",
+			vars:     Variables{"x": "y"},
+			input:    "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			engine := NewEngine(tt.vars)
+			result, err := engine.ProcessString(tt.input)
+			if err != nil {
+				t.Fatalf("ProcessString failed: %v", err)
+			}
+			if result != tt.expected {
+				t.Errorf("ProcessString(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
