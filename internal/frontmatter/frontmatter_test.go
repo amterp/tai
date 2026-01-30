@@ -175,3 +175,50 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRenderQuotesColonSpace(t *testing.T) {
+	fields := map[string]string{
+		"name":        "Test Skill",
+		"description": "Examples: user: hello, system: world",
+	}
+	body := []byte("# Content\n")
+
+	result := Render(fields, []string{"name", "description"}, body)
+
+	// The output should be valid YAML that can be parsed back
+	parsed, err := Parse(result)
+	if err != nil {
+		t.Fatalf("Render produced invalid YAML: %v\nOutput was:\n%s", err, result)
+	}
+
+	// Verify the value survived the round trip
+	if parsed.Metadata["description"] != fields["description"] {
+		t.Errorf("description = %q, want %q", parsed.Metadata["description"], fields["description"])
+	}
+}
+
+func TestRoundTripWithColonSpace(t *testing.T) {
+	fields := map[string]string{
+		"name":        "Test",
+		"description": "Format: key: value pairs",
+	}
+	body := []byte("Body content\n")
+
+	// Render then parse
+	rendered := Render(fields, []string{"name", "description"}, body)
+	parsed, err := Parse(rendered)
+	if err != nil {
+		t.Fatalf("Parse failed after render: %v\nRendered:\n%s", err, rendered)
+	}
+
+	// Verify all fields preserved
+	for key, want := range fields {
+		if got := parsed.Metadata[key]; got != want {
+			t.Errorf("%s = %q, want %q", key, got, want)
+		}
+	}
+
+	if string(parsed.Body) != string(body) {
+		t.Errorf("Body = %q, want %q", string(parsed.Body), string(body))
+	}
+}
+

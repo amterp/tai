@@ -87,33 +87,45 @@ func Parse(content []byte) (*Parsed, error) {
 // Render produces content with YAML frontmatter followed by the body.
 // fieldOrder controls the order fields appear in the frontmatter block.
 // Fields in the map but not in fieldOrder are appended alphabetically.
+// Values are properly escaped using the yaml.v3 encoder.
 func Render(fields map[string]string, fieldOrder []string, body []byte) []byte {
-	var buf bytes.Buffer
-	buf.Write(separator)
-	buf.WriteByte('\n')
-
+	// Build ordered content slice for the mapping node
+	var content []*yaml.Node
 	written := make(map[string]bool)
+
 	for _, key := range fieldOrder {
 		if val, ok := fields[key]; ok {
-			buf.WriteString(key)
-			buf.WriteString(": ")
-			buf.WriteString(val)
-			buf.WriteByte('\n')
+			content = append(content,
+				&yaml.Node{Kind: yaml.ScalarNode, Value: key},
+				&yaml.Node{Kind: yaml.ScalarNode, Value: val},
+			)
 			written[key] = true
 		}
 	}
 
-	// Write remaining fields alphabetically
 	for _, key := range sortedKeys(fields) {
 		if written[key] {
 			continue
 		}
-		buf.WriteString(key)
-		buf.WriteString(": ")
-		buf.WriteString(fields[key])
-		buf.WriteByte('\n')
+		content = append(content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: key},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: fields[key]},
+		)
 	}
 
+	// Encode the mapping node to YAML
+	node := &yaml.Node{Kind: yaml.MappingNode, Content: content}
+	var yamlBuf bytes.Buffer
+	enc := yaml.NewEncoder(&yamlBuf)
+	enc.SetIndent(2)
+	_ = enc.Encode(node) // errors only on invalid node structure, which we control
+	_ = enc.Close()
+
+	// Assemble final output with --- delimiters
+	var buf bytes.Buffer
+	buf.Write(separator)
+	buf.WriteByte('\n')
+	buf.Write(yamlBuf.Bytes())
 	buf.Write(separator)
 	buf.WriteByte('\n')
 
