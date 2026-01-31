@@ -146,6 +146,11 @@ func (a *Adapter) transformAgent(asset *config.ResolvedAsset) []byte {
 		order = append(order, fm.FieldTools)
 	}
 
+	if model := asset.Metadata[fm.FieldModel]; model != "" {
+		fields[fm.FieldModel] = model
+		order = append(order, fm.FieldModel)
+	}
+
 	return fm.Render(fields, order, asset.Content)
 }
 

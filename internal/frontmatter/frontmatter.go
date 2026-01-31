@@ -16,6 +16,7 @@ const (
 	FieldName        = "name"
 	FieldDescription = "description"
 	FieldTools       = "tools"
+	FieldModel       = "model"
 )
 
 var separator = []byte("---")

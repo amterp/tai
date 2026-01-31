@@ -254,6 +254,7 @@ You are a senior software engineer...
 | `name` | required | required | required |
 | `description` | optional | optional | optional |
 | `tools` | — | optional | optional |
+| `model` | — | optional | optional |
 
 Unknown fields are silently ignored. Schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file.
 

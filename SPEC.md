@@ -307,10 +307,12 @@ You are a senior software engineer...
 | `name` | required | required | required |
 | `description` | optional | optional | optional |
 | `tools` | — | optional | optional |
+| `model` | — | optional | optional |
 
 - `name`: Human-readable display name.
 - `description`: Short description of what this asset does.
 - `tools`: Comma-separated list of tools the delegate/skill may use.
+- `model`: Model to use for this delegate/skill (e.g., `haiku`, `sonnet`, `opus`).
 
 Unknown fields are silently ignored to support forward compatibility and external sources with their own metadata. The schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file.
 
@@ -321,8 +323,8 @@ Unknown fields are silently ignored to support forward compatibility and externa
 | Asset Type | Installed frontmatter | Notes |
 |------------|----------------------|-------|
 | Personas | `name`, `description` | Claude output-style format |
-| Delegates | `name`, `description`, `tools` | Claude agent format |
-| Skills | `name`, `description`, `tools` | Same as delegates (SKILL.md in directories) |
+| Delegates | `name`, `description`, `tools`, `model` | Claude agent format |
+| Skills | `name`, `description`, `tools`, `model` | Same as delegates (SKILL.md in directories) |
 | Files | (none—content unchanged) | Copied byte-for-byte to `dest` location |
 
 #### The `file` Type
