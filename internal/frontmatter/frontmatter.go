@@ -17,13 +17,22 @@ const (
 	FieldDescription = "description"
 	FieldTools       = "tools"
 	FieldModel       = "model"
+	FieldDepends     = "depends"
 )
 
 var separator = []byte("---")
 
+// DependencyEntry represents a single dependency in the depends array.
+// The path format is: "type-dir/name" or "source:type-dir/name"
+// Examples: "delegates/bug-hunter.md", "other-source:skills/my-skill"
+type DependencyEntry struct {
+	Path string // Full asset path including type directory
+}
+
 // Parsed represents a file split into frontmatter metadata and body content.
 type Parsed struct {
 	Metadata map[string]string // Parsed YAML key-value pairs (nil if no frontmatter)
+	Depends  []DependencyEntry // Parsed depends array (nil if not present)
 	Body     []byte            // Content after the frontmatter block
 }
 
@@ -74,15 +83,63 @@ func Parse(content []byte) (*Parsed, error) {
 		rest = rest[2:]
 	}
 
-	var metadata map[string]string
-	if err := yaml.Unmarshal(yamlBlock, &metadata); err != nil {
+	// Parse as map[string]any first to handle the depends array
+	var rawMetadata map[string]any
+	if err := yaml.Unmarshal(yamlBlock, &rawMetadata); err != nil {
 		return nil, improveYAMLError(err)
 	}
-	if metadata == nil {
-		metadata = make(map[string]string)
+
+	metadata := make(map[string]string)
+	var depends []DependencyEntry
+
+	for key, val := range rawMetadata {
+		if key == FieldDepends {
+			// Parse depends array
+			deps, err := parseDepends(val)
+			if err != nil {
+				return nil, fmt.Errorf("parsing depends: %w", err)
+			}
+			depends = deps
+		} else {
+			// All other fields are strings
+			switch v := val.(type) {
+			case string:
+				metadata[key] = v
+			case nil:
+				// Skip nil values
+			default:
+				// Convert non-string scalars to string representation
+				metadata[key] = fmt.Sprintf("%v", v)
+			}
+		}
 	}
 
-	return &Parsed{Metadata: metadata, Body: rest}, nil
+	return &Parsed{Metadata: metadata, Depends: depends, Body: rest}, nil
+}
+
+// parseDepends parses the depends field value into a slice of DependencyEntry.
+// Each entry should be a string path like "delegates/bug-hunter.md" or "source:skills/my-skill".
+func parseDepends(val any) ([]DependencyEntry, error) {
+	arr, ok := val.([]any)
+	if !ok {
+		return nil, fmt.Errorf("depends must be an array, got %T", val)
+	}
+
+	var deps []DependencyEntry
+	for i, item := range arr {
+		pathStr, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("depends[%d]: must be a string path (e.g., \"delegates/bug-hunter.md\"), got %T", i, item)
+		}
+
+		if pathStr == "" {
+			return nil, fmt.Errorf("depends[%d]: empty dependency path", i)
+		}
+
+		deps = append(deps, DependencyEntry{Path: pathStr})
+	}
+
+	return deps, nil
 }
 
 // Render produces content with YAML frontmatter followed by the body.

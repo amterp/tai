@@ -308,11 +308,13 @@ You are a senior software engineer...
 | `description` | optional | optional | optional |
 | `tools` | — | optional | optional |
 | `model` | — | optional | optional |
+| `depends` | optional | optional | optional |
 
 - `name`: Human-readable display name.
 - `description`: Short description of what this asset does.
 - `tools`: Comma-separated list of tools the delegate/skill may use.
 - `model`: Model to use for this delegate/skill (e.g., `haiku`, `sonnet`, `opus`).
+- `depends`: List of asset dependencies (see [Asset Dependencies](#asset-dependencies) below).
 
 Unknown fields are silently ignored to support forward compatibility and external sources with their own metadata. The schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file.
 
@@ -326,6 +328,48 @@ Unknown fields are silently ignored to support forward compatibility and externa
 | Delegates | `name`, `description`, `tools`, `model` | Claude agent format |
 | Skills | `name`, `description`, `tools`, `model` | Same as delegates (SKILL.md in directories) |
 | Files | (none—content unchanged) | Copied byte-for-byte to `dest` location |
+
+#### Asset Dependencies
+
+Assets can declare dependencies on other assets using the `depends` field. When an asset is included in a bundle or profile, its dependencies are automatically pulled in.
+
+```markdown
+---
+name: Code Review
+description: Request a code review with specialized reviewers
+depends:
+  - delegates/bug-hunter.md
+  - delegates/code-reviewer.md
+  - delegates/performance-reviewer.md
+  - skills/council-participant
+---
+
+# Code Review Skill
+...
+```
+
+**Syntax:**
+
+Each dependency is a path string in the format `type-dir/name` or `source:type-dir/name`:
+
+```yaml
+depends:
+  - delegates/bug-hunter.md              # from local source
+  - skills/council-participant           # directory-based skill
+  - other-source:delegates/helper.md     # from named source
+```
+
+**Resolution rules:**
+
+1. **Depth-first ordering**: Dependencies are resolved depth-first, so transitive dependencies appear before the assets that need them.
+2. **Deduplication**: If the same asset appears multiple times (directly or as a dependency), it's included once using "later wins" semantics.
+3. **Explicit wins**: Assets explicitly included in a bundle/profile override auto-included dependencies.
+4. **Cycle detection**: Circular dependencies (A → B → A) are detected and cause installation to fail with a clear error message.
+5. **Stripped on install**: The `depends` field is tai metadata—it's consumed during resolution and never written to the target.
+
+**Use case:** A skill like `code-review` that uses multiple specialized delegates doesn't require users to manually include each delegate. They include the skill, and the delegates come along automatically.
+
+**Note:** The `file` type doesn't support dependencies (frontmatter is not parsed for file assets).
 
 #### The `file` Type
 
@@ -1222,6 +1266,7 @@ bundles:
 - [x] Simple templating with `{{variable}}` substitution
 - [x] `{{existing}}` templating for wrapping existing file content with backup/restore
 - [x] StatusLine config assets with tai/native format support
+- [x] Asset dependencies via `depends:` frontmatter field with automatic resolution
 
 ### Deferred to Future Versions
 
@@ -1254,10 +1299,8 @@ Items considered during design but explicitly deferred. These inform future deve
 - Detect unused assets in bundles
 - Catch circular bundle references
 
-### Asset Dependencies (DAG Resolution)
-**What:** Assets declare required dependencies; tai resolves them automatically.
-**Why deferred:** DAG resolution adds significant complexity (cycle detection, error handling). `tai lint` provides 80% of the value.
-**Future scope:** Sidecar YAML or frontmatter declaring `requires: [other-asset]`.
+### ~~Asset Dependencies (DAG Resolution)~~
+**Status:** IMPLEMENTED. Assets can declare `depends:` in frontmatter to list required assets. Dependencies are resolved depth-first with cycle detection. See [Asset Dependencies](#asset-dependencies) in the File Asset Formats section.
 
 ### Profile as Context Container
 **What:** Profiles hold environment variables, model constraints, and target-specific flags beyond just asset composition.

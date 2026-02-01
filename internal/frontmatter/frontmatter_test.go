@@ -222,3 +222,140 @@ func TestRoundTripWithColonSpace(t *testing.T) {
 	}
 }
 
+func TestParseDependsArray(t *testing.T) {
+	input := []byte(`---
+name: Code Review
+description: Reviews code
+depends:
+  - delegates/bug-hunter.md
+  - delegates/code-reviewer.md
+  - skills/council-participant
+---
+
+# Body
+`)
+
+	parsed, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	if parsed.Metadata["name"] != "Code Review" {
+		t.Errorf("name = %q, want %q", parsed.Metadata["name"], "Code Review")
+	}
+
+	// Depends should not be in metadata
+	if _, ok := parsed.Metadata["depends"]; ok {
+		t.Error("depends should not be in Metadata map")
+	}
+
+	// Check parsed depends
+	if len(parsed.Depends) != 3 {
+		t.Fatalf("len(Depends) = %d, want 3", len(parsed.Depends))
+	}
+
+	expected := []string{
+		"delegates/bug-hunter.md",
+		"delegates/code-reviewer.md",
+		"skills/council-participant",
+	}
+
+	for i, want := range expected {
+		got := parsed.Depends[i].Path
+		if got != want {
+			t.Errorf("Depends[%d].Path = %q, want %q", i, got, want)
+		}
+	}
+}
+
+func TestParseDependsWithSource(t *testing.T) {
+	input := []byte(`---
+name: Test
+depends:
+  - other-source:delegates/bug-hunter.md
+---
+`)
+
+	parsed, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	if len(parsed.Depends) != 1 {
+		t.Fatalf("len(Depends) = %d, want 1", len(parsed.Depends))
+	}
+
+	got := parsed.Depends[0].Path
+	want := "other-source:delegates/bug-hunter.md"
+	if got != want {
+		t.Errorf("Depends[0].Path = %q, want %q", got, want)
+	}
+}
+
+func TestParseDependsEmpty(t *testing.T) {
+	input := []byte(`---
+name: Test
+depends: []
+---
+`)
+
+	parsed, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	if len(parsed.Depends) != 0 {
+		t.Errorf("len(Depends) = %d, want 0", len(parsed.Depends))
+	}
+}
+
+func TestParseDependsInvalidNotArray(t *testing.T) {
+	input := []byte(`---
+name: Test
+depends: "not-an-array"
+---
+`)
+
+	_, err := Parse(input)
+	if err == nil {
+		t.Fatal("expected error for non-array depends")
+	}
+	if !strings.Contains(err.Error(), "must be an array") {
+		t.Errorf("error = %q, should contain 'must be an array'", err.Error())
+	}
+}
+
+func TestParseDependsInvalidNotString(t *testing.T) {
+	input := []byte(`---
+name: Test
+depends:
+  - delegate: foo
+---
+`)
+
+	_, err := Parse(input)
+	if err == nil {
+		t.Fatal("expected error for non-string depends entry")
+	}
+	if !strings.Contains(err.Error(), "must be a string path") {
+		t.Errorf("error = %q, should contain 'must be a string path'", err.Error())
+	}
+}
+
+func TestParseNoDepends(t *testing.T) {
+	input := []byte(`---
+name: Test
+description: No depends
+---
+`)
+
+	parsed, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	if parsed.Depends != nil {
+		t.Errorf("Depends = %v, want nil", parsed.Depends)
+	}
+}
+

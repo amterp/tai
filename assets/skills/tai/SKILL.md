@@ -255,10 +255,42 @@ You are a senior software engineer...
 | `description` | optional | optional | optional |
 | `tools` | — | optional | optional |
 | `model` | — | optional | optional |
+| `depends` | optional | optional | optional |
 
 Unknown fields are silently ignored. Schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file.
 
 **Note:** The `file` type has no frontmatter requirements—content is copied exactly as-is.
+
+### Asset Dependencies
+
+Assets can declare dependencies on other assets using the `depends` field. When an asset is included in a bundle or profile, its dependencies are automatically pulled in.
+
+```yaml
+---
+name: Code Review
+description: Reviews code with specialized reviewers
+depends:
+  - delegates/bug-hunter.md
+  - delegates/code-reviewer.md
+  - skills/council-participant
+---
+```
+
+**Syntax:** Each dependency is a path in `type-dir/name` format:
+
+```yaml
+depends:
+  - delegates/bug-hunter.md              # from local source
+  - skills/council-participant           # directory-based skill
+  - other-source:delegates/helper.md     # from named source
+```
+
+**Resolution rules:**
+- Dependencies are resolved depth-first (transitive deps appear before assets that need them)
+- Duplicate assets are deduplicated ("later wins")
+- Explicit bundle/profile assets override auto-included dependencies
+- Circular dependencies cause installation to fail with a clear error
+- The `depends` field is stripped on install (never written to target)
 
 ### YAML Escaping for Descriptions
 

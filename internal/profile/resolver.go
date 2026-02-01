@@ -6,6 +6,7 @@ import (
 
 	"github.com/amterp/tai/internal/bundle"
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/dependency"
 	"github.com/amterp/tai/internal/source"
 )
 
@@ -33,6 +34,7 @@ type Resolver struct {
 	bundles        map[string]*config.Bundle
 	sources        map[string]*source.LoadedSource
 	bundleResolver *bundle.Resolver
+	depResolver    *dependency.Resolver
 	logger         Logger
 }
 
@@ -47,6 +49,7 @@ func NewResolver(
 		bundles:        bundles,
 		sources:        sources,
 		bundleResolver: bundle.NewResolver(bundles, sources),
+		depResolver:    dependency.NewResolver(sources),
 		logger:         noopLogger{}, // Discard by default
 	}
 }
@@ -54,6 +57,7 @@ func NewResolver(
 // SetLogger sets the logger for override messages.
 func (r *Resolver) SetLogger(logger Logger) {
 	r.logger = logger
+	r.depResolver.SetLogger(logger)
 }
 
 // Resolve resolves a profile by name.
@@ -108,10 +112,16 @@ func (r *Resolver) resolveProfile(profile *config.Profile) (*ResolvedProfile, er
 		assetMap[key] = asset
 	}
 
-	// Build result
+	// Build asset list from order
 	assets := make([]*config.Asset, 0, len(order))
 	for _, key := range order {
 		assets = append(assets, assetMap[key])
+	}
+
+	// Resolve asset dependencies (auto-include depends)
+	assets, err = r.depResolver.Resolve(assets)
+	if err != nil {
+		return nil, fmt.Errorf("resolving dependencies for profile %q: %w", profile.Name, err)
 	}
 
 	return &ResolvedProfile{

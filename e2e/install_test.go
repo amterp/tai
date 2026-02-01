@@ -3,11 +3,13 @@ package e2e
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/amterp/tai/internal/adapter/claude"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/install"
+	"github.com/amterp/tai/internal/profile"
 	"github.com/amterp/tai/internal/source"
 	"github.com/amterp/tai/internal/template"
 	"github.com/amterp/tai/internal/testutil"
@@ -705,5 +707,442 @@ bundles:
 
 	if err == nil {
 		t.Error("Install should fail when include references non-existent source")
+	}
+}
+
+// TestE2EInstallWithDependencies tests that asset dependencies are auto-included.
+func TestE2EInstallWithDependencies(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	// A skill that depends on two delegates
+	env.SetupAsset("skills", "code-review.md", `---
+name: Code Review
+description: Reviews code with specialized reviewers
+depends:
+  - delegates/bug-hunter.md
+  - delegates/code-reviewer.md
+---
+
+# Code Review Skill
+
+Use the bug-hunter and code-reviewer delegates.
+`)
+
+	// The delegates it depends on
+	env.SetupAsset("delegates", "bug-hunter.md", `---
+name: bug-hunter
+description: Finds bugs in code
+tools: Read, Grep
+---
+
+You find bugs.
+`)
+
+	env.SetupAsset("delegates", "code-reviewer.md", `---
+name: code-reviewer
+description: Reviews code for quality
+tools: Read, Glob, Grep
+---
+
+You review code.
+`)
+
+	// Bundle only includes the skill - deps should be auto-included
+	env.SetupBundle("review", `name: review
+assets:
+  - type: skill
+    path: skills/code-review.md
+`)
+
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - review
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+	bundles, _ := config.LoadBundlesFromDir(filepath.Join(env.ConfigRepo, "bundles"))
+	profiles, _ := config.LoadProfilesFromDir(filepath.Join(env.ConfigRepo, "profiles"))
+
+	// Use profile resolver which includes dependency resolution
+	resolver := profile.NewResolver(profiles, bundles, sources)
+	resolved, err := resolver.Resolve("test")
+	if err != nil {
+		t.Fatalf("Profile resolve failed: %v", err)
+	}
+
+	// Should have 3 assets: 2 delegates + 1 skill
+	if len(resolved.Assets) != 3 {
+		t.Fatalf("len(resolved.Assets) = %d, want 3", len(resolved.Assets))
+	}
+
+	// Dependencies should come first (before the skill that needs them)
+	assetNames := make([]string, len(resolved.Assets))
+	for i, a := range resolved.Assets {
+		assetNames[i] = a.Name
+	}
+
+	// Skill should be last
+	if resolved.Assets[len(resolved.Assets)-1].Name != "code-review.md" {
+		t.Errorf("skill should be last, got %v", assetNames)
+	}
+
+	// Delegates should be before the skill
+	delegateCount := 0
+	for i := 0; i < len(resolved.Assets)-1; i++ {
+		if resolved.Assets[i].Type == config.AssetTypeDelegate {
+			delegateCount++
+		}
+	}
+	if delegateCount != 2 {
+		t.Errorf("expected 2 delegates before skill, got %d", delegateCount)
+	}
+
+	// Now install and verify files are created
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adapter := claude.New(env.TargetDir)
+
+	result, err := installer.Install(adapter, "test", resolved.Assets, install.InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if len(result.Added) != 3 {
+		t.Errorf("Added = %d, want 3", len(result.Added))
+	}
+
+	// Verify all files exist
+	if !env.TargetFileExists("skills/code-review.md") {
+		t.Error("skills/code-review.md not created")
+	}
+	if !env.TargetFileExists("agents/bug-hunter.md") {
+		t.Error("agents/bug-hunter.md not created")
+	}
+	if !env.TargetFileExists("agents/code-reviewer.md") {
+		t.Error("agents/code-reviewer.md not created")
+	}
+
+	// Verify skill content has no depends field
+	skillContent := env.ReadTargetFile("skills/code-review.md")
+	if strings.Contains(skillContent, "depends") {
+		t.Error("skill content should not contain 'depends' field")
+	}
+}
+
+// TestE2EInstallTransitiveDependencies tests that transitive dependencies are resolved.
+func TestE2EInstallTransitiveDependencies(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	// A -> B -> C (transitive chain)
+	env.SetupAsset("skills", "skill-a.md", `---
+name: Skill A
+depends:
+  - delegates/delegate-b.md
+---
+A content.
+`)
+
+	env.SetupAsset("delegates", "delegate-b.md", `---
+name: Delegate B
+depends:
+  - personas/persona-c.md
+---
+B content.
+`)
+
+	env.SetupAsset("personas", "persona-c.md", `---
+name: Persona C
+description: The deepest dependency
+---
+C content.
+`)
+
+	env.SetupBundle("test", `name: test
+assets:
+  - type: skill
+    path: skills/skill-a.md
+`)
+
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+	bundles, _ := config.LoadBundlesFromDir(filepath.Join(env.ConfigRepo, "bundles"))
+	profiles, _ := config.LoadProfilesFromDir(filepath.Join(env.ConfigRepo, "profiles"))
+
+	resolver := profile.NewResolver(profiles, bundles, sources)
+	resolved, err := resolver.Resolve("test")
+	if err != nil {
+		t.Fatalf("Profile resolve failed: %v", err)
+	}
+
+	// Should have 3 assets: A, B, C
+	if len(resolved.Assets) != 3 {
+		t.Fatalf("len(resolved.Assets) = %d, want 3", len(resolved.Assets))
+	}
+
+	// Order should be: C first, then B, then A (depth-first)
+	if resolved.Assets[0].Name != "persona-c.md" {
+		t.Errorf("expected persona-c.md first, got %s", resolved.Assets[0].Name)
+	}
+	if resolved.Assets[1].Name != "delegate-b.md" {
+		t.Errorf("expected delegate-b.md second, got %s", resolved.Assets[1].Name)
+	}
+	if resolved.Assets[2].Name != "skill-a.md" {
+		t.Errorf("expected skill-a.md third, got %s", resolved.Assets[2].Name)
+	}
+}
+
+// TestE2EInstallDependencyOverride tests explicit assets override dependencies.
+func TestE2EInstallDependencyOverride(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	// Skill depends on a delegate
+	env.SetupAsset("skills", "my-skill.md", `---
+name: My Skill
+depends:
+  - delegates/helper.md
+---
+Skill content.
+`)
+
+	// The delegate
+	env.SetupAsset("delegates", "helper.md", `---
+name: helper
+description: A helper delegate
+---
+Helper content.
+`)
+
+	// Bundle includes BOTH the skill and its dependency explicitly
+	env.SetupBundle("test", `name: test
+assets:
+  - type: skill
+    path: skills/my-skill.md
+  - type: delegate
+    path: delegates/helper.md
+`)
+
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+	bundles, _ := config.LoadBundlesFromDir(filepath.Join(env.ConfigRepo, "bundles"))
+	profiles, _ := config.LoadProfilesFromDir(filepath.Join(env.ConfigRepo, "profiles"))
+
+	resolver := profile.NewResolver(profiles, bundles, sources)
+	resolved, err := resolver.Resolve("test")
+	if err != nil {
+		t.Fatalf("Profile resolve failed: %v", err)
+	}
+
+	// Should still have exactly 2 assets (no duplicate)
+	if len(resolved.Assets) != 2 {
+		t.Fatalf("len(resolved.Assets) = %d, want 2 (no duplicates)", len(resolved.Assets))
+	}
+
+	// The explicit asset should be in the result
+	found := false
+	for _, a := range resolved.Assets {
+		if a.Type == config.AssetTypeDelegate && a.Name == "helper.md" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("delegate helper.md should be in resolved assets")
+	}
+}
+
+// TestE2EInstallDependencyCycleDetection tests that circular dependencies are detected.
+func TestE2EInstallDependencyCycleDetection(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	// A -> B -> A (cycle)
+	env.SetupAsset("delegates", "delegate-a.md", `---
+name: Delegate A
+depends:
+  - delegates/delegate-b.md
+---
+A content.
+`)
+
+	env.SetupAsset("delegates", "delegate-b.md", `---
+name: Delegate B
+depends:
+  - delegates/delegate-a.md
+---
+B content.
+`)
+
+	env.SetupBundle("test", `name: test
+assets:
+  - type: delegate
+    path: delegates/delegate-a.md
+`)
+
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+	bundles, _ := config.LoadBundlesFromDir(filepath.Join(env.ConfigRepo, "bundles"))
+	profiles, _ := config.LoadProfilesFromDir(filepath.Join(env.ConfigRepo, "profiles"))
+
+	resolver := profile.NewResolver(profiles, bundles, sources)
+	_, err := resolver.Resolve("test")
+
+	if err == nil {
+		t.Fatal("expected error for circular dependency")
+	}
+	if !strings.Contains(err.Error(), "circular dependency") {
+		t.Errorf("error = %q, should contain 'circular dependency'", err.Error())
+	}
+}
+
+// TestE2EInstallSkillDirectoryWithDependencies tests skill directories with dependencies.
+func TestE2EInstallSkillDirectoryWithDependencies(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	// Create a skill directory
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "review-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// SKILL.md with dependencies
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: Review Skill
+description: A code review skill
+depends:
+  - delegates/reviewer.md
+---
+
+# Review Skill
+
+Use the reviewer delegate.
+`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// A helper file in the skill directory
+	if err := os.WriteFile(filepath.Join(skillDir, "prompts.md"), []byte("# Review Prompts"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The delegate dependency
+	env.SetupAsset("delegates", "reviewer.md", `---
+name: reviewer
+description: Reviews things
+---
+Reviewer content.
+`)
+
+	env.SetupBundle("test", `name: test
+assets:
+  - type: skill
+    path: skills/review-skill
+`)
+
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+	bundles, _ := config.LoadBundlesFromDir(filepath.Join(env.ConfigRepo, "bundles"))
+	profiles, _ := config.LoadProfilesFromDir(filepath.Join(env.ConfigRepo, "profiles"))
+
+	resolver := profile.NewResolver(profiles, bundles, sources)
+	resolved, err := resolver.Resolve("test")
+	if err != nil {
+		t.Fatalf("Profile resolve failed: %v", err)
+	}
+
+	// Should have 2 assets: delegate + skill directory
+	if len(resolved.Assets) != 2 {
+		t.Fatalf("len(resolved.Assets) = %d, want 2", len(resolved.Assets))
+	}
+
+	// Delegate should come first
+	if resolved.Assets[0].Type != config.AssetTypeDelegate {
+		t.Errorf("expected delegate first, got %s", resolved.Assets[0].Type)
+	}
+
+	// Install and verify
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adapter := claude.New(env.TargetDir)
+
+	_, err = installer.Install(adapter, "test", resolved.Assets, install.InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	// Verify files exist
+	if !env.TargetFileExists("agents/reviewer.md") {
+		t.Error("agents/reviewer.md not created")
+	}
+	if !env.TargetFileExists("skills/review-skill/SKILL.md") {
+		t.Error("skills/review-skill/SKILL.md not created")
+	}
+	if !env.TargetFileExists("skills/review-skill/prompts.md") {
+		t.Error("skills/review-skill/prompts.md not created")
+	}
+
+	// SKILL.md should not contain depends field
+	skillContent := env.ReadTargetFile("skills/review-skill/SKILL.md")
+	if strings.Contains(skillContent, "depends") {
+		t.Error("SKILL.md should not contain 'depends' field")
 	}
 }
