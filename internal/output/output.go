@@ -29,6 +29,9 @@ type Output interface {
 	// InstallResult displays installation results with color-coded +/~/- prefixes.
 	InstallResult(data *InstallResultData)
 
+	// ConflictReport displays file conflicts with optional diffs.
+	ConflictReport(data *ConflictReportData)
+
 	// Success displays a success message.
 	Success(msg string)
 
@@ -67,6 +70,18 @@ type InstallResultData struct {
 	Skipped   []string
 	DryRun    bool
 	Manifest  string // Path to manifest file (empty in dry-run)
+}
+
+// ConflictReportData contains the data for displaying conflict reports.
+type ConflictReportData struct {
+	Conflicts []ConflictItem
+}
+
+// ConflictItem represents a single conflict for display.
+type ConflictItem struct {
+	Path   string
+	Reason string
+	Diff   string // Empty if --diff not used
 }
 
 // Options configures output behavior.

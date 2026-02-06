@@ -189,6 +189,7 @@ tai locate <asset-path>   # Print full filesystem path to an asset
 ```bash
 tai install <profile>              # Install profile to target
 tai install <profile> --dry-run    # Preview changes
+tai install <profile> --diff       # Show diffs for conflicting files
 tai install <profile> --force      # Overwrite conflicting files
 tai install <profile> --skip-conflicts  # Leave conflicts as-is
 tai install <profile> --var key=val     # Pass template variables
@@ -216,8 +217,8 @@ When a file already exists:
 | Scenario                        | Default behavior                                                |
 |---------------------------------|-----------------------------------------------------------------|
 | Tai-managed file, unchanged     | Overwrite with new version                                      |
-| Tai-managed file, user-modified | Error (use `--force` to overwrite)                              |
-| Unmanaged file exists           | Error (Tai doesn't own it; use `--force` or `--skip-conflicts`) |
+| Tai-managed file, user-modified | Error (use `--diff` to inspect, `--force` to overwrite)         |
+| Unmanaged file exists           | Error (use `--diff` to inspect, `--force` or `--skip-conflicts`)|
 
 ### Re-installation
 

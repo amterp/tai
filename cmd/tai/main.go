@@ -121,6 +121,10 @@ func main() {
 		SetOptional(true).
 		SetUsage("Template variables (format: key1=val1,key2=val2)").
 		Register(installCmd)
+	installDiff, _ := ra.NewBool("diff").
+		SetDefault(false).
+		SetUsage("Show unified diffs for conflicting files").
+		Register(installCmd)
 	installUsed, _ := root.RegisterCmd(installCmd)
 
 	// Reinstall command
@@ -148,6 +152,10 @@ func main() {
 		SetShort("v").
 		SetOptional(true).
 		SetUsage("Template variables (format: key1=val1,key2=val2)").
+		Register(reinstallCmd)
+	reinstallDiff, _ := ra.NewBool("diff").
+		SetDefault(false).
+		SetUsage("Show unified diffs for conflicting files").
 		Register(reinstallCmd)
 	reinstallUsed, _ := root.RegisterCmd(reinstallCmd)
 
@@ -235,9 +243,9 @@ func main() {
 			os.Exit(1)
 		}
 	case *installUsed:
-		runInstall(*installProfile, *installDryRun, *installForce, *installSkipConflicts, *installVars)
+		runInstall(*installProfile, *installDryRun, *installForce, *installSkipConflicts, *installVars, *installDiff)
 	case *reinstallUsed:
-		runReinstall(*reinstallTarget, *reinstallDryRun, *reinstallForce, *reinstallSkipConflicts, *reinstallVars)
+		runReinstall(*reinstallTarget, *reinstallDryRun, *reinstallForce, *reinstallSkipConflicts, *reinstallVars, *reinstallDiff)
 	case *uninstallUsed:
 		runUninstall(*uninstallTarget)
 	case *statusUsed:
@@ -490,13 +498,13 @@ func runShowBundle(name string) {
 
 // --- Install commands ---
 
-func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr string) {
+func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr string, showDiff bool) {
 	s := loadState()
 	requireActiveConfig(s)
-	doInstall(s, profileName, dryRun, force, skipConflicts, varsStr)
+	doInstall(s, profileName, dryRun, force, skipConflicts, varsStr, showDiff)
 }
 
-func runReinstall(target string, dryRun, force, skipConflicts bool, varsStr string) {
+func runReinstall(target string, dryRun, force, skipConflicts bool, varsStr string, showDiff bool) {
 	s := loadState()
 	requireActiveConfig(s)
 
@@ -537,12 +545,12 @@ func runReinstall(target string, dryRun, force, skipConflicts bool, varsStr stri
 		if i > 0 {
 			out.Blank()
 		}
-		doInstall(s, rt.profile, dryRun, force, skipConflicts, varsStr)
+		doInstall(s, rt.profile, dryRun, force, skipConflicts, varsStr, showDiff)
 	}
 }
 
 // doInstall performs profile resolution and installation against pre-loaded state.
-func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts bool, varsStr string) {
+func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts bool, varsStr string, showDiff bool) {
 	resolved, err := s.ResolveProfile(profileName)
 	if err != nil {
 		fatal("resolving profile: %v", err)
@@ -574,6 +582,31 @@ func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts 
 
 	result, err := s.Installer.Install(adapter, profileName, assets, opts)
 	if err != nil {
+		// Check if this is a conflicts error - display nicely instead of generic fatal
+		if conflictsErr, ok := err.(*install.ConflictsError); ok {
+			out.Error(fmt.Sprintf("%d conflict(s) detected:", len(conflictsErr.Conflicts)))
+
+			// Build conflict items for display
+			items := make([]output.ConflictItem, len(conflictsErr.Conflicts))
+			for i, c := range conflictsErr.Conflicts {
+				items[i] = output.ConflictItem{
+					Path:   c.Path,
+					Reason: c.Reason,
+				}
+				if showDiff {
+					items[i].Diff = install.GenerateDiff(c)
+				}
+			}
+			out.ConflictReport(&output.ConflictReportData{Conflicts: items})
+
+			out.Blank()
+			if showDiff {
+				out.Info("Use --force to overwrite or --skip-conflicts to skip.")
+			} else {
+				out.Info("Use --force to overwrite, --skip-conflicts to skip, or --diff to inspect.")
+			}
+			os.Exit(1)
+		}
 		fatal("installation failed: %v", err)
 	}
 

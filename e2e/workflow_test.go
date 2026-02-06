@@ -153,10 +153,24 @@ bundles:
 	noconflictAsset, _ := sources["local"].ResolveAsset("personas/noconflict.md", config.AssetTypePersona)
 	assets := []*config.Asset{conflictAsset, noconflictAsset}
 
-	// Test 1: Without flags, should fail
+	// Test 1: Without flags, should fail with ConflictsError
 	_, err := installer.Install(adapter, "test", assets, install.InstallOptions{})
 	if err == nil {
 		t.Error("Expected conflict error, got nil")
+	}
+
+	// Verify it's a ConflictsError with the right number of conflicts
+	conflictsErr, ok := err.(*install.ConflictsError)
+	if !ok {
+		t.Fatalf("expected *install.ConflictsError, got %T", err)
+	}
+	if len(conflictsErr.Conflicts) != 1 {
+		t.Errorf("len(Conflicts) = %d, want 1", len(conflictsErr.Conflicts))
+	}
+
+	// Verify clean file was NOT written (eager conflict detection)
+	if _, statErr := os.Stat(filepath.Join(targetStylesDir, "noconflict.md")); statErr == nil {
+		t.Error("noconflict.md should NOT exist - nothing should be written when conflicts exist")
 	}
 
 	// Test 2: With skip-conflicts, should skip conflicting file

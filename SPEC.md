@@ -616,6 +616,7 @@ tai locate <asset-path>         # Print full filesystem path to an asset
 # Installation
 tai install <profile>           # Install profile to target config
 tai install <profile> --dry-run # Preview what would be installed (no changes)
+tai install <profile> --diff    # Show diffs for conflicting files
 tai uninstall <target>          # Remove tai-managed files for a target
 tai status [target]             # Show what's currently installed
 
@@ -883,6 +884,7 @@ When running `tai install <profile>` with an existing installation:
 | Unmanaged conflict | No | N/A | **Error**: File exists but tai doesn't own it |
 
 Options:
+- `--diff`: Show unified diffs for conflicting files
 - `--force`: Overwrite conflicting files
 - `--skip-conflicts`: Leave conflicting files as-is
 - `--dry-run`: Preview changes without applying

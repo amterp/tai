@@ -66,6 +66,7 @@ tai locate <asset-path>   # Print full filesystem path to asset
 ```bash
 tai install <profile>              # Install profile to target
 tai install <profile> --dry-run    # Preview changes (no modifications)
+tai install <profile> --diff       # Show diffs for conflicting files
 tai install <profile> --force      # Overwrite conflicting files
 tai install <profile> --skip-conflicts  # Leave conflicts as-is
 tai install <profile> --var key=val     # Pass template variables

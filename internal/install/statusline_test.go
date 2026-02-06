@@ -268,8 +268,17 @@ func TestInstallerStatusLineConflictUnmanaged(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected conflict error for unmanaged statusLine")
 	}
-	if !strings.Contains(err.Error(), "not managed by tai") {
-		t.Errorf("error = %q, want mention of 'not managed by tai'", err.Error())
+
+	// Verify it's a ConflictsError with statusline conflict
+	conflictsErr, ok := err.(*ConflictsError)
+	if !ok {
+		t.Fatalf("expected *ConflictsError, got %T", err)
+	}
+	if len(conflictsErr.Conflicts) != 1 {
+		t.Errorf("len(Conflicts) = %d, want 1", len(conflictsErr.Conflicts))
+	}
+	if !strings.Contains(conflictsErr.Conflicts[0].Reason, "unmanaged statusLine") {
+		t.Errorf("conflict reason = %q, want mention of 'unmanaged statusLine'", conflictsErr.Conflicts[0].Reason)
 	}
 
 	// Should succeed with --force

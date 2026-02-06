@@ -87,41 +87,118 @@ func (i *Installer) SetLogger(logger Logger) {
 	i.logger = logger
 }
 
+// resolvedFileAsset holds per-asset state during the two-phase install process.
+type resolvedFileAsset struct {
+	asset         *config.Asset
+	workingAsset  *config.Asset // May differ from asset if dest was templated
+	targetPath    string
+	fullPath      string
+	resolved      *config.ResolvedAsset
+	existingEntry ManifestEntry
+	wasManaged    bool
+	conflict      *Conflict
+}
+
+// installContext holds shared state during the two-phase install process.
+// This avoids threading many parameters through helper functions.
+type installContext struct {
+	adap                  adapter.Adapter
+	targetDir             string
+	templateEngine        *template.Engine
+	existingFiles         map[string]ManifestEntry
+	existingConfigEntries map[string]ConfigEntry
+	opts                  InstallOptions
+}
+
 // Install installs resolved assets to a target.
+//
+// The install process uses two phases:
+//   - Phase 1: Resolve all assets and detect conflicts upfront
+//   - Phase 2: Install assets (only if no conflicts, or force/skip flags set)
+//
+// This ensures all conflicts are reported at once rather than failing on the first one.
 func (i *Installer) Install(
 	adap adapter.Adapter,
 	profile string,
 	assets []*config.Asset,
 	opts InstallOptions,
 ) (*InstallResult, error) {
-	targetDir := adap.TargetDir()
-	result := &InstallResult{}
-
 	// Load existing manifest
 	existing, err := i.manifestStore.Load(adap.Name())
 	if err != nil {
 		return nil, fmt.Errorf("loading existing manifest: %w", err)
 	}
 
-	// Build map of existing files for quick lookup
+	// Build context for helper functions
+	ctx := i.buildInstallContext(adap, existing, opts)
+
+	// Separate file assets from config assets
+	result := &InstallResult{}
+	fileAssets, configAssets := i.separateAssets(adap, assets, result)
+
+	// ========================================================================
+	// PHASE 1: Resolve all assets and detect conflicts
+	// ========================================================================
+	resolvedAssets, configByType, conflicts, configConflicts, err := i.resolveAndDetectConflicts(ctx, fileAssets, configAssets)
+	if err != nil {
+		return nil, err
+	}
+
+	// If conflicts exist and not using force/skip flags, return error with all conflicts
+	// Note: This applies to dry-run too - we want `--dry-run --diff` to be a natural
+	// preview workflow, so dry-run should report conflicts rather than silently ignore them.
+	if len(conflicts) > 0 && !opts.Force && !opts.SkipConflicts {
+		return nil, &ConflictsError{Conflicts: conflicts}
+	}
+
+	// ========================================================================
+	// PHASE 2: Install assets
+	// ========================================================================
+	newEntries, newConfigEntries, err := i.executeInstall(ctx, resolvedAssets, configByType, configConflicts, result)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build and save new manifest
+	result.Manifest = BuildManifest(adap.Name(), profile, i.configRepo, newEntries, newConfigEntries)
+	if !opts.DryRun {
+		if err := i.manifestStore.Save(result.Manifest); err != nil {
+			return nil, fmt.Errorf("saving manifest: %w", err)
+		}
+	}
+
+	return result, nil
+}
+
+// buildInstallContext creates the shared context for install operations.
+func (i *Installer) buildInstallContext(adap adapter.Adapter, existing *Manifest, opts InstallOptions) *installContext {
 	existingFiles := make(map[string]ManifestEntry)
+	existingConfigEntries := make(map[string]ConfigEntry)
 	if existing != nil {
 		for _, entry := range existing.Files {
 			existingFiles[entry.Path] = entry
 		}
-	}
-
-	// Build map of existing config entries for quick lookup
-	existingConfigEntries := make(map[string]ConfigEntry)
-	if existing != nil {
 		for _, entry := range existing.ConfigEntries {
 			existingConfigEntries[entry.Type] = entry
 		}
 	}
 
-	// Separate file assets from config assets
-	var fileAssets []*config.Asset
-	var configAssets []*config.Asset
+	mergedVars := template.MergeVariables(adap.ProvideVariables(), opts.Variables)
+
+	return &installContext{
+		adap:                  adap,
+		targetDir:             adap.TargetDir(),
+		templateEngine:        template.NewEngine(mergedVars),
+		existingFiles:         existingFiles,
+		existingConfigEntries: existingConfigEntries,
+		opts:                  opts,
+	}
+}
+
+// separateAssets splits assets into file assets and config assets.
+// Unsupported config asset types are logged as warnings.
+func (i *Installer) separateAssets(adap adapter.Adapter, assets []*config.Asset, result *InstallResult) ([]*config.Asset, []*config.Asset) {
+	var fileAssets, configAssets []*config.Asset
 
 	supportedConfigTypes := make(map[string]bool)
 	for _, t := range adap.SupportedConfigAssetTypes() {
@@ -131,7 +208,6 @@ func (i *Installer) Install(
 	for _, asset := range assets {
 		if config.IsConfigAssetType(asset.Type) {
 			if !supportedConfigTypes[asset.Type] {
-				// Unsupported config asset type - warn and skip
 				warning := fmt.Sprintf("Asset type '%s' is not supported by target '%s' - skipping %s",
 					asset.Type, adap.Name(), asset.Name)
 				result.Warnings = append(result.Warnings, warning)
@@ -144,100 +220,38 @@ func (i *Installer) Install(
 		}
 	}
 
-	// Prepare new manifest entries
-	var newEntries []ManifestEntry
-	var newConfigEntries []ConfigEntry
+	return fileAssets, configAssets
+}
 
-	// Merge adapter variables with user variables (user takes precedence)
-	mergedVars := template.MergeVariables(adap.ProvideVariables(), opts.Variables)
-	templateEngine := template.NewEngine(mergedVars)
+// resolveAndDetectConflicts is Phase 1 of installation.
+// It resolves all assets and detects conflicts upfront.
+// Assets are resolved with dryRun=true to prevent backup file creation as a side effect.
+func (i *Installer) resolveAndDetectConflicts(
+	ctx *installContext,
+	fileAssets []*config.Asset,
+	configAssets []*config.Asset,
+) ([]resolvedFileAsset, map[string]*config.Asset, []ConflictDetail, map[string]bool, error) {
+	var resolvedAssets []resolvedFileAsset
+	var conflicts []ConflictDetail
 
-	// Process file assets
+	// Resolve file assets
 	for _, asset := range fileAssets {
-		// For file assets with templated dest paths, substitute variables
-		workingAsset := asset
-		if asset.Type == config.AssetTypeFile && asset.Dest != "" && template.HasTemplateVars([]byte(asset.Dest)) {
-			// {{existing}} doesn't make sense in dest paths - it's for file content only
-			if template.HasExistingVar([]byte(asset.Dest)) {
-				return nil, fmt.Errorf("{{existing}} cannot be used in dest path for %s (it only works in file content)", asset.Name)
-			}
-			resolvedDest, err := templateEngine.ProcessString(asset.Dest)
-			if err != nil {
-				return nil, fmt.Errorf("processing dest template for %s: %w", asset.Name, err)
-			}
-			// Validate resolved path doesn't escape target directory
-			if err := pathutil.ValidateRelativePath(resolvedDest); err != nil {
-				return nil, fmt.Errorf("invalid resolved dest for %s: %w", asset.Name, err)
-			}
-			// Create a copy to avoid mutating the original
-			assetCopy := *asset
-			assetCopy.Dest = resolvedDest
-			workingAsset = &assetCopy
-		}
-		targetPath := adap.MapAssetPath(workingAsset)
-		fullTargetPath := filepath.Join(targetDir, targetPath)
-
-		// Resolve the asset to get content
-		resolved, err := i.resolveAsset(workingAsset, targetPath, fullTargetPath, templateEngine, adap, opts.DryRun)
+		ra, conflict, err := i.resolveFileAsset(ctx, asset)
 		if err != nil {
-			return nil, fmt.Errorf("resolving asset %s: %w", workingAsset.SourcePath, err)
+			return nil, nil, nil, nil, err
 		}
-
-		// Check for conflicts
-		existingEntry, wasManaged := existingFiles[targetPath]
-		conflict := i.checkConflict(fullTargetPath, existingEntry, wasManaged, resolved)
+		resolvedAssets = append(resolvedAssets, ra)
 
 		if conflict != nil {
-			if opts.Force {
-				// Proceed with overwrite
-			} else if opts.SkipConflicts {
-				result.Skipped = append(result.Skipped, targetPath)
-				// Keep existing entry if it was managed
-				if wasManaged {
-					newEntries = append(newEntries, existingEntry)
-				}
-				continue
-			} else if !opts.DryRun {
-				return nil, fmt.Errorf("conflict at %s: %s (use --force to overwrite or --skip-conflicts to skip)",
-					targetPath, conflict.Reason)
-			}
+			conflicts = append(conflicts, *conflict)
 		}
-
-		// Install the asset
-		if !opts.DryRun {
-			if err := i.installAsset(resolved, fullTargetPath, adap); err != nil {
-				return nil, fmt.Errorf("installing %s: %w", targetPath, err)
-			}
-
-			// For skill directories, re-compute checksum after installation
-			// to account for resolved includes
-			if resolved.IsDir {
-				checksum, err := ComputeDirChecksum(fullTargetPath)
-				if err != nil {
-					return nil, fmt.Errorf("computing installed checksum for %s: %w", targetPath, err)
-				}
-				resolved.Checksum = checksum
-			}
-		}
-
-		// Track what's happening (after checksum is finalized)
-		if wasManaged {
-			if resolved.Checksum == existingEntry.Checksum {
-				result.Unchanged = append(result.Unchanged, targetPath)
-			} else {
-				result.Updated = append(result.Updated, targetPath)
-			}
-		} else {
-			result.Added = append(result.Added, targetPath)
-		}
-
-		newEntries = append(newEntries, EntryFromAsset(resolved))
-		delete(existingFiles, targetPath)
 	}
 
-	// Process config assets (statusline, etc.)
+	// Resolve and check config assets
 	// For singleton config types like statusline, later assets override earlier ones
 	configByType := make(map[string]*config.Asset)
+	configConflicts := make(map[string]bool)
+
 	for _, asset := range configAssets {
 		if prev, exists := configByType[asset.Type]; exists {
 			i.logger.Printf("Override: %s/%s overrides %s/%s", asset.Type, asset.Name, prev.Type, prev.Name)
@@ -245,13 +259,124 @@ func (i *Installer) Install(
 		configByType[asset.Type] = asset
 	}
 
-	for assetType, asset := range configByType {
-		configEntry, err := i.installConfigAsset(adap, asset, existingConfigEntries, opts)
+	for assetType := range configByType {
+		conflict := i.checkConfigConflict(ctx.adap, assetType, ctx.existingConfigEntries)
+		if conflict != nil {
+			conflicts = append(conflicts, *conflict)
+			configConflicts[assetType] = true
+		}
+	}
+
+	return resolvedAssets, configByType, conflicts, configConflicts, nil
+}
+
+// resolveFileAsset resolves a single file asset and checks for conflicts.
+func (i *Installer) resolveFileAsset(ctx *installContext, asset *config.Asset) (resolvedFileAsset, *ConflictDetail, error) {
+	// For file assets with templated dest paths, substitute variables
+	workingAsset := asset
+	if asset.Type == config.AssetTypeFile && asset.Dest != "" && template.HasTemplateVars([]byte(asset.Dest)) {
+		// {{existing}} doesn't make sense in dest paths - it's for file content only
+		if template.HasExistingVar([]byte(asset.Dest)) {
+			return resolvedFileAsset{}, nil, fmt.Errorf("{{existing}} cannot be used in dest path for %s (it only works in file content)", asset.Name)
+		}
+		resolvedDest, err := ctx.templateEngine.ProcessString(asset.Dest)
 		if err != nil {
-			return nil, fmt.Errorf("installing config asset %s/%s: %w", assetType, asset.Name, err)
+			return resolvedFileAsset{}, nil, fmt.Errorf("processing dest template for %s: %w", asset.Name, err)
+		}
+		if err := pathutil.ValidateRelativePath(resolvedDest); err != nil {
+			return resolvedFileAsset{}, nil, fmt.Errorf("invalid resolved dest for %s: %w", asset.Name, err)
+		}
+		assetCopy := *asset
+		assetCopy.Dest = resolvedDest
+		workingAsset = &assetCopy
+	}
+
+	targetPath := ctx.adap.MapAssetPath(workingAsset)
+	fullTargetPath := filepath.Join(ctx.targetDir, targetPath)
+
+	// Resolve the asset with dryRun=true to prevent backup creation during phase 1
+	resolved, err := i.resolveAsset(workingAsset, targetPath, fullTargetPath, ctx.templateEngine, ctx.adap, true)
+	if err != nil {
+		return resolvedFileAsset{}, nil, fmt.Errorf("resolving asset %s: %w", workingAsset.SourcePath, err)
+	}
+
+	existingEntry, wasManaged := ctx.existingFiles[targetPath]
+	conflict := i.checkConflict(fullTargetPath, existingEntry, wasManaged, resolved)
+
+	ra := resolvedFileAsset{
+		asset:         asset,
+		workingAsset:  workingAsset,
+		targetPath:    targetPath,
+		fullPath:      fullTargetPath,
+		resolved:      resolved,
+		existingEntry: existingEntry,
+		wasManaged:    wasManaged,
+		conflict:      conflict,
+	}
+
+	var conflictDetail *ConflictDetail
+	if conflict != nil {
+		var existingContent []byte
+		if !resolved.IsDir {
+			existingContent, _ = os.ReadFile(fullTargetPath)
+		}
+		conflictDetail = &ConflictDetail{
+			Path:            targetPath,
+			FullPath:        fullTargetPath,
+			Reason:          conflict.Reason,
+			ResolvedContent: resolved.Content,
+			ExistingContent: existingContent,
+			IsDir:           resolved.IsDir,
+		}
+	}
+
+	return ra, conflictDetail, nil
+}
+
+// executeInstall is Phase 2 of installation.
+// It installs the resolved assets and updates the result.
+func (i *Installer) executeInstall(
+	ctx *installContext,
+	resolvedAssets []resolvedFileAsset,
+	configByType map[string]*config.Asset,
+	configConflicts map[string]bool,
+	result *InstallResult,
+) ([]ManifestEntry, []ConfigEntry, error) {
+	var newEntries []ManifestEntry
+	var newConfigEntries []ConfigEntry
+	opts := ctx.opts
+
+	// Install file assets
+	for _, ra := range resolvedAssets {
+		entry, skip, err := i.installFileAsset(ctx, ra, result)
+		if err != nil {
+			return nil, nil, err
+		}
+		if skip {
+			continue
+		}
+
+		newEntries = append(newEntries, entry)
+		delete(ctx.existingFiles, ra.targetPath)
+	}
+
+	// Install config assets
+	for assetType, asset := range configByType {
+		if configConflicts[assetType] {
+			if opts.Force {
+				// Proceed with overwrite
+			} else if opts.SkipConflicts {
+				result.Skipped = append(result.Skipped, fmt.Sprintf("[%s] %s", assetType, asset.Name))
+				continue
+			}
+		}
+
+		configEntry, err := i.installConfigAsset(ctx.adap, asset, ctx.existingConfigEntries, opts)
+		if err != nil {
+			return nil, nil, fmt.Errorf("installing config asset %s/%s: %w", assetType, asset.Name, err)
 		}
 		if configEntry != nil {
-			existingEntry, wasManaged := existingConfigEntries[assetType]
+			existingEntry, wasManaged := ctx.existingConfigEntries[assetType]
 			if wasManaged {
 				if configEntry.Checksum == existingEntry.Checksum {
 					result.Unchanged = append(result.Unchanged, fmt.Sprintf("[%s] %s", assetType, asset.Name))
@@ -262,23 +387,92 @@ func (i *Installer) Install(
 				result.Added = append(result.Added, fmt.Sprintf("[%s] %s", assetType, asset.Name))
 			}
 			newConfigEntries = append(newConfigEntries, *configEntry)
-			delete(existingConfigEntries, assetType)
+			delete(ctx.existingConfigEntries, assetType)
 		}
 	}
 
 	// Remove files that are no longer in the profile
-	for path, entry := range existingFiles {
-		fullPath := filepath.Join(targetDir, path)
+	if err := i.removeStaleFiles(ctx, result); err != nil {
+		return nil, nil, err
+	}
+
+	// Remove config entries that are no longer in the profile
+	i.removeStaleConfigEntries(ctx, result)
+
+	return newEntries, newConfigEntries, nil
+}
+
+// installFileAsset installs a single resolved file asset.
+// Returns the manifest entry, whether to skip (for conflicts), and any error.
+func (i *Installer) installFileAsset(ctx *installContext, ra resolvedFileAsset, result *InstallResult) (ManifestEntry, bool, error) {
+	opts := ctx.opts
+
+	if ra.conflict != nil {
+		if opts.Force {
+			// Proceed with overwrite
+		} else if opts.SkipConflicts {
+			result.Skipped = append(result.Skipped, ra.targetPath)
+			if ra.wasManaged {
+				return ra.existingEntry, true, nil
+			}
+			return ManifestEntry{}, true, nil
+		}
+	}
+
+	// Create backup for {{existing}} assets if not dry-run
+	// (Phase 1 skipped backup creation by using dryRun=true)
+	if !opts.DryRun && ra.resolved.BackupPath != "" {
+		if _, err := os.Stat(ra.fullPath); os.IsNotExist(err) {
+			return ManifestEntry{}, false, fmt.Errorf("cannot create backup for %s: file was removed after conflict check", ra.targetPath)
+		}
+		if err := copyFile(ra.fullPath, ra.resolved.BackupPath); err != nil {
+			return ManifestEntry{}, false, fmt.Errorf("creating backup for %s: %w", ra.targetPath, err)
+		}
+	}
+
+	// Install the asset
+	if !opts.DryRun {
+		if err := i.installAsset(ra.resolved, ra.fullPath, ctx.adap); err != nil {
+			return ManifestEntry{}, false, fmt.Errorf("installing %s: %w", ra.targetPath, err)
+		}
+
+		// For skill directories, re-compute checksum after installation
+		// to account for resolved includes
+		if ra.resolved.IsDir {
+			checksum, err := ComputeDirChecksum(ra.fullPath)
+			if err != nil {
+				return ManifestEntry{}, false, fmt.Errorf("computing installed checksum for %s: %w", ra.targetPath, err)
+			}
+			ra.resolved.Checksum = checksum
+		}
+	}
+
+	// Track what's happening
+	if ra.wasManaged {
+		if ra.resolved.Checksum == ra.existingEntry.Checksum {
+			result.Unchanged = append(result.Unchanged, ra.targetPath)
+		} else {
+			result.Updated = append(result.Updated, ra.targetPath)
+		}
+	} else {
+		result.Added = append(result.Added, ra.targetPath)
+	}
+
+	return EntryFromAsset(ra.resolved), false, nil
+}
+
+// removeStaleFiles removes files that are no longer in the profile.
+func (i *Installer) removeStaleFiles(ctx *installContext, result *InstallResult) error {
+	for path, entry := range ctx.existingFiles {
+		fullPath := filepath.Join(ctx.targetDir, path)
 		result.Removed = append(result.Removed, path)
 
-		if !opts.DryRun {
-			// Restore backup if exists
+		if !ctx.opts.DryRun {
 			if entry.BackupPath != "" {
 				if err := i.restoreBackup(entry.BackupPath, fullPath); err != nil {
 					result.Errors = append(result.Errors, fmt.Errorf("restoring backup for %s: %w", path, err))
 				}
 			} else {
-				// Remove the file/directory
 				if entry.IsDir {
 					if err := os.RemoveAll(fullPath); err != nil && !os.IsNotExist(err) {
 						result.Errors = append(result.Errors, fmt.Errorf("removing %s: %w", path, err))
@@ -288,31 +482,59 @@ func (i *Installer) Install(
 						result.Errors = append(result.Errors, fmt.Errorf("removing %s: %w", path, err))
 					}
 				}
-				// Clean up empty parent directories
-				cleanEmptyDirs(fullPath, targetDir)
+				cleanEmptyDirs(fullPath, ctx.targetDir)
 			}
 		}
 	}
+	return nil
+}
 
-	// Remove config entries that are no longer in the profile
-	for assetType, entry := range existingConfigEntries {
+// removeStaleConfigEntries removes config entries that are no longer in the profile.
+func (i *Installer) removeStaleConfigEntries(ctx *installContext, result *InstallResult) {
+	for assetType, entry := range ctx.existingConfigEntries {
 		result.Removed = append(result.Removed, fmt.Sprintf("[%s] %s", assetType, entry.Name))
-		if !opts.DryRun {
-			if err := i.uninstallConfigEntry(adap, entry); err != nil {
+		if !ctx.opts.DryRun {
+			if err := i.uninstallConfigEntry(ctx.adap, entry); err != nil {
 				result.Errors = append(result.Errors, fmt.Errorf("removing config %s/%s: %w", assetType, entry.Name, err))
 			}
 		}
 	}
+}
 
-	// Build and save new manifest
-	result.Manifest = BuildManifest(adap.Name(), profile, i.configRepo, newEntries, newConfigEntries)
-	if !opts.DryRun {
-		if err := i.manifestStore.Save(result.Manifest); err != nil {
-			return nil, fmt.Errorf("saving manifest: %w", err)
+// checkConfigConflict checks if a config asset type has an unmanaged entry in the settings file.
+// Returns a ConflictDetail if there's a conflict, nil otherwise.
+func (i *Installer) checkConfigConflict(
+	adap adapter.Adapter,
+	assetType string,
+	existingConfigEntries map[string]ConfigEntry,
+) *ConflictDetail {
+	scope := "user" // TODO: get from profile options
+
+	_, wasManaged := existingConfigEntries[assetType]
+	if wasManaged {
+		return nil // Already managed by tai, not a conflict
+	}
+
+	settingsPath := adap.SettingsFilePath(scope)
+	existingSettings, err := readJSONFile(settingsPath)
+	if err != nil || existingSettings == nil {
+		return nil // No settings file or can't read it
+	}
+
+	settingsKey := adap.SettingsKey(assetType)
+	if settingsKey == "" {
+		return nil // Unknown asset type
+	}
+
+	if _, hasKey := existingSettings[settingsKey]; hasKey {
+		return &ConflictDetail{
+			Path:   fmt.Sprintf("[%s]", assetType),
+			Reason: fmt.Sprintf("unmanaged %s exists in %s", settingsKey, settingsPath),
+			IsDir:  false,
 		}
 	}
 
-	return result, nil
+	return nil
 }
 
 // installConfigAsset installs a config asset (statusline, etc.) to the target's settings file.
@@ -341,7 +563,7 @@ func (i *Installer) installConfigAsset(
 func (i *Installer) installStatusLine(
 	adap adapter.Adapter,
 	asset *config.Asset,
-	existingConfigEntries map[string]ConfigEntry,
+	_ map[string]ConfigEntry, // existingConfigEntries - unused; conflict check moved to phase 1
 	scope string,
 	opts InstallOptions,
 ) (*ConfigEntry, error) {
@@ -373,26 +595,10 @@ func (i *Installer) installStatusLine(
 	}
 	checksum := ComputeChecksum(configJSON)
 
-	// Check for conflicts with existing unmanaged statusLine
-	settingsPath := adap.SettingsFilePath(scope)
-	_, wasManaged := existingConfigEntries[config.AssetTypeStatusLine]
+	// Note: Conflict checking for config assets is now done upfront in Install() phase 1.
+	// If we get here, either there was no conflict, or Force/SkipConflicts was set.
 
-	if !wasManaged && !opts.DryRun {
-		// Check if settings file has existing statusLine that we don't manage
-		existingSettings, err := readJSONFile(settingsPath)
-		if err != nil && !os.IsNotExist(err) {
-			return nil, fmt.Errorf("reading settings file: %w", err)
-		}
-		if existingSettings != nil {
-			settingsKey := adap.SettingsKey(config.AssetTypeStatusLine)
-			if _, hasKey := existingSettings[settingsKey]; hasKey {
-				if !opts.Force {
-					return nil, fmt.Errorf("found existing %s in %s not managed by tai; use --force to override",
-						settingsKey, settingsPath)
-				}
-			}
-		}
-	}
+	settingsPath := adap.SettingsFilePath(scope)
 
 	// Install to settings file
 	if !opts.DryRun {

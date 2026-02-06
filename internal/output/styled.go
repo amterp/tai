@@ -95,6 +95,49 @@ func (s *StyledOutput) InstallResult(data *InstallResultData) {
 	}
 }
 
+func (s *StyledOutput) ConflictReport(data *ConflictReportData) {
+	for _, c := range data.Conflicts {
+		fmt.Fprintf(s.out, "  %s %s: %s\n", s.theme.Error.Render("!"), c.Path, c.Reason)
+		if c.Diff != "" {
+			s.printColoredDiff(c.Diff)
+		}
+	}
+}
+
+// printColoredDiff prints a unified diff with colored lines.
+func (s *StyledOutput) printColoredDiff(diff string) {
+	fmt.Fprintln(s.out)
+	for _, line := range splitDiffLines(diff) {
+		switch {
+		case len(line) > 0 && line[0] == '+':
+			fmt.Fprint(s.out, s.theme.Added.Render(line))
+		case len(line) > 0 && line[0] == '-':
+			fmt.Fprint(s.out, s.theme.Removed.Render(line))
+		case len(line) >= 2 && line[0] == '@' && line[1] == '@':
+			fmt.Fprint(s.out, s.theme.Info.Render(line))
+		default:
+			fmt.Fprint(s.out, line)
+		}
+	}
+	fmt.Fprintln(s.out)
+}
+
+// splitDiffLines splits diff output preserving newlines for proper rendering.
+func splitDiffLines(diff string) []string {
+	var lines []string
+	start := 0
+	for i := 0; i < len(diff); i++ {
+		if diff[i] == '\n' {
+			lines = append(lines, diff[start:i+1])
+			start = i + 1
+		}
+	}
+	if start < len(diff) {
+		lines = append(lines, diff[start:])
+	}
+	return lines
+}
+
 func (s *StyledOutput) Success(msg string) {
 	fmt.Fprintln(s.out, s.theme.Success.Render(msg))
 }

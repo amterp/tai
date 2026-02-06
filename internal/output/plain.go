@@ -87,6 +87,17 @@ func (p *PlainOutput) InstallResult(data *InstallResultData) {
 	}
 }
 
+func (p *PlainOutput) ConflictReport(data *ConflictReportData) {
+	for _, c := range data.Conflicts {
+		fmt.Fprintf(p.out, "  ! %s: %s\n", c.Path, c.Reason)
+		if c.Diff != "" {
+			fmt.Fprintln(p.out)
+			fmt.Fprint(p.out, c.Diff)
+			fmt.Fprintln(p.out)
+		}
+	}
+}
+
 func (p *PlainOutput) Success(msg string) {
 	fmt.Fprintln(p.out, msg)
 }

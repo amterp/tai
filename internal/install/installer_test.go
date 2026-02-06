@@ -340,12 +340,117 @@ func TestInstallerInstallConflictUnmanaged(t *testing.T) {
 		t.Fatal("expected conflict error, got nil")
 	}
 
+	// Verify it's a ConflictsError with correct data
+	conflictsErr, ok := err.(*ConflictsError)
+	if !ok {
+		t.Fatalf("expected *ConflictsError, got %T", err)
+	}
+	if len(conflictsErr.Conflicts) != 1 {
+		t.Errorf("len(Conflicts) = %d, want 1", len(conflictsErr.Conflicts))
+	}
+	if conflictsErr.Conflicts[0].Path != "output-styles/conflict.md" {
+		t.Errorf("Conflict path = %q, want 'output-styles/conflict.md'", conflictsErr.Conflicts[0].Path)
+	}
+
 	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{Force: true})
 	if err != nil {
 		t.Fatalf("Install with force failed: %v", err)
 	}
 	if len(result.Added) != 1 {
 		t.Error("file not added with force")
+	}
+}
+
+func TestInstallerInstallMultipleConflicts(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Create two unmanaged files
+	stylesDir := filepath.Join(env.TargetDir, "output-styles")
+	if err := os.MkdirAll(stylesDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stylesDir, "conflict1.md"), []byte("# Unmanaged 1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stylesDir, "conflict2.md"), []byte("# Unmanaged 2"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create three assets - two with conflicts, one clean
+	env.SetupAsset("personas", "conflict1.md", "---\ntai-schema-version: 1\nname: Conflict1\n---\n\n# New 1")
+	env.SetupAsset("personas", "conflict2.md", "---\ntai-schema-version: 1\nname: Conflict2\n---\n\n# New 2")
+	env.SetupAsset("personas", "clean.md", "---\ntai-schema-version: 1\nname: Clean\n---\n\n# Clean")
+
+	assets := []*config.Asset{
+		{Type: "persona", Name: "conflict1.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "conflict1.md")},
+		{Type: "persona", Name: "conflict2.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "conflict2.md")},
+		{Type: "persona", Name: "clean.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "clean.md")},
+	}
+
+	// Install should fail with all conflicts reported
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err == nil {
+		t.Fatal("expected conflict error, got nil")
+	}
+
+	conflictsErr, ok := err.(*ConflictsError)
+	if !ok {
+		t.Fatalf("expected *ConflictsError, got %T", err)
+	}
+	if len(conflictsErr.Conflicts) != 2 {
+		t.Errorf("len(Conflicts) = %d, want 2", len(conflictsErr.Conflicts))
+	}
+
+	// Verify clean file was NOT written (no-op on conflict)
+	if env.TargetFileExists("output-styles/clean.md") {
+		t.Error("clean file should NOT be written when conflicts exist")
+	}
+}
+
+func TestInstallerDryRunReportsConflicts(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Create unmanaged file
+	targetPath := filepath.Join(env.TargetDir, "output-styles", "conflict.md")
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(targetPath, []byte("# Unmanaged"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	env.SetupAsset("personas", "conflict.md", "---\ntai-schema-version: 1\nname: Conflict\n---\n\n# New Content")
+
+	assets := []*config.Asset{
+		{Type: "persona", Name: "conflict.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "conflict.md")},
+	}
+
+	// Dry-run should now report conflicts instead of silently proceeding
+	// This is intentional: --dry-run --diff is a natural preview workflow
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{DryRun: true})
+	if err == nil {
+		t.Fatal("expected conflict error during dry-run, got nil")
+	}
+
+	conflictsErr, ok := err.(*ConflictsError)
+	if !ok {
+		t.Fatalf("expected *ConflictsError, got %T", err)
+	}
+	if len(conflictsErr.Conflicts) != 1 {
+		t.Errorf("len(Conflicts) = %d, want 1", len(conflictsErr.Conflicts))
+	}
+
+	// With force flag, dry-run should proceed
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{DryRun: true, Force: true})
+	if err != nil {
+		t.Fatalf("dry-run with force failed: %v", err)
+	}
+	if len(result.Added) != 1 {
+		t.Errorf("len(Added) = %d, want 1", len(result.Added))
 	}
 }
 

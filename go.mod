@@ -5,6 +5,7 @@ go 1.24.1
 require (
 	github.com/amterp/ra v0.4.3
 	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/pmezard/go-difflib v1.0.0
 	golang.org/x/term v0.39.0
 	gopkg.in/yaml.v3 v3.0.1
 )
