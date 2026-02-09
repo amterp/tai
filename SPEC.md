@@ -5,7 +5,7 @@
 
 ## Overview
 
-tai is a CLI tool for managing AI agent configurations. It provides a framework for organizing, composing, and installing assets (personas, delegates, skills, reference docs) across different AI targets (Claude Code, Cursor, etc.) while keeping configuration version-controlled and portable.
+tai is a CLI tool for managing AI agent configurations. It provides a framework for organizing, composing, and installing assets (personas, delegates, skills, reference docs) across different AI targets (Claude Code, Codex, Cursor, etc.) while keeping configuration version-controlled and portable.
 
 ## Core Concepts
 
@@ -13,7 +13,7 @@ tai is a CLI tool for managing AI agent configurations. It provides a framework 
 
 | tai term | What it is | Claude Code equivalent |
 |----------|------------|------------------------|
-| **Target** | The AI tool we install to | Claude Code, Cursor, Windsurf, etc. |
+| **Target** | The AI tool we install to | Claude Code, Codex, Cursor, Windsurf, etc. |
 | **Persona** | A behavioral style/role | output-style |
 | **Delegate** | A specialized helper for tasks | agents (sub-agents) |
 | **Skill** | A procedural capability | skills |
@@ -101,7 +101,7 @@ This distinction matters because:
                               ▼ installed to (via adapter)
 ┌─────────────────────────────────────────────────────────────┐
 │                    Target Config                             │
-│  ~/.claude/, ~/.cursor/, etc.                               │
+│  ~/.claude/, ~/.codex/, ~/.cursor/, etc.                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -119,6 +119,7 @@ tai/
 │   ├── adapter/          # Adapter interface and registry
 │   │   ├── adapter.go    # Interface definition
 │   │   ├── claude/       # Claude Code adapter
+│   │   ├── codex/        # Codex adapter
 │   │   └── cursor/       # Future: Cursor adapter
 │   ├── bundle/           # Bundle resolution
 │   ├── profile/          # Profile management
@@ -767,6 +768,21 @@ The Claude adapter:
 }
 ```
 
+### Codex Adapter Specifics
+
+The Codex adapter:
+- Targets `$CODEX_HOME` if set, otherwise `~/.codex/`
+- Maps tai terminology to Codex-oriented paths:
+  - `personas/` → `personas/` (passive reference files)
+  - `delegates/` → `delegates/` (passive reference files)
+  - `skills/` → `skills/`
+  - `files/` → location specified by `dest` field (empty = root level)
+- Installs files additively like other adapters
+- Emits a warning for each `persona` and `delegate` asset because Codex does not natively consume them as first-class config entries
+- Uses `target_agents_file: AGENTS.md`
+
+`statusline` assets are currently unsupported for Codex and are skipped with a warning.
+
 **MCP installation:** Entries are added to the `mcpServers` key in the target JSON file:
 ```json
 {
@@ -991,11 +1007,11 @@ Variables come from multiple sources with a defined priority order (later wins):
 
 Adapters provide target-specific variables with the `target_` prefix:
 
-| Variable | Claude | Cursor (future) |
-|----------|--------|-----------------|
-| `target_name` | `claude` | `cursor` |
-| `target_name_display` | `Claude` | `Cursor` |
-| `target_agents_file` | `CLAUDE.md` | `.cursorrules` |
+| Variable | Claude | Codex | Cursor (future) |
+|----------|--------|-------|-----------------|
+| `target_name` | `claude` | `codex` | `cursor` |
+| `target_name_display` | `Claude` | `Codex` | `Cursor` |
+| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `.cursorrules` |
 
 These variables enable target-aware assets. For example, a single "global instructions" file can be named appropriately per target:
 
@@ -1004,7 +1020,7 @@ These variables enable target-aware assets. For example, a single "global instru
 assets:
   - type: file
     path: files/AGENTS.md
-    dest: "{{target_agents_file}}"  # Resolves to CLAUDE.md for Claude
+    dest: "{{target_agents_file}}"  # Resolves to CLAUDE.md for Claude, AGENTS.md for Codex
 ```
 
 **Naming convention:** The `target_` prefix indicates adapter-provided variables. Future tai-provided variables may use `tai_*` (e.g., `tai_version`, `tai_config_repo`).

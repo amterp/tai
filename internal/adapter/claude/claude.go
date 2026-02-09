@@ -168,6 +168,11 @@ func (a *Adapter) SupportedConfigAssetTypes() []string {
 	return []string{config.AssetTypeStatusLine}
 }
 
+// InstallWarnings returns Claude-specific advisory install warnings.
+func (a *Adapter) InstallWarnings(_ *config.Asset) []string {
+	return nil
+}
+
 // SettingsFilePath returns the path to Claude's settings file.
 func (a *Adapter) SettingsFilePath(scope string) string {
 	if scope == "project" {
@@ -261,4 +266,3 @@ func (a *Adapter) applyShowElements(result map[string]any, show []string) {
 		// Note: "context" maps to nothing in current Claude Code; reserved for future use
 	}
 }
-

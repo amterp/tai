@@ -65,7 +65,7 @@ Sources → Assets → Bundles → Profiles → Install Pipeline → Target Conf
 - **internal/bundle/** - Recursive bundle composition with cycle detection
 - **internal/profile/** - Composes bundles into profiles, handles asset deduplication
 - **internal/install/** - Installation logic with manifest tracking, conflict detection, backup/restore
-- **internal/adapter/** - Target-specific implementations (currently Claude)
+- **internal/adapter/** - Target-specific implementations (Claude and Codex)
 - **internal/frontmatter/** - YAML frontmatter parsing/rendering (target-agnostic)
 - **internal/template/** - `{{variable}}` and `{{existing}}` substitution
 
@@ -94,6 +94,15 @@ The Claude adapter maps:
 - `hooks/` → entries in `settings.json` (v0.2)
 
 Claude's `ProvideVariables()` returns: `target_name: "claude"`, `target_name_display: "Claude"`, `target_agents_file: "CLAUDE.md"`
+
+The Codex adapter maps:
+- `personas/` → `personas/` (passive reference files; tai warns per asset)
+- `delegates/` → `delegates/` (passive reference files; tai warns per asset)
+- `skills/` → `skills/` (SKILL.md gets `name`, `description` frontmatter)
+- `files/` → location specified by `dest` field (content copied as-is, no transformation)
+- `statuslines/` → unsupported (skipped with warning)
+
+Codex `ProvideVariables()` returns: `target_name: "codex"`, `target_name_display: "Codex"`, `target_agents_file: "AGENTS.md"`
 
 ## User Config Repo Structure
 

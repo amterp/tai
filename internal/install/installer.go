@@ -28,9 +28,9 @@ const (
 
 // InstallOptions configures installation behavior.
 type InstallOptions struct {
-	DryRun        bool              // Preview without making changes
-	Force         bool              // Overwrite conflicting files
-	SkipConflicts bool              // Leave conflicting files as-is
+	DryRun        bool               // Preview without making changes
+	Force         bool               // Overwrite conflicting files
+	SkipConflicts bool               // Leave conflicting files as-is
 	Variables     template.Variables // Template variables
 }
 
@@ -206,6 +206,11 @@ func (i *Installer) separateAssets(adap adapter.Adapter, assets []*config.Asset,
 	}
 
 	for _, asset := range assets {
+		for _, warning := range adap.InstallWarnings(asset) {
+			result.Warnings = append(result.Warnings, warning)
+			i.logger.Printf("Warning: %s", warning)
+		}
+
 		if config.IsConfigAssetType(asset.Type) {
 			if !supportedConfigTypes[asset.Type] {
 				warning := fmt.Sprintf("Asset type '%s' is not supported by target '%s' - skipping %s",
@@ -1071,7 +1076,6 @@ func (i *Installer) transformMainFileContent(content []byte, assetType, assetNam
 
 	return transformed, nil
 }
-
 
 // findSkillMdFields returns the Fields mapping from the include that targets
 // SKILL.md at the root of the skill directory, if any.

@@ -3,13 +3,13 @@ name: tai
 description: >
   Manage AI agent configurations with the tai CLI. Use this skill when asked to:
   manage tai config repos, sources, bundles, or profiles; install or uninstall
-  configurations to targets like Claude Code; create, edit, or organize personas,
+  configurations to targets like Claude Code or Codex; create, edit, or organize personas,
   delegates, skills, or files; or create new skills for tai-managed configurations.
 ---
 
 # Tai Configuration Management
 
-Tai organizes AI agent configurations (personas, delegates, skills, files) into composable, version-controlled assets that install to targets like Claude Code.
+Tai organizes AI agent configurations (personas, delegates, skills, files) into composable, version-controlled assets that install to targets like Claude Code and Codex.
 
 ## Core Concepts
 
@@ -19,20 +19,22 @@ Tai organizes AI agent configurations (personas, delegates, skills, files) into 
 | **Bundle** | Named collection of assets (a "shopping list") |
 | **Profile** | Bundle(s) bound to a specific target |
 | **Source** | Location providing assets (local dir or tai repo) |
-| **Target** | AI tool to install to (Claude Code, Cursor, etc.) |
+| **Target** | AI tool to install to (Claude Code, Codex, Cursor, etc.) |
 
 **Data flow:** Sources → Assets → Bundles → Profiles → Target
 
 ## Asset Types
 
-Tai uses target-agnostic terminology. Here's how asset types map to Claude Code:
+Tai uses target-agnostic terminology. Here's how asset types map to current targets:
 
-| Tai Type | Claude Directory | Purpose |
-|----------|------------------|---------|
-| `persona` | `output-styles/` | Behavioral styles and roles |
-| `delegate` | `agents/` | Specialized helper agents |
-| `skill` | `skills/` | Procedural capabilities |
-| `file` | (per `dest` field) | Loose files copied as-is |
+| Tai Type | Claude Directory | Codex Directory | Purpose |
+|----------|------------------|-----------------|---------|
+| `persona` | `output-styles/` | `personas/` (passive reference) | Behavioral styles and roles |
+| `delegate` | `agents/` | `delegates/` (passive reference) | Specialized helper agents |
+| `skill` | `skills/` | `skills/` | Procedural capabilities |
+| `file` | (per `dest` field) | (per `dest` field) | Loose files copied as-is |
+
+For Codex targets, tai warns for each `persona` and `delegate` asset because Codex does not consume them as first-class config entries.
 
 ## CLI Commands
 
@@ -177,11 +179,11 @@ Install with: `tai install work --var project_name=MyApp`
 
 Adapters provide target-specific variables with the `target_` prefix:
 
-| Variable | Claude | Cursor (future) |
-|----------|--------|-----------------|
-| `target_name` | `claude` | `cursor` |
-| `target_name_display` | `Claude` | `Cursor` |
-| `target_agents_file` | `CLAUDE.md` | `.cursorrules` |
+| Variable | Claude | Codex | Cursor (future) |
+|----------|--------|-------|-----------------|
+| `target_name` | `claude` | `codex` | `cursor` |
+| `target_name_display` | `Claude` | `Codex` | `Cursor` |
+| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `.cursorrules` |
 
 Use these for target-aware file destinations:
 
@@ -189,7 +191,7 @@ Use these for target-aware file destinations:
 assets:
   - type: file
     path: files/AGENTS.md
-    dest: "{{target_agents_file}}"  # → CLAUDE.md for Claude
+    dest: "{{target_agents_file}}"  # → CLAUDE.md for Claude, AGENTS.md for Codex
 ```
 
 User variables (`--var`) override adapter variables on collision.

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/amterp/ra"
+	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/install"
 	"github.com/amterp/tai/internal/output"
@@ -163,7 +164,7 @@ func main() {
 	uninstallCmd := ra.NewCmd("uninstall")
 	uninstallCmd.SetDescription("Remove tai-managed files for a target")
 	uninstallTarget, _ := ra.NewString("target").
-		SetUsage("Target to uninstall (e.g., claude)").
+		SetUsage("Target to uninstall (e.g., claude, codex)").
 		Register(uninstallCmd)
 	uninstallUsed, _ := root.RegisterCmd(uninstallCmd)
 
@@ -188,7 +189,7 @@ func main() {
 	runCmd := ra.NewCmd("run")
 	runCmd.SetDescription("Run a target with tai config applied")
 	runTarget, _ := ra.NewString("target").
-		SetUsage("Target to run (e.g., claude)").
+		SetUsage("Target to run (e.g., claude, codex)").
 		Register(runCmd)
 	runArgs, _ := ra.NewStringSlice("args").
 		SetOptional(true).
@@ -495,7 +496,6 @@ func runShowBundle(name string) {
 	}
 }
 
-
 // --- Install commands ---
 
 func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr string, showDiff bool) {
@@ -676,8 +676,9 @@ func runStatus(target string) {
 
 	targets := []string{target}
 	if target == "" {
-		// Show all known targets
-		targets = []string{"claude"} // Could dynamically discover installed targets
+		// Show all registered targets
+		targets = adapter.DefaultRegistry.List()
+		sort.Strings(targets)
 	}
 
 	for _, t := range targets {

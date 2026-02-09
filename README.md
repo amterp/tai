@@ -6,7 +6,7 @@ configuration version-controlled and portable.
 
 ## Why Tai?
 
-AI coding assistants like Claude Code and Cursor use configuration files to customize their behavior -- output styles,
+AI coding assistants like Claude Code, Codex, and Cursor use configuration files to customize their behavior -- output styles,
 custom agents, skills, and reference documentation. Managing these configurations across machines, sharing them between
 personal and work contexts, or keeping them version-controlled quickly becomes unwieldy.
 
@@ -201,7 +201,7 @@ tai status [target]                # Show what's installed
 ### Running
 
 ```bash
-tai run <target> [args...]  # Run target (e.g., tai run claude)
+tai run <target> [args...]  # Run target (e.g., tai run claude or tai run codex)
 ```
 
 ## Installation Behavior
@@ -252,13 +252,13 @@ Adapters provide target-specific variables (prefixed with `target_`), enabling f
 assets:
   - type: file
     path: files/AGENTS.md
-    dest: "{{target_agents_file}}"  # CLAUDE.md for Claude, .cursorrules for Cursor
+    dest: "{{target_agents_file}}"  # CLAUDE.md for Claude, AGENTS.md for Codex
 ```
 
-| Variable | Claude | Cursor (future) |
-|----------|--------|-----------------|
-| `target_name` | `claude` | `cursor` |
-| `target_agents_file` | `CLAUDE.md` | `.cursorrules` |
+| Variable | Claude | Codex | Cursor (future) |
+|----------|--------|-------|-----------------|
+| `target_name` | `claude` | `codex` | `cursor` |
+| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `.cursorrules` |
 
 User variables (`--var`) override adapter variables on collision.
 
@@ -331,6 +331,18 @@ Assets from later sources override earlier ones when paths conflict. Tai logs th
     - `delegates/` → `agents/`
     - `skills/` → `skills/`
     - `docs/` → root level
+
+### Codex
+
+- Target directory: `$CODEX_HOME` (if set), otherwise `~/.codex/`
+- Asset mapping:
+    - `personas/` → `personas/` (passive reference files)
+    - `delegates/` → `delegates/` (passive reference files)
+    - `skills/` → `skills/`
+    - `files/` → location specified by `dest` field
+- Behavior note:
+    - Codex has first-class support for `AGENTS.md` and skills.
+    - Tai installs personas and delegates as fallback reference files and warns for each one.
 
 ### Future Targets
 

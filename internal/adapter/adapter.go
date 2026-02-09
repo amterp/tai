@@ -41,6 +41,10 @@ type Adapter interface {
 	// Example: Claude returns ["statusline"], Cursor returns []
 	SupportedConfigAssetTypes() []string
 
+	// InstallWarnings returns non-fatal, adapter-specific warnings for an asset.
+	// This allows adapters to communicate fallback behavior during install.
+	InstallWarnings(asset *config.Asset) []string
+
 	// SettingsFilePath returns the path to the settings file for a given scope.
 	// Scope is "user" (default) or "project".
 	// Returns empty string if the adapter doesn't use a settings file.

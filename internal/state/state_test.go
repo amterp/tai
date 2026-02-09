@@ -252,6 +252,15 @@ func TestStateGetAdapter(t *testing.T) {
 		t.Errorf("adapter.Name() = %q, want 'claude'", adap.Name())
 	}
 
+	// Get codex adapter
+	codexAdap, err := state.GetAdapter("codex")
+	if err != nil {
+		t.Fatalf("GetAdapter failed: %v", err)
+	}
+	if codexAdap.Name() != "codex" {
+		t.Errorf("adapter.Name() = %q, want 'codex'", codexAdap.Name())
+	}
+
 	// Non-existing adapter
 	_, err = state.GetAdapter("nonexistent")
 	if err == nil {
