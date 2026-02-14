@@ -1146,3 +1146,196 @@ bundles:
 		t.Error("SKILL.md should not contain 'depends' field")
 	}
 }
+
+// TestE2EInstallWithConditionals tests target-conditional content during install.
+func TestE2EInstallWithConditionals(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	env.SetupAsset("files", "AGENTS.md", `# Project Instructions
+
+{% if target_name == "codex" %}
+## Codex-Specific
+This section only appears for Codex.
+{% endif %}
+## Common Section
+This appears for all targets.
+`)
+
+	env.SetupBundle("test", `name: test
+assets:
+  - type: file
+    path: files/AGENTS.md
+    dest: ""
+`)
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adapter := claude.New(env.TargetDir)
+
+	asset, _ := sources["local"].ResolveAsset("files/AGENTS.md", config.AssetTypeFile)
+	asset.Dest = ""
+	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("AGENTS.md")
+
+	// Claude target: codex-specific section should NOT appear
+	if strings.Contains(content, "Codex-Specific") {
+		t.Error("codex-specific content should not appear for claude target")
+	}
+	if !strings.Contains(content, "Common Section") {
+		t.Error("common section should appear")
+	}
+}
+
+// TestE2EInstallWithIncludeAsset tests {% include_asset %} during install.
+func TestE2EInstallWithIncludeAsset(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	env.SetupAsset("personas", "senior-swe.md", `---
+name: Senior SWE
+description: A senior engineer persona
+---
+
+You are a senior software engineer.
+`)
+
+	env.SetupAsset("files", "AGENTS.md", `# Project
+{% include_asset "local:personas/senior-swe.md" %}
+Done.
+`)
+
+	env.SetupBundle("test", `name: test
+assets:
+  - type: file
+    path: files/AGENTS.md
+    dest: ""
+`)
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adapter := claude.New(env.TargetDir)
+
+	asset, _ := sources["local"].ResolveAsset("files/AGENTS.md", config.AssetTypeFile)
+	asset.Dest = ""
+	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("AGENTS.md")
+
+	// The persona body (frontmatter stripped) should be inlined
+	if !strings.Contains(content, "You are a senior software engineer.") {
+		t.Error("included persona body not found in output")
+	}
+	if !strings.Contains(content, "# Project") {
+		t.Error("outer content not found")
+	}
+	if !strings.Contains(content, "Done.") {
+		t.Error("trailing content not found")
+	}
+	// Frontmatter should NOT appear in the inlined content
+	if strings.Contains(content, "name: Senior SWE") {
+		t.Error("frontmatter should be stripped from included asset")
+	}
+}
+
+// TestE2EInstallConditionalIncludeAsset tests the user's original scenario:
+// conditionally including a persona into a file based on target.
+func TestE2EInstallConditionalIncludeAsset(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	env.SetupAsset("personas", "company-style.md", `---
+name: Company Style
+description: Company coding style
+---
+
+Follow the company coding standards.
+`)
+
+	env.SetupAsset("files", "AGENTS.md", `# Project Instructions
+
+## Core Rules
+Always write tests.
+{% if target_name == "codex" %}
+
+## Codex Persona
+{% include_asset "local:personas/company-style.md" %}{% endif %}
+`)
+
+	env.SetupBundle("test", `name: test
+assets:
+  - type: file
+    path: files/AGENTS.md
+    dest: ""
+`)
+	env.SetupProfile("claude-profile", `name: claude-profile
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adapter := claude.New(env.TargetDir)
+
+	asset, _ := sources["local"].ResolveAsset("files/AGENTS.md", config.AssetTypeFile)
+	asset.Dest = ""
+
+	// Install for Claude - should NOT include the persona
+	_, err := installer.Install(adapter, "claude-profile", []*config.Asset{asset}, install.InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install for claude failed: %v", err)
+	}
+
+	claudeContent := env.ReadTargetFile("AGENTS.md")
+	if strings.Contains(claudeContent, "Follow the company coding standards.") {
+		t.Error("codex-only persona should not appear for claude target")
+	}
+	if !strings.Contains(claudeContent, "Always write tests.") {
+		t.Error("core rules should appear")
+	}
+}

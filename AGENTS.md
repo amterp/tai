@@ -54,7 +54,7 @@ Config Repo (tai.yaml + bundles/ + profiles/ + assets/)
 Sources → Assets → Bundles → Profiles → Install Pipeline → Target Config
 ```
 
-**Install pipeline per file asset:** Read → Template substitution → Parse & validate tai frontmatter → Adapter `TransformContent` → Checksum → Write
+**Install pipeline per file asset:** Read -> Template processing (pongo2: variables, conditionals, include_asset) -> Parse & validate tai frontmatter -> Adapter `TransformContent` -> Checksum -> Write
 
 ### Package Structure
 
@@ -67,7 +67,7 @@ Sources → Assets → Bundles → Profiles → Install Pipeline → Target Conf
 - **internal/install/** - Installation logic with manifest tracking, conflict detection, backup/restore
 - **internal/adapter/** - Target-specific implementations (Claude and Codex)
 - **internal/frontmatter/** - YAML frontmatter parsing/rendering (target-agnostic)
-- **internal/template/** - `{{variable}}` and `{{existing}}` substitution
+- **internal/template/** - Jinja2-style template processing (pongo2): variables, conditionals, `{% include_asset %}`
 
 ### Key Design Decisions
 

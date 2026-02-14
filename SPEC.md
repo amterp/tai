@@ -974,16 +974,46 @@ When using git remote sources:
 
 ## Templating
 
-tai supports simple variable substitution in assets during installation.
+tai uses Jinja2-style templates (powered by pongo2) for asset processing during installation. This supports variable substitution, conditionals, comments, and asset inlining.
 
 ### Syntax
 
-Variables use double curly braces: `{{variable_name}}`
+**Variables** use double curly braces: `{{ variable_name }}` (spaces optional - `{{variable_name}}` also works).
 
 ```markdown
-# Project: {{project_name}}
+# Project: {{ project_name }}
 
-Welcome to the {{project_name}} codebase.
+Welcome to the {{ project_name }} codebase.
+```
+
+**Conditionals** use `{% if %}`, `{% elif %}`, `{% else %}`, `{% endif %}`:
+
+```markdown
+# Instructions
+{% if target_name == "codex" %}
+## Codex-Specific
+Include a persona for Codex here.
+{% elif target_name == "claude" %}
+## Claude-Specific
+Claude gets different instructions.
+{% endif %}
+## Common
+Shared across all targets.
+```
+
+**Comments** use `{# #}` and are stripped from output:
+
+```markdown
+{# This comment won't appear in the installed file #}
+# Visible Content
+```
+
+**Literal template syntax** can be preserved with `{% verbatim %}`:
+
+```markdown
+{% verbatim %}
+This {{ will not }} be processed as a template variable.
+{% endverbatim %}
 ```
 
 When installing, pass variables via the `--var` flag:
@@ -1001,7 +1031,9 @@ Variables come from multiple sources with a defined priority order (later wins):
 | Adapter-provided | Lowest | `target_name`, `target_agents_file` |
 | CLI `--var` | Highest | `--var project_name=MyApp` |
 
-**Future expansion** may add intermediate layers: `Adapter → tai.yaml globals → profile options → CLI --var`
+**Future expansion** may add intermediate layers: `Adapter -> tai.yaml globals -> profile options -> CLI --var`
+
+**Undefined variables** render as empty string. Use `{% verbatim %}` to preserve literal `{{ }}` syntax in output.
 
 ### Adapter-Provided Variables
 
@@ -1020,7 +1052,7 @@ These variables enable target-aware assets. For example, a single "global instru
 assets:
   - type: file
     path: files/AGENTS.md
-    dest: "{{target_agents_file}}"  # Resolves to CLAUDE.md for Claude, AGENTS.md for Codex
+    dest: "{{ target_agents_file }}"  # Resolves to CLAUDE.md for Claude, AGENTS.md for Codex
 ```
 
 **Naming convention:** The `target_` prefix indicates adapter-provided variables. Future tai-provided variables may use `tai_*` (e.g., `tai_version`, `tai_config_repo`).
@@ -1033,42 +1065,88 @@ File assets can use template variables in the `dest` field:
 assets:
   - type: file
     path: files/agents.md
-    dest: "{{target_agents_file}}"  # Full path (has extension)
+    dest: "{{ target_agents_file }}"  # Full path (has extension)
 
   - type: file
     path: files/config.json
-    dest: "{{target_name}}-config"  # Directory path (no extension)
+    dest: "{{ target_name }}-config"  # Directory path (no extension)
 ```
 
 **Dest interpretation:**
-- If dest has an extension in the basename (e.g., `CLAUDE.md`, `subdir/app.yaml`) → treated as full path
-- If dest has no extension (e.g., `config`, `subdir`) → treated as directory, filename appended
-- If dest ends with `/` (e.g., `output/`) → explicitly a directory
+- If dest has an extension in the basename (e.g., `CLAUDE.md`, `subdir/app.yaml`) -> treated as full path
+- If dest has no extension (e.g., `config`, `subdir`) -> treated as directory, filename appended
+- If dest ends with `/` (e.g., `output/`) -> explicitly a directory
 
 This allows a single file asset definition to install to different locations per target.
 
 ### Special Variables
 
-#### `{{existing}}`
+#### `{{ existing }}`
 
-The `{{existing}}` variable injects the current contents of the target file. This is useful for wrapping existing configuration without losing user content.
+The `{{ existing }}` variable injects the current contents of the target file. This is useful for wrapping existing configuration without losing user content.
 
 ```markdown
 # tai Header
 
-{{existing}}
+{{ existing }}
 
 # tai Footer
 ```
 
-When installed to a file that already contains content, the result includes the original content in place of `{{existing}}`.
+When installed to a file that already contains content, the result includes the original content in place of `{{ existing }}`.
 
-**Backup behavior:** When using `{{existing}}`, tai:
+**Backup behavior:** When using `{{ existing }}`, tai:
 1. Creates a backup of the original file (e.g., `CLAUDE.md.tai-backup`)
 2. Records the backup path in the manifest
 3. On uninstall, restores the original content from the backup
 
 This ensures users don't lose their customizations when uninstalling tai.
+
+### Asset Inlining
+
+The `{% include_asset %}` tag inlines another asset's body content (frontmatter stripped) at install time:
+
+```markdown
+# Project Instructions
+
+{% include_asset "personas/senior-swe.md" %}
+
+## Additional Rules
+```
+
+**Source-qualified paths** use the `source:path` format:
+
+```markdown
+{% include_asset "work-shared:personas/company-style.md" %}
+```
+
+Without a source prefix, defaults to the "local" source.
+
+**Only file-shaped assets** (personas, delegates, skills, files) can be included. Config assets (statuslines, mcps, hooks) produce a hard error.
+
+**Recursive processing:** Included content is template-processed with the same variables, so included assets can themselves use conditionals, variables, and further `{% include_asset %}` calls.
+
+**Cycle detection:** Circular includes (A includes B includes A) are detected and produce a hard error.
+
+**Combining with conditionals** enables the primary use case - target-specific asset composition:
+
+```markdown
+# Project Instructions
+
+## Core Rules
+Always write tests.
+{% if target_name == "codex" %}
+
+## Codex Persona
+{% include_asset "personas/company-style.md" %}
+{% endif %}
+```
+
+This installs the persona content only when targeting Codex, while Claude gets the file without it.
+
+### Disabled Features
+
+The built-in `{% include %}` tag (pongo2/Jinja2 filesystem include) is disabled for security. Use `{% include_asset %}` for controlled asset inclusion through tai's source resolution.
 
 ## Skill Includes
 
@@ -1281,8 +1359,9 @@ bundles:
 - [x] `--dry-run` flag for install preview
 - [x] `--force` and `--skip-conflicts` flags for conflict handling
 - [x] `tai run` pass-through
-- [x] Simple templating with `{{variable}}` substitution
-- [x] `{{existing}}` templating for wrapping existing file content with backup/restore
+- [x] Jinja2-style templating (pongo2): variables, conditionals, comments, verbatim blocks
+- [x] `{{ existing }}` templating for wrapping existing file content with backup/restore
+- [x] `{% include_asset %}` for inlining asset body content at install time
 - [x] StatusLine config assets with tai/native format support
 - [x] Asset dependencies via `depends:` frontmatter field with automatic resolution
 
@@ -1298,7 +1377,7 @@ bundles:
 - [ ] Git remote sources
 - [ ] `--add-dir` runtime injection (vs. installing to ~/.claude)
 - [ ] Cursor adapter
-- [ ] Merge strategies (append/prepend/template) - beyond {{existing}}
+- [ ] Merge strategies (append/prepend/template) - beyond {{ existing }}
 - [ ] Asset validation (schema checking)
 - [ ] Version compatibility checking
 - [ ] `tai lint` command
@@ -1394,7 +1473,7 @@ For creating rich terminal output, the following libraries are approved:
 
 7. **Config asset scope granularity**: Should scope be per-asset, per-asset-type, or only per-profile? Current design uses profile-level default. May need per-asset override for mixed project/user installs.
 
-6. ~~**Templating syntax**~~: **RESOLVED.** Simple `{{variable}}` substitution. Not Go templates or Jinja—just straightforward variable replacement. Special variable `{{existing}}` for injecting current file content.
+6. ~~**Templating syntax**~~: **RESOLVED.** Jinja2-style templates via pongo2: `{{ variable }}` substitution, `{% if %}`/`{% elif %}`/`{% else %}` conditionals, `{% include_asset %}` for inlining other assets' body content, `{% verbatim %}` for literal brace escaping. Special variable `{{ existing }}` for injecting current file content. Undefined variables render as empty string (standard Jinja2 behavior).
 
 ---
 

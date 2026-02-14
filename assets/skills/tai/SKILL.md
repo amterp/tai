@@ -166,14 +166,50 @@ assets:
 
 ## Templating
 
-Assets support `{{variable}}` substitution:
+tai uses Jinja2-style templates (pongo2). Supports variables, conditionals, comments, and asset inlining.
+
+### Variables
 
 ```markdown
-# Project: {{project_name}}
-Welcome to {{project_name}}.
+# Project: {{ project_name }}
+Welcome to {{ project_name }}.
 ```
 
 Install with: `tai install work --var project_name=MyApp`
+
+Undefined variables render as empty string. Use `{% verbatim %}...{% endverbatim %}` for literal `{{ }}` in output.
+
+### Conditionals
+
+```markdown
+{% if target_name == "codex" %}
+## Codex-Only Section
+{% elif target_name == "claude" %}
+## Claude-Only Section
+{% else %}
+## Default Section
+{% endif %}
+```
+
+### Asset Inlining
+
+`{% include_asset %}` inlines another asset's body (frontmatter stripped):
+
+```markdown
+{% include_asset "personas/senior-swe.md" %}
+{% include_asset "work-shared:personas/company-style.md" %}
+```
+
+Only file-shaped assets (personas, delegates, skills, files) can be included. Config assets produce an error. Circular includes are detected and fail.
+
+Combine with conditionals for target-specific composition:
+
+```markdown
+# Instructions
+{% if target_name == "codex" %}
+{% include_asset "personas/company-style.md" %}
+{% endif %}
+```
 
 ### Adapter-Provided Variables
 
@@ -191,18 +227,18 @@ Use these for target-aware file destinations:
 assets:
   - type: file
     path: files/AGENTS.md
-    dest: "{{target_agents_file}}"  # → CLAUDE.md for Claude, AGENTS.md for Codex
+    dest: "{{ target_agents_file }}"  # -> CLAUDE.md for Claude, AGENTS.md for Codex
 ```
 
 User variables (`--var`) override adapter variables on collision.
 
-### The `{{existing}}` Variable
+### The `{{ existing }}` Variable
 
 Inject current target file contents (useful for wrapping existing config):
 
 ```markdown
 # Tai additions
-{{existing}}
+{{ existing }}
 # End Tai additions
 ```
 

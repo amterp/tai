@@ -185,10 +185,18 @@ func (i *Installer) buildInstallContext(adap adapter.Adapter, existing *Manifest
 
 	mergedVars := template.MergeVariables(adap.ProvideVariables(), opts.Variables)
 
+	var engine *template.Engine
+	if i.sources != nil {
+		resolver := NewAssetContentResolver(i.sources)
+		engine = template.NewEngineWithResolver(mergedVars, resolver)
+	} else {
+		engine = template.NewEngine(mergedVars)
+	}
+
 	return &installContext{
 		adap:                  adap,
 		targetDir:             adap.TargetDir(),
-		templateEngine:        template.NewEngine(mergedVars),
+		templateEngine:        engine,
 		existingFiles:         existingFiles,
 		existingConfigEntries: existingConfigEntries,
 		opts:                  opts,
@@ -279,7 +287,7 @@ func (i *Installer) resolveAndDetectConflicts(
 func (i *Installer) resolveFileAsset(ctx *installContext, asset *config.Asset) (resolvedFileAsset, *ConflictDetail, error) {
 	// For file assets with templated dest paths, substitute variables
 	workingAsset := asset
-	if asset.Type == config.AssetTypeFile && asset.Dest != "" && template.HasTemplateVars([]byte(asset.Dest)) {
+	if asset.Type == config.AssetTypeFile && asset.Dest != "" && template.HasTemplateSyntax([]byte(asset.Dest)) {
 		// {{existing}} doesn't make sense in dest paths - it's for file content only
 		if template.HasExistingVar([]byte(asset.Dest)) {
 			return resolvedFileAsset{}, nil, fmt.Errorf("{{existing}} cannot be used in dest path for %s (it only works in file content)", asset.Name)
@@ -287,6 +295,9 @@ func (i *Installer) resolveFileAsset(ctx *installContext, asset *config.Asset) (
 		resolvedDest, err := ctx.templateEngine.ProcessString(asset.Dest)
 		if err != nil {
 			return resolvedFileAsset{}, nil, fmt.Errorf("processing dest template for %s: %w", asset.Name, err)
+		}
+		if resolvedDest == "" {
+			return resolvedFileAsset{}, nil, fmt.Errorf("dest for %s resolved to empty string (undefined template variables render as empty); check dest %q for typos", asset.Name, asset.Dest)
 		}
 		if err := pathutil.ValidateRelativePath(resolvedDest); err != nil {
 			return resolvedFileAsset{}, nil, fmt.Errorf("invalid resolved dest for %s: %w", asset.Name, err)
@@ -785,7 +796,7 @@ func (i *Installer) resolveAsset(
 		}
 
 		// Check if templating is needed
-		if template.HasTemplateVars(content) {
+		if template.HasTemplateSyntax(content) {
 			resolved.IsTemplated = true
 
 			// If uses {{existing}}, prepare backup of the existing file

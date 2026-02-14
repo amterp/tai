@@ -1,14 +1,28 @@
-// Package template provides simple variable substitution for asset files.
+// Package template provides Jinja2-style template processing for asset files,
+// powered by pongo2. Supports variable substitution ({{ var }}), conditionals
+// ({% if %}/{% elif %}/{% else %}), and asset inlining ({% include_asset %}).
 package template
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"os"
 	"regexp"
-	"strings"
+
+	pongo2 "github.com/flosch/pongo2/v6"
 )
 
 // Variables holds the template variables available for substitution.
 type Variables map[string]string
+
+// ContentResolver resolves asset references to their body content (frontmatter stripped).
+// The template package defines this interface; the install package implements it.
+type ContentResolver interface {
+	// ResolveAssetContent resolves an asset reference (e.g. "local:personas/senior-swe.md")
+	// and returns its body content with frontmatter stripped.
+	ResolveAssetContent(ref string) ([]byte, error)
+}
 
 // MergeVariables combines multiple variable maps, with later maps taking precedence.
 // This establishes priority order: adapter vars < user vars (CLI --var).
@@ -22,60 +36,92 @@ func MergeVariables(sources ...Variables) Variables {
 	return result
 }
 
-// Engine handles template processing.
+// Engine handles template processing using pongo2 internally.
 type Engine struct {
 	variables Variables
+	resolver  ContentResolver
+	set       *pongo2.TemplateSet
+}
+
+// noopLoader prevents pongo2's built-in {% include %} from accessing the filesystem.
+// All asset inclusion must go through our controlled {% include_asset %} tag.
+type noopLoader struct{}
+
+func (n *noopLoader) Abs(_, name string) string { return name }
+func (n *noopLoader) Get(_ string) (io.Reader, error) {
+	return nil, fmt.Errorf("built-in include is disabled; use include_asset instead")
 }
 
 // NewEngine creates a new template engine with the given variables.
+// The engine has no ContentResolver, so {% include_asset %} will error.
 func NewEngine(vars Variables) *Engine {
-	return &Engine{variables: vars}
+	set := pongo2.NewSet("tai", &noopLoader{})
+	_ = set.BanTag("include")
+	return &Engine{
+		variables: vars,
+		set:       set,
+	}
 }
 
-// varPattern matches {{variable}} patterns.
-var varPattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
+// NewEngineWithResolver creates a new template engine with variables and a ContentResolver.
+// This enables {% include_asset "ref" %} to resolve and inline other assets.
+func NewEngineWithResolver(vars Variables, resolver ContentResolver) *Engine {
+	set := pongo2.NewSet("tai", &noopLoader{})
+	_ = set.BanTag("include")
+	return &Engine{
+		variables: vars,
+		resolver:  resolver,
+		set:       set,
+	}
+}
 
 // ProcessString applies template substitution to a string.
-// This is a convenience wrapper around Process for string inputs.
-// Use for substituting variables in paths or other short strings.
+// This is a convenience wrapper for processing short strings like dest paths.
+// No ContentResolver is used - {% include_asset %} will error if encountered.
 func (e *Engine) ProcessString(s string) (string, error) {
 	result, err := e.Process([]byte(s), "")
 	return string(result), err
 }
 
-// Process applies template substitution to content.
-// Variables are referenced as {{variable_name}}.
-// The special variable {{existing}} is replaced with the content of targetPath.
+// Process applies template processing to content.
+// Variables are referenced as {{ variable_name }} or {{variable_name}}.
+// The special variable {{ existing }} is replaced with the content of targetPath.
+// Supports {% if %}, {% elif %}, {% else %}, {% endif %} conditionals,
+// and {% include_asset "source:path" %} for inlining other assets.
 func (e *Engine) Process(content []byte, targetPath string) ([]byte, error) {
-	result := string(content)
-
-	// Find all variable references
-	matches := varPattern.FindAllStringSubmatch(result, -1)
-	for _, match := range matches {
-		placeholder := match[0] // e.g., "{{existing}}"
-		varName := match[1]     // e.g., "existing"
-
-		var replacement string
-		if varName == "existing" {
-			// Special case: read existing file content
-			existing, err := readExistingContent(targetPath)
-			if err != nil {
-				// If file doesn't exist, replace with empty string
-				replacement = ""
-			} else {
-				replacement = existing
-			}
-		} else if val, ok := e.variables[varName]; ok {
-			replacement = val
-		} else {
-			// Unknown variable - leave as-is (fail-safe)
-			continue
-		}
-
-		result = strings.ReplaceAll(result, placeholder, replacement)
+	// Build pongo2 context from variables
+	ctx := pongo2.Context{}
+	for k, v := range e.variables {
+		ctx[k] = v
 	}
 
-	return []byte(result), nil
+	// Inject existing file content if applicable
+	if targetPath != "" {
+		existing, err := readExistingContent(targetPath)
+		if err != nil {
+			// If file doesn't exist, existing is empty string
+			ctx["existing"] = ""
+		} else {
+			ctx["existing"] = existing
+		}
+	} else {
+		ctx["existing"] = ""
+	}
+
+	// Inject state needed by the include_asset tag
+	injectTagContext(ctx, e.resolver, e.set, e.variables)
+
+	tpl, err := e.set.FromBytes(content)
+	if err != nil {
+		return nil, fmt.Errorf("parsing template: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tpl.ExecuteWriter(ctx, &buf); err != nil {
+		return nil, fmt.Errorf("executing template: %w", err)
+	}
+
+	return buf.Bytes(), nil
 }
 
 // readExistingContent reads the content of an existing file.
@@ -87,29 +133,36 @@ func readExistingContent(path string) (string, error) {
 	return string(data), nil
 }
 
-// HasTemplateVars checks if content contains any template variables.
-func HasTemplateVars(content []byte) bool {
-	return varPattern.Match(content)
+// injectTagContext sets the pongo2 context keys required by custom tags
+// (currently include_asset). Centralizing this ensures Process() and
+// tagIncludeAsset.Execute() stay in sync on which keys exist.
+func injectTagContext(ctx pongo2.Context, resolver ContentResolver, set *pongo2.TemplateSet, vars Variables) {
+	ctx[contextKeyResolver] = resolver
+	ctx[contextKeyIncludeStack] = []string{}
+	ctx[contextKeyTemplateSet] = set
+	ctx[contextKeyVariables] = vars
 }
 
-// HasExistingVar checks if content contains the {{existing}} variable.
+// templateSyntaxPattern matches any pongo2 template syntax: {{ }}, {% %}, or {# #}.
+var templateSyntaxPattern = regexp.MustCompile(`\{\{|\{%|\{#`)
+
+// HasTemplateSyntax checks if content contains any template syntax.
+// This detects {{ variables }}, {% tags %}, and {# comments #}.
+func HasTemplateSyntax(content []byte) bool {
+	return templateSyntaxPattern.Match(content)
+}
+
+// existingPattern matches both {{ existing }} and {{existing}}.
+var existingPattern = regexp.MustCompile(`\{\{\s*existing\s*\}\}`)
+
+// HasExistingVar checks if content contains the {{ existing }} variable.
 func HasExistingVar(content []byte) bool {
-	return strings.Contains(string(content), "{{existing}}")
+	return existingPattern.Match(content)
 }
 
-// ExtractVariables returns all variable names found in content.
-func ExtractVariables(content []byte) []string {
-	matches := varPattern.FindAllStringSubmatch(string(content), -1)
-	seen := make(map[string]bool)
-	var vars []string
-
-	for _, match := range matches {
-		varName := match[1]
-		if !seen[varName] {
-			seen[varName] = true
-			vars = append(vars, varName)
-		}
-	}
-
-	return vars
+// Deprecated: HasTemplateVars is an alias for HasTemplateSyntax, kept for
+// backward compatibility. Use HasTemplateSyntax instead. Will be removed
+// when all internal callers have been migrated.
+func HasTemplateVars(content []byte) bool {
+	return HasTemplateSyntax(content)
 }

@@ -1667,7 +1667,8 @@ func TestInstallerTemplatedDestWithUserOverride(t *testing.T) {
 func TestInstallerTemplatedDestUnknownVar(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
-	// File with unknown template variable - should be left as-is (fail-safe)
+	// File with unknown template variable - pongo2 renders it as empty string,
+	// which produces an empty dest path and should fail validation.
 	env.SetupAsset("files", "test.md", "# Test")
 
 	assets := []*config.Asset{
@@ -1676,18 +1677,12 @@ func TestInstallerTemplatedDestUnknownVar(t *testing.T) {
 			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "test.md")},
 	}
 
-	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
-	if err != nil {
-		t.Fatalf("Install failed: %v", err)
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err == nil {
+		t.Fatal("expected error for unknown variable in dest path, got nil")
 	}
-
-	if len(result.Added) != 1 {
-		t.Errorf("len(Added) = %d, want 1", len(result.Added))
-	}
-
-	// Unknown variable left as-is
-	if !env.TargetFileExists("{{unknown_var}}/test.md") {
-		t.Error("file not created at literal {{unknown_var}}/test.md path")
+	if !strings.Contains(err.Error(), "resolved to empty string") {
+		t.Errorf("error = %q, expected to mention 'resolved to empty string'", err.Error())
 	}
 }
 
