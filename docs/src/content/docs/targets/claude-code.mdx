@@ -1,0 +1,132 @@
+---
+title: Claude Code
+description: How tai's Claude Code adapter maps assets, transforms content, and installs configuration
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Claude Code is tai's primary target. The Claude adapter translates tai's vocabulary into Claude Code's native formats and installs everything to the Claude configuration directory.
+
+## Target directory
+
+All file assets are installed under `~/.claude/`. Config assets are merged into JSON settings files within the same directory tree.
+
+## Asset mapping
+
+The Claude adapter maps tai asset types to Claude Code's directory structure:
+
+| Tai asset type | Claude directory | Frontmatter rendered |
+|----------------|------------------|---------------------|
+| `persona` | `output-styles/` | `name`, `description` |
+| `delegate` | `agents/` | `name`, `description`, `tools`, `model` |
+| `skill` | `skills/` | `name`, `description`, `tools`, `model` |
+| `file` | Location specified by `dest` | None (copied as-is) |
+| `statusline` | Merged into `settings.json` | N/A (config asset) |
+
+For example, a persona at `assets/personas/senior-swe.md` becomes `~/.claude/output-styles/senior-swe.md`. A delegate at `assets/delegates/code-reviewer.md` becomes `~/.claude/agents/code-reviewer.md`.
+
+The `file` type is different - it uses the `dest` field from the bundle or profile entry to determine its target path, relative to the target directory. See [Assets](/tai/concepts/assets/) for details on how `dest` is interpreted.
+
+## Content transformation
+
+During installation, the adapter re-renders frontmatter in Claude Code's expected format. The body content is preserved as-is.
+
+**Personas** get `name` and `description` fields in their output frontmatter.
+
+**Delegates and skills** get `name`, `description`, `tools`, and `model` fields. Only fields present in the tai frontmatter are included - optional fields that are absent are omitted, not set to empty values.
+
+**Files** receive no transformation at all. Content is copied byte-for-byte.
+
+## Template variables
+
+The Claude adapter provides these variables for use in [templates](/tai/guides/templating/):
+
+| Variable | Value |
+|----------|-------|
+| `target_name` | `claude` |
+| `target_name_display` | `Claude` |
+| `target_agents_file` | `CLAUDE.md` |
+
+These enable target-aware assets that adapt their content based on which target they are being installed to. User-provided variables (via `--var`) take precedence over adapter-provided ones.
+
+## Config assets
+
+Config assets are merged into Claude Code's JSON settings files rather than written as standalone files. The target file depends on the asset type and its scope.
+
+### StatusLines
+
+StatusLine assets control Claude Code's status bar. They are written to the `statusLine` key in `settings.json`.
+
+| Scope | Target file |
+|-------|-------------|
+| `user` (default) | `~/.claude/settings.json` |
+| `project` | `.claude/settings.json` |
+
+#### Transformation
+
+When using tai format (recommended for portability), the adapter transforms the configuration into Claude's native format:
+
+| Tai field | Claude equivalent |
+|-----------|-------------------|
+| `level: hidden` | `style: "hidden"` |
+| `level: minimal` | `style: "minimal"` |
+| `level: standard` | `style: "standard"` |
+| `level: detailed` | `style: "detailed"` |
+| `level: custom` | `type: "command"` |
+| `show: [cost]` | `showCost: true` |
+| `show: [model]` | `showModel: true` |
+| `show: [tokens]` | `showTokens: true` |
+| `show: [latency]` | `showLatency: true` |
+
+For the `custom` level, the `command` field maps to Claude's `command` field, and the optional `padding` field is passed through directly.
+
+When `show` is specified, all four boolean flags are set explicitly - elements listed in `show` become `true`, and elements not listed become `false`.
+
+You can also use native format to bypass transformation entirely - see [Config Assets](/tai/reference/config-assets/) for details.
+
+<Aside type="caution" title="Planned (v0.2)">
+
+### MCPs
+
+MCP (Model Context Protocol) server entries will be managed as config assets. The target file depends on scope:
+
+| Scope | Target file |
+|-------|-------------|
+| `project` | `.mcp.json` |
+| `user` | `~/.claude.json` |
+| `local` | `.claude.json` |
+
+### Hooks
+
+Hook assets will be event-triggered commands merged into settings files. The target file depends on scope:
+
+| Scope | Target file |
+|-------|-------------|
+| `project` | `.claude/settings.json` |
+| `user` | `~/.claude/settings.json` |
+| `local` | `.claude/settings.local.json` |
+
+</Aside>
+
+## Installation behavior
+
+Tai installs assets by copying files to the target directory - not by creating symlinks. This means the target directory is self-contained and does not depend on the config repo being present at runtime.
+
+Each installation is tracked via a manifest so tai can cleanly re-install, update, and uninstall without touching files it did not create. See [Installation Behavior](/tai/reference/installation-behavior/) for the full details.
+
+## Running Claude Code
+
+You can launch Claude Code through tai using:
+
+```bash
+tai run claude [args...]
+```
+
+Any arguments after `claude` are passed through to the `claude` CLI command.
+
+## Related pages
+
+- [Assets](/tai/concepts/assets/) - asset types and frontmatter fields
+- [Targets](/tai/concepts/targets/) - overview of the target concept
+- [Codex](/tai/targets/codex/) - the Codex target adapter
+- [Templating](/tai/guides/templating/) - using template variables in assets

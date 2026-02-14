@@ -1,0 +1,33 @@
+---
+title: Tai
+description: Manage AI agent configurations across targets
+template: splash
+hero:
+  tagline: One config repo. Any AI target. Always in sync.
+  actions:
+    - text: Get started
+      link: /tai/getting-started/installation/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/amterp/tai
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Target-agnostic" icon="puzzle">
+    Define assets once in tai's vocabulary. Adapters translate for Claude Code, Codex, and future targets.
+  </Card>
+  <Card title="Composable" icon="list-format">
+    Build bundles from individual assets, compose bundles into profiles. Mix and match across sources.
+  </Card>
+  <Card title="Version-controlled" icon="github">
+    Your config repo is the source of truth. Target directories are derived outputs, fully reconstructable.
+  </Card>
+  <Card title="Non-destructive" icon="approve-check-circle">
+    Tai only manages what it installs. Your existing files stay untouched.
+  </Card>
+</CardGrid>

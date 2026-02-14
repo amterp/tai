@@ -20,3 +20,8 @@ coverage.out
 # Temporary files
 *.tmp
 
+# Docs site
+docs/node_modules/
+docs/dist/
+docs/.astro/
+
