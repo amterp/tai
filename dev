@@ -7,9 +7,10 @@ Provides common development tasks like building, testing, and linting.
 args:
     validate v bool  # Build, test, and lint
     build b bool     # Build the tai binary
+    docs d bool      # Serve docs site locally
 
-if not validate and not build:
-    print_err("No action specified. Use --validate/-v or --build/-b")
+if not validate and not build and not docs:
+    print_err("No action specified. Use --validate/-v, --build/-b, or --docs/-d")
     exit(1)
 
 if build or validate:
@@ -19,6 +20,9 @@ if validate:
     do_test()
     do_lint()
     print("\n✓ All validations passed!")
+
+if docs:
+    do_docs()
 
 fn do_build():
     print("Building tai...")
@@ -36,3 +40,7 @@ fn do_lint():
             print_err("golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest")
             exit(1)
         exit(code)
+
+fn do_docs():
+    print("Serving docs at http://localhost:4321 ...")
+    $`cd docs && npm run dev`
