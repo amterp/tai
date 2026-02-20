@@ -5,7 +5,7 @@
 
 ## Overview
 
-tai is a CLI tool for managing AI agent configurations. It provides a framework for organizing, composing, and installing assets (personas, delegates, skills, reference docs) across different AI targets (Claude Code, Codex, Cursor, etc.) while keeping configuration version-controlled and portable.
+tai is a CLI tool for managing AI agent configurations. It provides a framework for organizing, composing, and installing assets (personas, delegates, skills, reference docs) across different AI targets (Claude Code, Codex, OpenCode) while keeping configuration version-controlled and portable.
 
 ## Core Concepts
 
@@ -13,7 +13,7 @@ tai is a CLI tool for managing AI agent configurations. It provides a framework 
 
 | tai term | What it is | Claude Code equivalent |
 |----------|------------|------------------------|
-| **Target** | The AI tool we install to | Claude Code, Codex, Cursor, Windsurf, etc. |
+| **Target** | The AI tool we install to | Claude Code, Codex, OpenCode |
 | **Persona** | A behavioral style/role | output-style |
 | **Delegate** | A specialized helper for tasks | agents (sub-agents) |
 | **Skill** | A procedural capability | skills |
@@ -41,7 +41,7 @@ Assets come in two shapes based on how they're installed:
 
 **File assets** are the traditional model: you define a file (or directory for personas, delegates, skills), and tai copies it to the appropriate location in the target's config directory. The `file` type copies content as-is without any transformation.
 
-**Config assets** are entries that get merged into JSON configuration files. The target (Claude Code, Cursor, etc.) reads these JSON files at runtime. tai must read the existing JSON, merge in the new entries, and write it back—being careful to preserve entries it doesn't manage.
+**Config assets** are entries that get merged into JSON configuration files. The target reads these JSON files at runtime. tai must read the existing JSON, merge in the new entries, and write it back - being careful to preserve entries it doesn't manage.
 
 This distinction matters because:
 1. **Installation logic differs**: copy vs. JSON merge
@@ -101,7 +101,7 @@ This distinction matters because:
                               ▼ installed to (via adapter)
 ┌─────────────────────────────────────────────────────────────┐
 │                    Target Config                             │
-│  ~/.claude/, ~/.codex/, ~/.cursor/, etc.                    │
+│  ~/.claude/, ~/.codex/, ~/.config/opencode/, etc.           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -120,7 +120,8 @@ tai/
 │   │   ├── adapter.go    # Interface definition
 │   │   ├── claude/       # Claude Code adapter
 │   │   ├── codex/        # Codex adapter
-│   │   └── cursor/       # Future: Cursor adapter
+│   │   ├── opencode/     # OpenCode adapter
+│   │   └── shared.go     # Shared adapter helpers
 │   ├── bundle/           # Bundle resolution
 │   ├── profile/          # Profile management
 │   └── install/          # Installation logic
@@ -623,7 +624,7 @@ tai status [target]             # Show what's currently installed
 
 # Running (convenience wrapper)
 tai run claude [args...]        # Run claude with tai config applied
-tai run cursor [args...]        # Run cursor with tai config applied
+tai run opencode [args...]      # Run opencode with tai config applied
 
 # Remote Source Management (Future)
 tai sync                        # Re-fetch all remote sources
@@ -689,7 +690,7 @@ Each supported target has an adapter implementing:
 
 ```go
 type Adapter interface {
-    // Name returns the adapter name (e.g., "claude", "cursor")
+    // Name returns the adapter name (e.g., "claude", "opencode")
     Name() string
 
     // AssetMapping returns how tai asset types map to target paths
@@ -782,6 +783,23 @@ The Codex adapter:
 - Uses `target_agents_file: AGENTS.md`
 
 `statusline` assets are currently unsupported for Codex and are skipped with a warning.
+
+### OpenCode Adapter Specifics
+
+The OpenCode adapter:
+- Targets `$XDG_CONFIG_HOME/opencode` if `XDG_CONFIG_HOME` is set, otherwise `~/.config/opencode/`
+- Maps tai terminology to OpenCode-oriented paths:
+  - `personas/` -> `agents/` (description only; no name since OpenCode uses filename)
+  - `delegates/` -> `agents/` (description + `mode: subagent` + model; no name or tools)
+  - `skills/` -> `skills/`
+  - `files/` -> location specified by `dest` field (empty = root level)
+- Both personas and delegates map to `agents/` - OpenCode unifies these into a single agent concept, distinguished by the `mode` field
+- If a persona or delegate has no `description`, falls back to the `name` value
+- Tools are omitted because OpenCode uses a structurally incompatible format (boolean map vs comma-separated string)
+- No install warnings for personas/delegates (OpenCode actively consumes agents)
+- Uses `target_agents_file: AGENTS.md`
+
+`statusline` assets are unsupported for OpenCode and are skipped with a warning.
 
 **MCP installation:** Entries are added to the `mcpServers` key in the target JSON file:
 ```json
@@ -1039,11 +1057,11 @@ Variables come from multiple sources with a defined priority order (later wins):
 
 Adapters provide target-specific variables with the `target_` prefix:
 
-| Variable | Claude | Codex | Cursor (future) |
-|----------|--------|-------|-----------------|
-| `target_name` | `claude` | `codex` | `cursor` |
-| `target_name_display` | `Claude` | `Codex` | `Cursor` |
-| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `.cursorrules` |
+| Variable | Claude | Codex | OpenCode |
+|----------|--------|-------|----------|
+| `target_name` | `claude` | `codex` | `opencode` |
+| `target_name_display` | `Claude` | `Codex` | `OpenCode` |
+| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` |
 
 These variables enable target-aware assets. For example, a single "global instructions" file can be named appropriately per target:
 
@@ -1376,7 +1394,6 @@ bundles:
   - [x] Config entry manifest tracking
 - [ ] Git remote sources
 - [ ] `--add-dir` runtime injection (vs. installing to ~/.claude)
-- [ ] Cursor adapter
 - [ ] Merge strategies (append/prepend/template) - beyond {{ existing }}
 - [ ] Asset validation (schema checking)
 - [ ] Version compatibility checking
@@ -1416,7 +1433,7 @@ Items considered during design but explicitly deferred. These inform future deve
 
 ### Adapter as State Synchronizer
 **What:** Adapters sync to "desired state" rather than copying files—supporting future targets that use DBs, APIs, etc.
-**Why deferred:** All current targets (Claude Code, Cursor) are file-based. Premature abstraction.
+**Why deferred:** All current targets are file-based. Premature abstraction.
 **Future scope:** Refactor adapter interface when first non-file-based target emerges.
 
 ### Skill Versioning

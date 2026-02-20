@@ -61,7 +61,7 @@ type Profile struct {
 	Version     int            `yaml:"version,omitempty"` // Schema version (optional, defaults to 1)
 	Name        string         `yaml:"name"`
 	Description string         `yaml:"description"`
-	Target      string         `yaml:"target"` // e.g., "claude", "cursor"
+	Target      string         `yaml:"target"` // e.g., "claude", "opencode"
 	Bundles     []string       `yaml:"bundles"`
 	Assets      []AssetEntry   `yaml:"assets"`  // Direct asset references
 	Options     map[string]any `yaml:"options"` // Adapter-specific options

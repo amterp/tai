@@ -6,7 +6,7 @@ configuration version-controlled and portable.
 
 ## Why Tai?
 
-AI coding assistants like Claude Code, Codex, and Cursor use configuration files to customize their behavior -- output styles,
+AI coding assistants like Claude Code, Codex, and OpenCode use configuration files to customize their behavior - output styles,
 custom agents, skills, and reference documentation. Managing these configurations across machines, sharing them between
 personal and work contexts, or keeping them version-controlled quickly becomes unwieldy.
 
@@ -37,7 +37,7 @@ go install github.com/amterp/tai/cmd/tai@latest
 | **Bundle**      | Named collection of assets                   | -                          |
 | **Profile**     | Bundle(s) bound to a target                  | -                          |
 | **Source**      | Location providing assets                    | -                          |
-| **Target**      | AI tool to install to                        | Claude Code, Cursor, etc.  |
+| **Target**      | AI tool to install to                        | Claude Code, Codex, OpenCode |
 | **Config Repo** | Repository containing your Tai configuration | -                          |
 
 ### How They Fit Together
@@ -51,7 +51,7 @@ Bundles (compose assets into named collections)
     ↓
 Profiles (bind bundles to a target)
     ↓
-Target (Claude Code, Cursor, etc.)
+Target (Claude Code, Codex, OpenCode)
 ```
 
 ## Config Repo Structure
@@ -255,10 +255,10 @@ assets:
     dest: "{{target_agents_file}}"  # CLAUDE.md for Claude, AGENTS.md for Codex
 ```
 
-| Variable | Claude | Codex | Cursor (future) |
-|----------|--------|-------|-----------------|
-| `target_name` | `claude` | `codex` | `cursor` |
-| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `.cursorrules` |
+| Variable | Claude | Codex | OpenCode |
+|----------|--------|-------|----------|
+| `target_name` | `claude` | `codex` | `opencode` |
+| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` |
 
 User variables (`--var`) override adapter variables on collision.
 
@@ -344,10 +344,18 @@ Assets from later sources override earlier ones when paths conflict. Tai logs th
     - Codex has first-class support for `AGENTS.md` and skills.
     - Tai installs personas and delegates as fallback reference files and warns for each one.
 
-### Future Targets
+### OpenCode
 
-- Cursor
-- Windsurf
+- Target directory: `$XDG_CONFIG_HOME/opencode` (if set), otherwise `~/.config/opencode/`
+- Asset mapping:
+    - `personas/` -> `agents/` (description only; filename is the name)
+    - `delegates/` -> `agents/` (description + `mode: subagent`)
+    - `skills/` -> `skills/`
+    - `files/` -> location specified by `dest` field
+- Behavior note:
+    - Both personas and delegates install to `agents/` - OpenCode uses a single agent concept.
+    - Delegates get a `mode: subagent` field to distinguish them from primary agents.
+    - Tools are omitted (incompatible format between tai and OpenCode).
 
 ## Global State
 

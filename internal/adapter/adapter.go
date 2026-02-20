@@ -10,7 +10,7 @@ import (
 
 // Adapter defines the interface for target-specific adapters.
 type Adapter interface {
-	// Name returns the adapter name (e.g., "claude", "cursor")
+	// Name returns the adapter name (e.g., "claude", "opencode")
 	Name() string
 
 	// AssetMapping returns how tai asset types map to target paths.
@@ -38,7 +38,7 @@ type Adapter interface {
 	// SupportedConfigAssetTypes returns the config asset types this adapter supports.
 	// Config assets are installed as entries in target settings files rather than
 	// as standalone files. Returns empty slice if no config assets are supported.
-	// Example: Claude returns ["statusline"], Cursor returns []
+	// Example: Claude returns ["statusline"], OpenCode returns []
 	SupportedConfigAssetTypes() []string
 
 	// InstallWarnings returns non-fatal, adapter-specific warnings for an asset.
@@ -67,7 +67,7 @@ type Adapter interface {
 
 	// ProvideVariables returns target-specific template variables.
 	// These variables use the "target_" prefix convention:
-	//   - target_name: adapter name (e.g., "claude", "cursor")
+	//   - target_name: adapter name (e.g., "claude", "opencode")
 	//   - target_agents_file: global instructions filename (e.g., "CLAUDE.md")
 	// User-provided variables (via --var) take precedence over these.
 	ProvideVariables() template.Variables

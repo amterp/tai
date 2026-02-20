@@ -9,11 +9,11 @@ Tai's templating system includes adapter-provided variables that let you write a
 
 Each target adapter provides a set of variables with the `target_` prefix. These are automatically available in all templates during installation:
 
-| Variable | Claude | Codex | Cursor (future) |
-|----------|--------|-------|-----------------|
-| `target_name` | `claude` | `codex` | `cursor` |
-| `target_name_display` | `Claude` | `Codex` | `Cursor` |
-| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `.cursorrules` |
+| Variable | Claude | Codex | OpenCode |
+|----------|--------|-------|----------|
+| `target_name` | `claude` | `codex` | `opencode` |
+| `target_name_display` | `Claude` | `Codex` | `OpenCode` |
+| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` |
 
 You don't need to pass these with `--var` - they are injected automatically based on the profile's `target` field.
 
@@ -284,3 +284,4 @@ The same bundle, same assets, same config repo - but each target gets appropriat
 - [Switching & Managing Profiles](/tai/guides/managing-profiles/) - manage multiple profiles for different targets
 - [Claude Code target](/tai/targets/claude-code/) - Claude-specific adapter details
 - [Codex target](/tai/targets/codex/) - Codex-specific adapter details
+- [OpenCode target](/tai/targets/opencode/) - OpenCode-specific adapter details

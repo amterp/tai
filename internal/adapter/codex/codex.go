@@ -4,9 +4,7 @@ package codex
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
@@ -62,35 +60,7 @@ func (a *Adapter) TargetDir() string {
 
 // MapAssetPath maps a tai asset to a Codex target path.
 func (a *Adapter) MapAssetPath(asset *config.Asset) string {
-	// File type uses Dest directly
-	if asset.Type == config.AssetTypeFile {
-		if asset.Dest == "" {
-			// Root level with original name
-			return asset.Name
-		}
-		// Interpret dest based on its form:
-		// - Ends with "/" -> explicit directory, use dest/name
-		// - Basename contains "." -> full path (dest IS the final path)
-		// - Otherwise -> directory, use dest/name
-		if strings.HasSuffix(asset.Dest, "/") {
-			return filepath.Join(strings.TrimSuffix(asset.Dest, "/"), asset.Name)
-		}
-		basename := filepath.Base(asset.Dest)
-		if strings.Contains(basename, ".") {
-			return asset.Dest
-		}
-		return filepath.Join(asset.Dest, asset.Name)
-	}
-
-	mapping := a.AssetMapping()
-	targetType, ok := mapping[asset.Type]
-	if !ok {
-		// Unknown type - use as-is
-		return filepath.Join(asset.Type, asset.Name)
-	}
-
-	// Both file and directory assets use <target-type>/<asset-name>
-	return filepath.Join(targetType, asset.Name)
+	return adapter.DefaultMapAssetPath(a.AssetMapping(), asset)
 }
 
 // TransformContent transforms asset content into Codex-compatible format.
@@ -158,11 +128,7 @@ func (a *Adapter) transformSkill(asset *config.ResolvedAsset) []byte {
 
 // Run invokes codex with the given arguments.
 func (a *Adapter) Run(args []string) error {
-	cmd := exec.Command("codex", args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return adapter.RunBinary("codex", args)
 }
 
 // SupportedConfigAssetTypes returns the config asset types Codex supports.

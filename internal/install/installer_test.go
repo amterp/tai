@@ -581,6 +581,7 @@ func TestInstallerStatus(t *testing.T) {
 	}
 	if status == nil {
 		t.Fatal("expected non-nil status")
+		return
 	}
 	if status.Profile != "test-profile" {
 		t.Errorf("status.Profile = %q, want 'test-profile'", status.Profile)

@@ -208,11 +208,11 @@ Future versions may add intermediate priority levels (e.g., tai.yaml globals, pr
 
 Each target adapter provides variables with the `target_` prefix:
 
-| Variable | Claude | Codex | Description |
-|----------|--------|-------|-------------|
-| `target_name` | `claude` | `codex` | Adapter name (lowercase) |
-| `target_name_display` | `Claude` | `Codex` | Display name (capitalized) |
-| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | Global instructions filename |
+| Variable | Claude | Codex | OpenCode | Description |
+|----------|--------|-------|----------|-------------|
+| `target_name` | `claude` | `codex` | `opencode` | Adapter name (lowercase) |
+| `target_name_display` | `Claude` | `Codex` | `OpenCode` | Display name (capitalized) |
+| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` | Global instructions filename |
 
 These variables enable writing target-aware assets. For example:
 

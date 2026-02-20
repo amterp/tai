@@ -70,6 +70,7 @@ export default defineConfig({
           items: [
             { label: 'Claude Code', slug: 'targets/claude-code' },
             { label: 'Codex', slug: 'targets/codex' },
+            { label: 'OpenCode', slug: 'targets/opencode' },
           ],
         },
       ],

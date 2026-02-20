@@ -362,7 +362,7 @@ func TestConditionalElif(t *testing.T) {
 }
 
 func TestConditionalElse(t *testing.T) {
-	engine := NewEngine(Variables{"target_name": "cursor"})
+	engine := NewEngine(Variables{"target_name": "opencode"})
 
 	content := []byte(`{% if target_name == "claude" %}C{% elif target_name == "codex" %}X{% else %}?{% endif %}`)
 	result, err := engine.Process(content, "")

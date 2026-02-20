@@ -143,6 +143,7 @@ bundles:
 	manifest, _ := installer.Status(adapter.Name())
 	if manifest == nil {
 		t.Fatal("Manifest not created")
+		return
 	}
 	if manifest.Profile != "work" {
 		t.Errorf("Manifest.Profile = %q, want 'work'", manifest.Profile)

@@ -34,7 +34,7 @@ scope: project
 |-------|------|----------|---------|-------------|
 | `name` | string | yes | | Profile identifier. Must match the filename (without extension). |
 | `description` | string | no | | Human-readable description. |
-| `target` | string | yes | | Target to install to (`claude` or `codex`). |
+| `target` | string | yes | | Target to install to (`claude`, `codex`, or `opencode`). |
 | `bundles` | list of strings | no | | Bundle names to include. |
 | `assets` | list of [asset entries](#assets) | no | | Direct asset references. |
 | `options` | map | no | | Adapter-specific settings (reserved for future use). |
@@ -59,6 +59,7 @@ Required. Specifies which AI tool this profile installs to. Determines which ada
 |--------|---------|------------------|
 | `claude` | Claude Code | `~/.claude/` |
 | `codex` | Codex | `$CODEX_HOME` or `~/.codex/` |
+| `opencode` | OpenCode | `$XDG_CONFIG_HOME/opencode` or `~/.config/opencode/` |
 
 ```yaml
 target: claude

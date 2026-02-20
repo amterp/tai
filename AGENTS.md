@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Project Overview
 
-**tai** is a CLI tool for managing AI agent configurations across different targets (Claude Code, Cursor, etc.). It organizes, composes, and installs target-agnostic assets (personas, delegates, skills, docs, MCPs, hooks) from multiple sources while maintaining version control and portability.
+**tai** is a CLI tool for managing AI agent configurations across different targets (Claude Code, Codex, OpenCode). It organizes, composes, and installs target-agnostic assets (personas, delegates, skills, docs, MCPs, hooks) from multiple sources while maintaining version control and portability.
 
 ## Commands
 
@@ -31,11 +31,11 @@ golangci-lint run ./...          # Runs errcheck, govet, staticcheck, unused, in
 
 | tai term | What it is | Example target equivalent |
 |----------|-----------|---------------------------|
-| **Target** | AI tool to install to | Claude Code, Cursor, etc. |
+| **Target** | AI tool to install to | Claude Code, Codex, OpenCode |
 | **Persona** | Behavioral style/role | output-style |
 | **Delegate** | Specialized helper | agents (sub-agents) |
 | **Skill** | Procedural capability | skills |
-| **File** | Loose file copied as-is | CLAUDE.md, .cursorrules |
+| **File** | Loose file copied as-is | CLAUDE.md, AGENTS.md |
 | **StatusLine** | Status bar configuration | statusLine in settings.json |
 | **MCP** | Model Context Protocol server | MCP server entry (v0.2) |
 | **Hook** | Event-triggered command | Hook in settings (v0.2) |
@@ -65,7 +65,7 @@ Sources → Assets → Bundles → Profiles → Install Pipeline → Target Conf
 - **internal/bundle/** - Recursive bundle composition with cycle detection
 - **internal/profile/** - Composes bundles into profiles, handles asset deduplication
 - **internal/install/** - Installation logic with manifest tracking, conflict detection, backup/restore
-- **internal/adapter/** - Target-specific implementations (Claude and Codex)
+- **internal/adapter/** - Target-specific implementations (Claude, Codex, and OpenCode)
 - **internal/frontmatter/** - YAML frontmatter parsing/rendering (target-agnostic)
 - **internal/template/** - Jinja2-style template processing (pongo2): variables, conditionals, `{% include_asset %}`
 
@@ -103,6 +103,17 @@ The Codex adapter maps:
 - `statuslines/` → unsupported (skipped with warning)
 
 Codex `ProvideVariables()` returns: `target_name: "codex"`, `target_name_display: "Codex"`, `target_agents_file: "AGENTS.md"`
+
+The OpenCode adapter maps:
+- `personas/` → `agents/` (renders `description` only; no `name` since OpenCode uses filename)
+- `delegates/` → `agents/` (renders `description`, `mode: subagent`, `model`; no `name` or `tools`)
+- `skills/` → `skills/` (SKILL.md gets `name`, `description` frontmatter)
+- `files/` → location specified by `dest` field (content copied as-is, no transformation)
+- `statuslines/` → unsupported (skipped with warning)
+
+Both personas and delegates map to `agents/` - OpenCode unifies these into a single agent concept, distinguished by the `mode` field. Tools are omitted because OpenCode uses a structurally incompatible format (boolean map vs comma-separated string).
+
+OpenCode `ProvideVariables()` returns: `target_name: "opencode"`, `target_name_display: "OpenCode"`, `target_agents_file: "AGENTS.md"`
 
 ## User Config Repo Structure
 

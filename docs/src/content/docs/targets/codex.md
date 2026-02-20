@@ -75,11 +75,10 @@ Any arguments after `codex` are passed through to the `codex` CLI command.
 
 ## Future targets
 
-Tai's adapter architecture is designed to support additional targets. Cursor and Windsurf are candidates for future adapters. Each new target gets its own adapter that implements the same interface, translating tai's vocabulary into the target's native format.
-
 ## Related pages
 
 - [Assets](/tai/concepts/assets/) - asset types and frontmatter fields
 - [Targets](/tai/concepts/targets/) - overview of the target concept
 - [Claude Code](/tai/targets/claude-code/) - the Claude Code target adapter
+- [OpenCode](/tai/targets/opencode/) - the OpenCode target adapter
 - [Templating](/tai/guides/templating/) - using template variables in assets

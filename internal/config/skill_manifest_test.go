@@ -153,6 +153,7 @@ func TestLoadSkillManifest(t *testing.T) {
 		}
 		if manifest == nil {
 			t.Fatal("LoadSkillManifest() returned nil")
+			return
 		}
 		if len(manifest.Include) != 2 {
 			t.Errorf("len(manifest.Include) = %d, want 2", len(manifest.Include))

@@ -9,8 +9,9 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/amterp/tai/internal/adapter"
-	_ "github.com/amterp/tai/internal/adapter/claude" // Register Claude adapter
-	_ "github.com/amterp/tai/internal/adapter/codex"  // Register Codex adapter
+	_ "github.com/amterp/tai/internal/adapter/claude"   // Register Claude adapter
+	_ "github.com/amterp/tai/internal/adapter/codex"    // Register Codex adapter
+	_ "github.com/amterp/tai/internal/adapter/opencode" // Register OpenCode adapter
 	"github.com/amterp/tai/internal/bundle"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/install"
