@@ -25,6 +25,7 @@ type ResolvedProfile struct {
 	Name    string
 	Target  string
 	Options map[string]any
+	Vars    map[string]string // Template variables from profile definition
 	Assets  []*config.Asset
 }
 
@@ -128,6 +129,7 @@ func (r *Resolver) resolveProfile(profile *config.Profile) (*ResolvedProfile, er
 		Name:    profile.Name,
 		Target:  profile.Target,
 		Options: profile.Options,
+		Vars:    profile.Vars,
 		Assets:  assets,
 	}, nil
 }

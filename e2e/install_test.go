@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/adapter/claude"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/install"
@@ -1338,5 +1339,271 @@ bundles:
 	}
 	if !strings.Contains(claudeContent, "Always write tests.") {
 		t.Error("core rules should appear")
+	}
+}
+
+// installStack holds the resolved components needed to run an install in E2E tests.
+// This mirrors doInstall()'s merge chain so tests exercise the real priority order.
+type installStack struct {
+	taiConfig *config.TaiConfig
+	resolved  *profile.ResolvedProfile
+	installer *install.Installer
+	adapter   adapter.Adapter
+}
+
+// buildInstallStack loads config, resolves a profile, and creates an installer.
+func buildInstallStack(t *testing.T, env *testutil.TestEnv, profileName string) *installStack {
+	t.Helper()
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, err := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	if err != nil {
+		t.Fatalf("ParseTaiConfig failed: %v", err)
+	}
+	sources, err := loader.LoadAll(taiConfig.Sources)
+	if err != nil {
+		t.Fatalf("LoadAll sources failed: %v", err)
+	}
+	bundles, err := config.LoadBundlesFromDir(filepath.Join(env.ConfigRepo, "bundles"))
+	if err != nil {
+		t.Fatalf("LoadBundlesFromDir failed: %v", err)
+	}
+	profiles, err := config.LoadProfilesFromDir(filepath.Join(env.ConfigRepo, "profiles"))
+	if err != nil {
+		t.Fatalf("LoadProfilesFromDir failed: %v", err)
+	}
+
+	resolver := profile.NewResolver(profiles, bundles, sources)
+	resolved, err := resolver.Resolve(profileName)
+	if err != nil {
+		t.Fatalf("Profile resolve failed: %v", err)
+	}
+
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	inst := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adap := claude.New(env.TargetDir)
+
+	return &installStack{
+		taiConfig: taiConfig,
+		resolved:  resolved,
+		installer: inst,
+		adapter:   adap,
+	}
+}
+
+// install runs installation, merging tai.yaml + profile + CLI vars like doInstall does.
+func (s *installStack) install(cliVars template.Variables) (*install.InstallResult, error) {
+	mergedVars := template.MergeVariables(
+		template.Variables(s.taiConfig.Vars),
+		template.Variables(s.resolved.Vars),
+		cliVars,
+	)
+	return s.installer.Install(s.adapter, s.resolved.Name, s.resolved.Assets, install.InstallOptions{
+		Variables: mergedVars,
+	})
+}
+
+// TestE2EInstallWithTaiYamlVars tests that vars defined in tai.yaml
+// are available during template processing.
+func TestE2EInstallWithTaiYamlVars(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+vars:
+  project_name: my-awesome-project
+  author: test-user
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	env.SetupAsset("files", "README.md", `# {{ project_name }}
+
+By {{ author }}.
+`)
+
+	env.SetupBundle("docs", `name: docs
+assets:
+  - type: file
+    path: files/README.md
+    dest: ""
+`)
+
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - docs
+`)
+
+	stack := buildInstallStack(t, env, "test")
+	_, err := stack.install(nil)
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("README.md")
+	if !strings.Contains(content, "my-awesome-project") {
+		t.Errorf("content should contain project_name from tai.yaml vars, got: %q", content)
+	}
+	if !strings.Contains(content, "test-user") {
+		t.Errorf("content should contain author from tai.yaml vars, got: %q", content)
+	}
+}
+
+// TestE2EInstallProfileVarsOverrideTaiYaml tests that profile vars
+// take precedence over tai.yaml vars.
+func TestE2EInstallProfileVarsOverrideTaiYaml(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+vars:
+  greeting: hello-from-tai-yaml
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	env.SetupAsset("files", "test.md", `{{ greeting }}`)
+
+	env.SetupBundle("core", `name: core
+assets:
+  - type: file
+    path: files/test.md
+    dest: ""
+`)
+
+	env.SetupProfile("test", `name: test
+target: claude
+vars:
+  greeting: hello-from-profile
+bundles:
+  - core
+`)
+
+	stack := buildInstallStack(t, env, "test")
+	_, err := stack.install(nil)
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("test.md")
+	if !strings.Contains(content, "hello-from-profile") {
+		t.Errorf("profile vars should override tai.yaml vars, got: %q", content)
+	}
+}
+
+// TestE2EInstallCLIVarsOverrideAll tests that CLI --var overrides
+// both tai.yaml and profile vars.
+func TestE2EInstallCLIVarsOverrideAll(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+vars:
+  greeting: from-tai-yaml
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	env.SetupAsset("files", "test.md", `{{ greeting }}`)
+
+	env.SetupBundle("core", `name: core
+assets:
+  - type: file
+    path: files/test.md
+    dest: ""
+`)
+
+	env.SetupProfile("test", `name: test
+target: claude
+vars:
+  greeting: from-profile
+bundles:
+  - core
+`)
+
+	stack := buildInstallStack(t, env, "test")
+	_, err := stack.install(template.Variables{"greeting": "from-cli"})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("test.md")
+	if !strings.Contains(content, "from-cli") {
+		t.Errorf("CLI vars should override all, got: %q", content)
+	}
+}
+
+// TestE2EInstallWithEnvFilter tests that the env filter works in templates.
+func TestE2EInstallWithEnvFilter(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+	t.Setenv("TAI_TEST_VALUE", "env-filter-works")
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	env.SetupAsset("files", "test.md", `Value: {{ "TAI_TEST_VALUE"|env }}`)
+
+	env.SetupBundle("core", `name: core
+assets:
+  - type: file
+    path: files/test.md
+    dest: ""
+`)
+
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - core
+`)
+
+	stack := buildInstallStack(t, env, "test")
+	_, err := stack.install(nil)
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("test.md")
+	if !strings.Contains(content, "env-filter-works") {
+		t.Errorf("env filter should resolve environment variable, got: %q", content)
+	}
+}
+
+// TestE2EInstallUndefinedVarErrors tests that undefined variables
+// produce a clear error message.
+func TestE2EInstallUndefinedVarErrors(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	env.SetupAsset("files", "test.md", `Hello {{ undefined_var }}`)
+
+	env.SetupBundle("core", `name: core
+assets:
+  - type: file
+    path: files/test.md
+    dest: ""
+`)
+
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - core
+`)
+
+	stack := buildInstallStack(t, env, "test")
+	_, err := stack.install(nil)
+	if err == nil {
+		t.Fatal("expected error for undefined variable")
+	}
+	if !strings.Contains(err.Error(), "undefined_var") {
+		t.Errorf("error should mention the undefined variable name, got: %q", err.Error())
 	}
 }

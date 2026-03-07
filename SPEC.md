@@ -1046,12 +1046,53 @@ Variables come from multiple sources with a defined priority order (later wins):
 
 | Source | Priority | Example |
 |--------|----------|---------|
-| Adapter-provided | Lowest | `target_name`, `target_agents_file` |
-| CLI `--var` | Highest | `--var project_name=MyApp` |
+| Adapter-provided | 1 (lowest) | `target_name`, `target_agents_file` |
+| tai.yaml `vars` | 2 | `vars: { project: my-app }` |
+| Profile `vars` | 3 | `vars: { env: prod }` |
+| CLI `--var` | 4 (highest) | `--var project=override` |
 
-**Future expansion** may add intermediate layers: `Adapter -> tai.yaml globals -> profile options -> CLI --var`
+tai.yaml globals are ideal for machine-specific or project-wide values that rarely change. Profile vars let you specialize per target or workflow. CLI `--var` provides one-off overrides.
 
-**Undefined variables** render as empty string. Use `{% verbatim %}` to preserve literal `{{ }}` syntax in output.
+```yaml
+# tai.yaml
+version: 1
+vars:
+  project_name: my-project
+  author: team-alpha
+sources:
+  - name: local
+    path: ./assets
+```
+
+```yaml
+# profiles/work.yaml
+name: work
+target: claude
+vars:
+  env: production
+bundles:
+  - core
+```
+
+**Undefined variables** cause an error listing the missing variable names. This catches typos and forgotten definitions. For optional/conditional behavior, define the variable with an empty string:
+
+```yaml
+vars:
+  optional_section: ""  # defined but falsy for {% if %}
+```
+
+Use `{% verbatim %}` to preserve literal `{{ }}` syntax in output.
+
+### Environment Variables
+
+The `env` filter provides access to environment variables in templates:
+
+```markdown
+Home directory: {{ "HOME"|env }}
+Current user: {{ "USER"|env }}
+```
+
+Missing environment variables render as empty string (standard `os.Getenv` behavior). The filter operates at render time, independent of the variable merge chain.
 
 ### Adapter-Provided Variables
 

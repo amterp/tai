@@ -1682,8 +1682,8 @@ func TestInstallerTemplatedDestUnknownVar(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown variable in dest path, got nil")
 	}
-	if !strings.Contains(err.Error(), "resolved to empty string") {
-		t.Errorf("error = %q, expected to mention 'resolved to empty string'", err.Error())
+	if !strings.Contains(err.Error(), "undefined template variable") {
+		t.Errorf("error = %q, expected to mention 'undefined template variable'", err.Error())
 	}
 }
 

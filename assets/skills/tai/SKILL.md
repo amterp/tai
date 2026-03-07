@@ -176,9 +176,25 @@ tai uses Jinja2-style templates (pongo2). Supports variables, conditionals, comm
 Welcome to {{ project_name }}.
 ```
 
-Install with: `tai install work --var project_name=MyApp`
+Variables come from multiple sources (later wins): adapter < tai.yaml `vars` < profile `vars` < CLI `--var`.
 
-Undefined variables render as empty string. Use `{% verbatim %}...{% endverbatim %}` for literal `{{ }}` in output.
+```yaml
+# tai.yaml - project-wide defaults
+vars:
+  project_name: my-project
+
+# profiles/work.yaml - profile-specific overrides
+vars:
+  env: production
+```
+
+CLI override: `tai install work --var project_name=MyApp`
+
+Undefined variables cause an error. For optional behavior, define with empty string (`vars: { opt: "" }`). Use `{% verbatim %}...{% endverbatim %}` for literal `{{ }}`.
+
+### Environment Variables
+
+Access env vars with the `env` filter: `{{ "HOME"|env }}`, `{{ "USER"|env }}`. Missing env vars render as empty string.
 
 ### Conditionals
 
@@ -231,7 +247,7 @@ assets:
     dest: "{{ target_agents_file }}"  # -> CLAUDE.md for Claude, AGENTS.md for Codex
 ```
 
-User variables (`--var`) override adapter variables on collision.
+Variable priority (later wins): adapter < tai.yaml `vars` < profile `vars` < CLI `--var`.
 
 ### The `{{ existing }}` Variable
 

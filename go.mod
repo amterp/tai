@@ -3,9 +3,9 @@ module github.com/amterp/tai
 go 1.24.1
 
 require (
+	github.com/amterp/pongo2/v6 v6.0.0-amterp.1
 	github.com/amterp/ra v0.4.3
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/flosch/pongo2/v6 v6.0.0
 	github.com/pmezard/go-difflib v1.0.0
 	golang.org/x/term v0.39.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -26,4 +26,5 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/text v0.33.0 // indirect
 )

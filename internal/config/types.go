@@ -10,9 +10,10 @@ import (
 
 // TaiConfig represents the top-level tai.yaml configuration file.
 type TaiConfig struct {
-	Version        int      `yaml:"version"`
-	Sources        []Source `yaml:"sources"`
-	DefaultProfile string   `yaml:"default_profile"`
+	Version        int               `yaml:"version"`
+	Vars           map[string]string `yaml:"vars"`
+	Sources        []Source          `yaml:"sources"`
+	DefaultProfile string            `yaml:"default_profile"`
 }
 
 // Source represents a location that provides assets.
@@ -58,13 +59,14 @@ type Bundle struct {
 
 // Profile represents a bundle bound to a specific target.
 type Profile struct {
-	Version     int            `yaml:"version,omitempty"` // Schema version (optional, defaults to 1)
-	Name        string         `yaml:"name"`
-	Description string         `yaml:"description"`
-	Target      string         `yaml:"target"` // e.g., "claude", "opencode"
-	Bundles     []string       `yaml:"bundles"`
-	Assets      []AssetEntry   `yaml:"assets"`  // Direct asset references
-	Options     map[string]any `yaml:"options"` // Adapter-specific options
+	Version     int               `yaml:"version,omitempty"` // Schema version (optional, defaults to 1)
+	Name        string            `yaml:"name"`
+	Description string            `yaml:"description"`
+	Target      string            `yaml:"target"` // e.g., "claude", "opencode"
+	Bundles     []string          `yaml:"bundles"`
+	Assets      []AssetEntry      `yaml:"assets"`  // Direct asset references
+	Options     map[string]any    `yaml:"options"` // Adapter-specific options
+	Vars        map[string]string `yaml:"vars"`    // Template variables (overrides tai.yaml vars)
 }
 
 // Asset represents an atomic configuration unit.

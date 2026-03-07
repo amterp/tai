@@ -48,15 +48,15 @@ func TestEngineProcessUnknownVar(t *testing.T) {
 	engine := NewEngine(Variables{})
 
 	content := []byte("Hello {{ unknown }}")
-	result, err := engine.Process(content, "")
-	if err != nil {
-		t.Fatalf("Process failed: %v", err)
+	_, err := engine.Process(content, "")
+	if err == nil {
+		t.Fatal("expected error for undefined variable, got nil")
 	}
-
-	// pongo2 renders undefined variables as empty string (breaking change from regex engine)
-	expected := "Hello "
-	if string(result) != expected {
-		t.Errorf("result = %q, want %q", string(result), expected)
+	if !strings.Contains(err.Error(), "undefined template variable") {
+		t.Errorf("error = %q, should mention undefined template variable", err.Error())
+	}
+	if !strings.Contains(err.Error(), "unknown") {
+		t.Errorf("error = %q, should mention the variable name 'unknown'", err.Error())
 	}
 }
 
@@ -280,10 +280,11 @@ func TestMergeVariables(t *testing.T) {
 
 func TestProcessString(t *testing.T) {
 	tests := []struct {
-		name     string
-		vars     Variables
-		input    string
-		expected string
+		name      string
+		vars      Variables
+		input     string
+		expected  string
+		expectErr string // if non-empty, expect error containing this substring
 	}{
 		{
 			name:     "simple substitution",
@@ -298,10 +299,10 @@ func TestProcessString(t *testing.T) {
 			expected: "plain string",
 		},
 		{
-			name:     "unknown variable renders empty",
-			vars:     Variables{},
-			input:    "{{unknown}}",
-			expected: "",
+			name:      "unknown variable errors",
+			vars:      Variables{},
+			input:     "{{unknown}}",
+			expectErr: "undefined template variable",
 		},
 		{
 			name:     "multiple variables",
@@ -321,6 +322,15 @@ func TestProcessString(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := NewEngine(tt.vars)
 			result, err := engine.ProcessString(tt.input)
+			if tt.expectErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.expectErr)
+				}
+				if !strings.Contains(err.Error(), tt.expectErr) {
+					t.Fatalf("error = %q, should contain %q", err.Error(), tt.expectErr)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("ProcessString failed: %v", err)
 			}
@@ -716,5 +726,252 @@ func TestHasTemplateVarsBackwardCompat(t *testing.T) {
 	}
 	if HasTemplateVars([]byte("no template")) {
 		t.Error("HasTemplateVars should not detect plain text")
+	}
+}
+
+// --- Env filter tests ---
+
+func TestEnvFilterPresent(t *testing.T) {
+	t.Setenv("TAI_TEST_PRESENT_VAR", "present-value")
+	engine := NewEngine(Variables{})
+	content := []byte(`{{ "TAI_TEST_PRESENT_VAR"|env }}`)
+	result, err := engine.Process(content, "")
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if string(result) != "present-value" {
+		t.Errorf("result = %q, want %q", string(result), "present-value")
+	}
+}
+
+func TestEnvFilterMissing(t *testing.T) {
+	engine := NewEngine(Variables{})
+	content := []byte(`[{{ "TAI_TEST_NONEXISTENT_VAR_12345"|env }}]`)
+	result, err := engine.Process(content, "")
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if string(result) != "[]" {
+		t.Errorf("result = %q, want %q", string(result), "[]")
+	}
+}
+
+func TestEnvFilterWithSet(t *testing.T) {
+	t.Setenv("TAI_TEST_ENV_VAR", "hello_tai")
+	engine := NewEngine(Variables{})
+	content := []byte(`{{ "TAI_TEST_ENV_VAR"|env }}`)
+	result, err := engine.Process(content, "")
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if string(result) != "hello_tai" {
+		t.Errorf("result = %q, want %q", string(result), "hello_tai")
+	}
+}
+
+// --- Undefined variable detection tests ---
+
+func TestUndefinedVarInContent(t *testing.T) {
+	engine := NewEngine(Variables{"defined": "yes"})
+	content := []byte("{{ defined }} {{ not_defined }}")
+	_, err := engine.Process(content, "")
+	if err == nil {
+		t.Fatal("expected error for undefined variable")
+	}
+	if !strings.Contains(err.Error(), "not_defined") {
+		t.Errorf("error = %q, should mention 'not_defined'", err.Error())
+	}
+}
+
+func TestUndefinedVarMultiple(t *testing.T) {
+	engine := NewEngine(Variables{})
+	content := []byte("{{ foo }} {{ bar }}")
+	_, err := engine.Process(content, "")
+	if err == nil {
+		t.Fatal("expected error for undefined variables")
+	}
+	if !strings.Contains(err.Error(), "bar") || !strings.Contains(err.Error(), "foo") {
+		t.Errorf("error = %q, should mention both 'foo' and 'bar'", err.Error())
+	}
+}
+
+func TestUndefinedVarInConditional(t *testing.T) {
+	engine := NewEngine(Variables{})
+	content := []byte("{% if some_flag %}yes{% endif %}")
+	_, err := engine.Process(content, "")
+	if err == nil {
+		t.Fatal("expected error for undefined variable in conditional")
+	}
+	if !strings.Contains(err.Error(), "some_flag") {
+		t.Errorf("error = %q, should mention 'some_flag'", err.Error())
+	}
+}
+
+func TestDefinedEmptyVarInConditional(t *testing.T) {
+	engine := NewEngine(Variables{"optional_section": ""})
+	content := []byte("before{% if optional_section %} included{% endif %} after")
+	result, err := engine.Process(content, "")
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	expected := "before after"
+	if string(result) != expected {
+		t.Errorf("result = %q, want %q", string(result), expected)
+	}
+}
+
+func TestDefinedNonEmptyVarInConditional(t *testing.T) {
+	engine := NewEngine(Variables{"optional_section": "content"})
+	content := []byte("before{% if optional_section %} included{% endif %} after")
+	result, err := engine.Process(content, "")
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	expected := "before included after"
+	if string(result) != expected {
+		t.Errorf("result = %q, want %q", string(result), expected)
+	}
+}
+
+func TestExistingVarNotFlagged(t *testing.T) {
+	engine := NewEngine(Variables{})
+	content := []byte("{{ existing }}")
+	result, err := engine.Process(content, "")
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if string(result) != "" {
+		t.Errorf("result = %q, want empty", string(result))
+	}
+}
+
+func TestDefinedUserVarResolvesCorrectly(t *testing.T) {
+	engine := NewEngine(Variables{"name": "test"})
+	content := []byte("{{ name }}")
+	result, err := engine.Process(content, "")
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	if string(result) != "test" {
+		t.Errorf("result = %q, want %q", string(result), "test")
+	}
+}
+
+func TestUndefinedVarInIncludeAsset(t *testing.T) {
+	resolver := &mockResolver{
+		assets: map[string][]byte{
+			"local:personas/test.md": []byte("Hello {{ missing_in_include }}!"),
+		},
+	}
+	engine := NewEngineWithResolver(Variables{}, resolver)
+	content := []byte(`{% include_asset "local:personas/test.md" %}`)
+	_, err := engine.Process(content, "")
+	if err == nil {
+		t.Fatal("expected error for undefined variable in included asset")
+	}
+	if !strings.Contains(err.Error(), "missing_in_include") {
+		t.Errorf("error = %q, should mention 'missing_in_include'", err.Error())
+	}
+}
+
+func TestUndefinedVarInNestedIncludeAsset(t *testing.T) {
+	resolver := &mockResolver{
+		assets: map[string][]byte{
+			"local:outer.md": []byte(`{% include_asset "local:inner.md" %}`),
+			"local:inner.md": []byte("{{ deeply_missing }}"),
+		},
+	}
+	engine := NewEngineWithResolver(Variables{}, resolver)
+	content := []byte(`{% include_asset "local:outer.md" %}`)
+	_, err := engine.Process(content, "")
+	if err == nil {
+		t.Fatal("expected error for undefined variable in nested included asset")
+	}
+	if !strings.Contains(err.Error(), "deeply_missing") {
+		t.Errorf("error = %q, should mention 'deeply_missing'", err.Error())
+	}
+}
+
+// --- Reserved variable name validation ---
+
+func TestValidateVarNamesReserved(t *testing.T) {
+	err := ValidateVarNames(Variables{"existing": "override"})
+	if err == nil {
+		t.Fatal("expected error for reserved variable name 'existing'")
+	}
+	if !strings.Contains(err.Error(), "existing") {
+		t.Errorf("error = %q, should mention 'existing'", err.Error())
+	}
+}
+
+func TestValidateVarNamesTaiPrefix(t *testing.T) {
+	err := ValidateVarNames(Variables{"_tai_custom": "value"})
+	if err == nil {
+		t.Fatal("expected error for _tai_ prefixed variable name")
+	}
+	if !strings.Contains(err.Error(), "_tai_custom") {
+		t.Errorf("error = %q, should mention '_tai_custom'", err.Error())
+	}
+}
+
+func TestValidateVarNamesOk(t *testing.T) {
+	err := ValidateVarNames(Variables{"project_name": "foo", "env": "prod"})
+	if err != nil {
+		t.Fatalf("expected no error for normal variable names, got: %v", err)
+	}
+}
+
+// --- knownContextKeys sync test ---
+
+func TestKnownUndefinedIncludesAllContextKeys(t *testing.T) {
+	// All internal context keys from tags.go must be in the filter
+	for _, key := range []string{
+		contextKeyResolver,
+		contextKeyIncludeStack,
+		contextKeyTemplateSet,
+		contextKeyVariables,
+	} {
+		if !knownUndefined[key] {
+			t.Errorf("knownUndefined missing internal context key %q", key)
+		}
+	}
+
+	// Reserved names must be in the filter
+	if !knownUndefined["existing"] {
+		t.Error("knownUndefined missing reserved name 'existing'")
+	}
+
+	// pongo2 meta-context
+	if !knownUndefined[pongo2MetaContextKey] {
+		t.Error("knownUndefined missing pongo2 meta-context key")
+	}
+}
+
+// --- MergeVariables with 4 sources ---
+
+func TestMergeVariablesFourSources(t *testing.T) {
+	adapter := Variables{"target_name": "claude", "shared": "adapter"}
+	taiYaml := Variables{"project": "my-project", "shared": "tai-yaml"}
+	profile := Variables{"env": "prod", "shared": "profile"}
+	cli := Variables{"override": "cli-val", "shared": "cli"}
+
+	result := MergeVariables(adapter, taiYaml, profile, cli)
+
+	// Each source's unique var is preserved
+	if result["target_name"] != "claude" {
+		t.Errorf("target_name = %q, want %q", result["target_name"], "claude")
+	}
+	if result["project"] != "my-project" {
+		t.Errorf("project = %q, want %q", result["project"], "my-project")
+	}
+	if result["env"] != "prod" {
+		t.Errorf("env = %q, want %q", result["env"], "prod")
+	}
+	if result["override"] != "cli-val" {
+		t.Errorf("override = %q, want %q", result["override"], "cli-val")
+	}
+	// CLI wins on collision
+	if result["shared"] != "cli" {
+		t.Errorf("shared = %q, want %q (CLI should win)", result["shared"], "cli")
 	}
 }

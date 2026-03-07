@@ -266,10 +266,13 @@ func fatal(format string, args ...any) {
 }
 
 // parseVariables parses a comma-separated list of key=value pairs.
-func parseVariables(varsStr string) template.Variables {
+// Returns an error if any pair is malformed (missing '=' sign).
+// Note: values containing commas are not supported with comma-separated
+// syntax. Use repeated --var flags for values that need commas.
+func parseVariables(varsStr string) (template.Variables, error) {
 	vars := template.Variables{}
 	if varsStr == "" {
-		return vars
+		return vars, nil
 	}
 	for _, pair := range strings.Split(varsStr, ",") {
 		pair = strings.TrimSpace(pair)
@@ -277,11 +280,16 @@ func parseVariables(varsStr string) template.Variables {
 			continue
 		}
 		parts := strings.SplitN(pair, "=", 2)
-		if len(parts) == 2 {
-			vars[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("malformed --var entry %q: expected key=value format", pair)
 		}
+		key := strings.TrimSpace(parts[0])
+		if key == "" {
+			return nil, fmt.Errorf("malformed --var entry %q: key cannot be empty", pair)
+		}
+		vars[key] = strings.TrimSpace(parts[1])
 	}
-	return vars
+	return vars, nil
 }
 
 func loadState() *state.State {
@@ -563,12 +571,23 @@ func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts 
 
 	s.ProfileResolver.SetLogger(&outputLogger{out: out})
 
-	vars := parseVariables(varsStr)
+	cliVars, err := parseVariables(varsStr)
+	if err != nil {
+		fatal("%v", err)
+	}
+	mergedVars := template.MergeVariables(
+		template.Variables(s.TaiConfig.Vars),
+		template.Variables(resolved.Vars),
+		cliVars,
+	)
+	if err := template.ValidateVarNames(mergedVars); err != nil {
+		fatal("%v", err)
+	}
 	opts := install.InstallOptions{
 		DryRun:        dryRun,
 		Force:         force,
 		SkipConflicts: skipConflicts,
-		Variables:     vars,
+		Variables:     mergedVars,
 	}
 
 	assets := make([]*config.Asset, len(resolved.Assets))

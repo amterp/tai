@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	pongo2 "github.com/flosch/pongo2/v6"
+	pongo2 "github.com/amterp/pongo2/v6"
 )
 
 // Context keys for passing tai-specific state through pongo2 execution.
@@ -20,11 +20,11 @@ const (
 // This guards against pathological (non-circular) chains of includes.
 const maxIncludeDepth = 50
 
-func init() {
-	// Register our custom include_asset tag globally.
-	// This is safe because the tag retrieves its resolver from the execution
-	// context, so it's a no-op when no resolver is provided.
-	if err := pongo2.RegisterTag("include_asset", tagIncludeAssetParser); err != nil {
+// registerTaiTags registers tai's custom tags on a TemplateSet.
+// In pongo2 v7, tags are per-set rather than global, so we must register
+// on each set we create.
+func registerTaiTags(set *pongo2.TemplateSet) {
+	if err := set.RegisterTag("include_asset", tagIncludeAssetParser); err != nil {
 		panic(fmt.Sprintf("failed to register include_asset tag: %v", err))
 	}
 }
@@ -35,7 +35,7 @@ type tagIncludeAsset struct {
 }
 
 // tagIncludeAssetParser parses {% include_asset "ref" %}.
-func tagIncludeAssetParser(_ *pongo2.Parser, _ *pongo2.Token, arguments *pongo2.Parser) (pongo2.INodeTag, *pongo2.Error) {
+func tagIncludeAssetParser(_ *pongo2.Parser, _ *pongo2.Token, arguments *pongo2.Parser) (pongo2.INodeTag, error) {
 	token := arguments.MatchType(pongo2.TokenString)
 	if token == nil {
 		return nil, arguments.Error("include_asset requires a quoted string argument", nil)
@@ -61,7 +61,7 @@ func tagIncludeAssetParser(_ *pongo2.Parser, _ *pongo2.Token, arguments *pongo2.
 
 // Execute resolves the asset, processes its template content recursively,
 // and writes the result to the output.
-func (t *tagIncludeAsset) Execute(ctx *pongo2.ExecutionContext, writer pongo2.TemplateWriter) *pongo2.Error {
+func (t *tagIncludeAsset) Execute(ctx *pongo2.ExecutionContext, writer pongo2.TemplateWriter) error {
 	// Retrieve resolver from context
 	resolverVal, ok := ctx.Public[contextKeyResolver]
 	if !ok || resolverVal == nil {
@@ -140,10 +140,19 @@ func (t *tagIncludeAsset) Execute(ctx *pongo2.ExecutionContext, writer pongo2.Te
 	newStack[len(stack)] = normalizedRef
 	newCtx[contextKeyIncludeStack] = newStack
 
-	// Execute recursively
+	// Execute recursively with undefined var tracking
 	var buf bytes.Buffer
-	if execErr := tpl.ExecuteWriter(newCtx, &buf); execErr != nil {
+	report, execErr := tpl.ExecuteWriterWithReport(newCtx, &buf)
+	if execErr != nil {
 		return ctx.Error(fmt.Sprintf("include_asset %q: executing included content: %v", t.ref, execErr), nil)
+	}
+
+	// Propagate undefined vars from included content to the parent context
+	// so Process() can report them all at once.
+	if report != nil && ctx.UndefinedVars != nil {
+		for _, name := range report.UndefinedVars {
+			ctx.UndefinedVars[name] = true
+		}
 	}
 
 	_, writeErr := writer.WriteString(buf.String())

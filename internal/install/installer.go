@@ -31,7 +31,10 @@ type InstallOptions struct {
 	DryRun        bool               // Preview without making changes
 	Force         bool               // Overwrite conflicting files
 	SkipConflicts bool               // Leave conflicting files as-is
-	Variables     template.Variables // Template variables
+	// Variables holds user-provided template variables (tai.yaml + profile + CLI merged).
+	// Adapter vars are prepended at lowest priority by buildInstallContext - do not
+	// include them here, or they will be merged twice (harmlessly but wastefully).
+	Variables template.Variables
 }
 
 // InstallResult contains the result of an installation.
@@ -297,7 +300,7 @@ func (i *Installer) resolveFileAsset(ctx *installContext, asset *config.Asset) (
 			return resolvedFileAsset{}, nil, fmt.Errorf("processing dest template for %s: %w", asset.Name, err)
 		}
 		if resolvedDest == "" {
-			return resolvedFileAsset{}, nil, fmt.Errorf("dest for %s resolved to empty string (undefined template variables render as empty); check dest %q for typos", asset.Name, asset.Dest)
+			return resolvedFileAsset{}, nil, fmt.Errorf("dest for %s resolved to empty string; check dest %q for typos or ensure variables have non-empty values", asset.Name, asset.Dest)
 		}
 		if err := pathutil.ValidateRelativePath(resolvedDest); err != nil {
 			return resolvedFileAsset{}, nil, fmt.Errorf("invalid resolved dest for %s: %w", asset.Name, err)
