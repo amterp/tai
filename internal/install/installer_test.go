@@ -743,7 +743,7 @@ func TestInstallAssetFallsBackTo0644WhenFileModeZero(t *testing.T) {
 		Content: []byte("# Hello"),
 	}
 
-	if err := installer.installAsset(resolved, targetPath, adapter); err != nil {
+	if err := installer.installAsset(resolved, targetPath, adapter, nil); err != nil {
 		t.Fatalf("installAsset failed: %v", err)
 	}
 
@@ -1778,5 +1778,303 @@ func TestInstallerTemplatedDestExistingVarRejected(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "{{existing}} cannot be used in dest path") {
 		t.Errorf("error should explain {{existing}} limitation, got: %v", err)
+	}
+}
+
+func TestSkillDirTemplateVarsInMainFile(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "tmpl-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	skillContent := "---\ntai-schema-version: 1\nname: Tmpl Skill\ndescription: A skill\n---\n\nWelcome to {{ project_name }}!\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skill", Name: "tmpl-skill", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{
+		Variables: template.Variables{"project_name": "MyProject"},
+	})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("skills/tmpl-skill/SKILL.md")
+	if !strings.Contains(content, "Welcome to MyProject!") {
+		t.Errorf("SKILL.md body should have substituted project_name, got:\n%s", content)
+	}
+	if strings.Contains(content, "{{ project_name }}") {
+		t.Error("SKILL.md body still contains unsubstituted {{ project_name }}")
+	}
+}
+
+func TestSkillDirTemplateVarsInHelperFile(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "helper-tmpl")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: Helper Tmpl\ndescription: A skill\n---\n\n# Skill\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "guide.md"),
+		[]byte("# Guide for {{ project_name }}\n\nTarget: {{ target_name }}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skill", Name: "helper-tmpl", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{
+		Variables: template.Variables{"project_name": "TestApp"},
+	})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("skills/helper-tmpl/guide.md")
+	if !strings.Contains(content, "# Guide for TestApp") {
+		t.Errorf("helper file should have substituted project_name, got:\n%s", content)
+	}
+	// target_name comes from the adapter (claude)
+	if !strings.Contains(content, "Target: claude") {
+		t.Errorf("helper file should have substituted target_name, got:\n%s", content)
+	}
+}
+
+func TestPersonaDirTemplateVars(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	personaDir := filepath.Join(env.ConfigRepo, "assets", "personas", "tmpl-persona")
+	if err := os.MkdirAll(personaDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	personaContent := "---\ntai-schema-version: 1\nname: Tmpl Persona\ndescription: A persona\n---\n\nYou are working on {{ project_name }}.\n"
+	if err := os.WriteFile(filepath.Join(personaDir, "PERSONA.md"), []byte(personaContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(personaDir, "style-guide.md"),
+		[]byte("# Style for {{ project_name }}\n\nAgent file: {{ target_agents_file }}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "persona", Name: "tmpl-persona", SourceName: "local",
+			SourcePath: personaDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{
+		Variables: template.Variables{"project_name": "CoolApp"},
+	})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	// Main file should have template vars substituted
+	mainContent := env.ReadTargetFile("output-styles/tmpl-persona/PERSONA.md")
+	if !strings.Contains(mainContent, "You are working on CoolApp.") {
+		t.Errorf("PERSONA.md body should have substituted project_name, got:\n%s", mainContent)
+	}
+
+	// Non-main file should also have template vars substituted
+	styleContent := env.ReadTargetFile("output-styles/tmpl-persona/style-guide.md")
+	if !strings.Contains(styleContent, "# Style for CoolApp") {
+		t.Errorf("style-guide.md should have substituted project_name, got:\n%s", styleContent)
+	}
+	if !strings.Contains(styleContent, "Agent file: CLAUDE.md") {
+		t.Errorf("style-guide.md should have substituted target_agents_file, got:\n%s", styleContent)
+	}
+}
+
+func TestDirAssetAdapterVarsAvailable(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "adapter-vars")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: Adapter Vars\ndescription: Tests adapter vars\n---\n\nTarget: {{ target_name }}, Display: {{ target_name_display }}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "ref.md"),
+		[]byte("See {{ target_agents_file }} for details.\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skill", Name: "adapter-vars", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	mainContent := env.ReadTargetFile("skills/adapter-vars/SKILL.md")
+	if !strings.Contains(mainContent, "Target: claude, Display: Claude") {
+		t.Errorf("SKILL.md should have substituted adapter vars, got:\n%s", mainContent)
+	}
+
+	refContent := env.ReadTargetFile("skills/adapter-vars/ref.md")
+	if !strings.Contains(refContent, "See CLAUDE.md for details.") {
+		t.Errorf("ref.md should have substituted target_agents_file, got:\n%s", refContent)
+	}
+}
+
+func TestDirAssetExistingVarRejectedInMainFile(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "bad-existing")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: Bad\ndescription: Uses existing\n---\n\n{{ existing }}\nNew content\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skill", Name: "bad-existing", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err == nil {
+		t.Fatal("Install should have failed for {{ existing }} in dir asset main file")
+	}
+	if !strings.Contains(err.Error(), "{{ existing }} is not supported in directory assets") {
+		t.Errorf("error should explain {{ existing }} limitation, got: %v", err)
+	}
+}
+
+func TestDirAssetExistingVarRejectedInHelperFile(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "bad-helper")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: Bad Helper\ndescription: A skill\n---\n\n# Skill\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "helper.md"),
+		[]byte("# Helper\n{{ existing }}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skill", Name: "bad-helper", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err == nil {
+		t.Fatal("Install should have failed for {{ existing }} in dir asset helper file")
+	}
+	if !strings.Contains(err.Error(), "{{ existing }} is not supported in directory assets") {
+		t.Errorf("error should explain {{ existing }} limitation, got: %v", err)
+	}
+}
+
+func TestDirAssetTemplateErrorCleansUpTargetDir(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "orphan-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: Orphan\ndescription: A skill\n---\n\n# Skill\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Use {{ existing }} in helper to trigger a Phase 1 error
+	if err := os.WriteFile(filepath.Join(skillDir, "helper.md"),
+		[]byte("{{ existing }}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skill", Name: "orphan-skill", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err == nil {
+		t.Fatal("Install should have failed")
+	}
+
+	// Target directory should NOT exist (no orphan left behind)
+	targetSkillDir := filepath.Join(env.TargetDir, "skills", "orphan-skill")
+	if _, statErr := os.Stat(targetSkillDir); statErr == nil {
+		t.Errorf("target directory %s should not exist after failed install", targetSkillDir)
+	}
+
+	// A subsequent install with fixed content should succeed (no conflict)
+	if err := os.WriteFile(filepath.Join(skillDir, "helper.md"),
+		[]byte("Fixed content\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Retry install should succeed after fixing template error, got: %v", err)
+	}
+}
+
+func TestDirAssetTemplateErrorCaughtInPhase1(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	// Create a valid skill that should install first
+	goodDir := filepath.Join(env.ConfigRepo, "assets", "skills", "good-skill")
+	if err := os.MkdirAll(goodDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(goodDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: Good\ndescription: Works\n---\n\n# Good\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a bad skill with {{ existing }} in helper (Phase 1 error)
+	badDir := filepath.Join(env.ConfigRepo, "assets", "skills", "bad-skill")
+	if err := os.MkdirAll(badDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(badDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: Bad\ndescription: Fails\n---\n\n# Bad\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(badDir, "helper.md"),
+		[]byte("{{ existing }}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skill", Name: "good-skill", SourceName: "local",
+			SourcePath: goodDir, IsDir: true},
+		{Type: "skill", Name: "bad-skill", SourceName: "local",
+			SourcePath: badDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err == nil {
+		t.Fatal("Install should have failed")
+	}
+
+	// The good skill should NOT be installed either, because the error
+	// was caught in Phase 1 before any Phase 2 installation began.
+	if env.TargetFileExists("skills/good-skill/SKILL.md") {
+		t.Error("good-skill should not be installed when bad-skill fails in Phase 1")
 	}
 }

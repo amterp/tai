@@ -451,7 +451,7 @@ func (i *Installer) installFileAsset(ctx *installContext, ra resolvedFileAsset, 
 
 	// Install the asset
 	if !opts.DryRun {
-		if err := i.installAsset(ra.resolved, ra.fullPath, ctx.adap); err != nil {
+		if err := i.installAsset(ra.resolved, ra.fullPath, ctx.adap, ctx.templateEngine); err != nil {
 			return ManifestEntry{}, false, fmt.Errorf("installing %s: %w", ra.targetPath, err)
 		}
 
@@ -785,6 +785,14 @@ func (i *Installer) resolveAsset(
 			return nil, err
 		}
 		resolved.Checksum = checksum
+
+		// Validate templates in source files early (Phase 1) to catch
+		// errors before any files are copied to the target directory.
+		if engine != nil {
+			if err := validateDirTemplates(asset.SourcePath, engine); err != nil {
+				return nil, fmt.Errorf("validating templates in %s/%s: %w", asset.Type, asset.Name, err)
+			}
+		}
 	} else {
 		// File asset - read content and capture permissions
 		srcInfo, err := os.Stat(asset.SourcePath)
@@ -897,14 +905,14 @@ func (i *Installer) checkConflict(
 }
 
 // installAsset installs a resolved asset to the target.
-func (i *Installer) installAsset(resolved *config.ResolvedAsset, fullTargetPath string, adap adapter.Adapter) error {
+func (i *Installer) installAsset(resolved *config.ResolvedAsset, fullTargetPath string, adap adapter.Adapter, engine *template.Engine) error {
 	// Ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(fullTargetPath), 0755); err != nil {
 		return err
 	}
 
 	if resolved.IsDir {
-		return i.installDirAsset(resolved, fullTargetPath, adap)
+		return i.installDirAsset(resolved, fullTargetPath, adap, engine)
 	}
 
 	// Write file content, preserving source permissions
@@ -920,7 +928,7 @@ func (i *Installer) installAsset(resolved *config.ResolvedAsset, fullTargetPath 
 }
 
 // installDirAsset installs a directory asset (persona, delegate, skill, etc.).
-func (i *Installer) installDirAsset(resolved *config.ResolvedAsset, fullTargetPath string, adap adapter.Adapter) error {
+func (i *Installer) installDirAsset(resolved *config.ResolvedAsset, fullTargetPath string, adap adapter.Adapter, engine *template.Engine) error {
 	mainFileName := adap.MainFileName(resolved.Type)
 	if mainFileName == "" {
 		return fmt.Errorf("directory assets not supported for type %q", resolved.Type)
@@ -931,7 +939,7 @@ func (i *Installer) installDirAsset(resolved *config.ResolvedAsset, fullTargetPa
 	// 2. Resolve includes (which may replace the main file)
 	// 3. Transform the main file from the installed location
 	if resolved.Type == config.AssetTypeSkill {
-		return i.installSkillDirAsset(resolved, fullTargetPath, adap, mainFileName)
+		return i.installSkillDirAsset(resolved, fullTargetPath, adap, mainFileName, engine)
 	}
 
 	// For other directory types (persona, delegate):
@@ -941,18 +949,46 @@ func (i *Installer) installDirAsset(resolved *config.ResolvedAsset, fullTargetPa
 		return err
 	}
 
+	// Clean up the target directory if any subsequent step fails, to avoid
+	// leaving an orphaned unmanaged directory that blocks future installs.
+	succeeded := false
+	defer func() {
+		if !succeeded {
+			_ = os.RemoveAll(fullTargetPath)
+		}
+	}()
+
+	// Template-process non-main files in the copied directory
+	if err := templateProcessDirFiles(fullTargetPath, engine, mainFileName); err != nil {
+		return err
+	}
+
 	// Transform the main file (read from source, write to target)
-	return i.transformMainFileFromSource(resolved, fullTargetPath, adap, mainFileName)
+	if err := i.transformMainFileFromSource(resolved, fullTargetPath, adap, mainFileName, engine); err != nil {
+		return err
+	}
+
+	succeeded = true
+	return nil
 }
 
 // installSkillDirAsset handles the special case of skill directories.
 // Skills need to copy the directory first, resolve includes (which may replace files),
 // then transform the main file from its installed location.
-func (i *Installer) installSkillDirAsset(resolved *config.ResolvedAsset, fullTargetPath string, adap adapter.Adapter, mainFileName string) error {
+func (i *Installer) installSkillDirAsset(resolved *config.ResolvedAsset, fullTargetPath string, adap adapter.Adapter, mainFileName string, engine *template.Engine) error {
 	// Copy directory excluding only the manifest file (main file gets copied)
 	if err := copyDirExcluding(resolved.SourcePath, fullTargetPath, SkillManifestFilename); err != nil {
 		return err
 	}
+
+	// Clean up the target directory if any subsequent step fails, to avoid
+	// leaving an orphaned unmanaged directory that blocks future installs.
+	succeeded := false
+	defer func() {
+		if !succeeded {
+			_ = os.RemoveAll(fullTargetPath)
+		}
+	}()
 
 	// Load and process skill manifest if present
 	manifest, err := config.LoadSkillManifest(resolved.SourcePath)
@@ -966,17 +1002,27 @@ func (i *Installer) installSkillDirAsset(resolved *config.ResolvedAsset, fullTar
 		}
 	}
 
+	// Template-process non-main files in the copied directory
+	if err := templateProcessDirFiles(fullTargetPath, engine, mainFileName); err != nil {
+		return err
+	}
+
 	// Detect field mapping for SKILL.md from includes
 	fieldMapping := findSkillMdFields(manifest)
 
 	// Transform SKILL.md from installed location (after includes may have replaced it)
-	return i.transformMainFileInPlace(resolved, fullTargetPath, adap, mainFileName, fieldMapping)
+	if err := i.transformMainFileInPlace(resolved, fullTargetPath, adap, mainFileName, fieldMapping, engine); err != nil {
+		return err
+	}
+
+	succeeded = true
+	return nil
 }
 
 // transformMainFileFromSource reads a main file from the source directory,
 // transforms it, and writes to the target directory.
 // Used for persona and delegate directory assets.
-func (i *Installer) transformMainFileFromSource(resolved *config.ResolvedAsset, dirTargetPath string, adap adapter.Adapter, mainFileName string) error {
+func (i *Installer) transformMainFileFromSource(resolved *config.ResolvedAsset, dirTargetPath string, adap adapter.Adapter, mainFileName string, engine *template.Engine) error {
 	srcMainFile := filepath.Join(resolved.SourcePath, mainFileName)
 	dstMainFile := filepath.Join(dirTargetPath, mainFileName)
 
@@ -994,7 +1040,7 @@ func (i *Installer) transformMainFileFromSource(resolved *config.ResolvedAsset, 
 		return fmt.Errorf("reading %s: %w", mainFileName, err)
 	}
 
-	transformed, err := i.transformMainFileContent(content, resolved.Type, resolved.Name, mainFileName, nil, adap)
+	transformed, err := i.transformMainFileContent(content, resolved.Type, resolved.Name, mainFileName, nil, adap, engine)
 	if err != nil {
 		return err
 	}
@@ -1007,9 +1053,9 @@ func (i *Installer) transformMainFileFromSource(resolved *config.ResolvedAsset, 
 // Used for skill directory assets.
 //
 // If fieldMapping is non-nil, it remaps source field names to tai field names
-// before validation — e.g., {"name": "title"} renames the source's "title"
+// before validation - e.g., {"name": "title"} renames the source's "title"
 // field to tai's "name" field.
-func (i *Installer) transformMainFileInPlace(resolved *config.ResolvedAsset, dirTargetPath string, adap adapter.Adapter, mainFileName string, fieldMapping map[string]string) error {
+func (i *Installer) transformMainFileInPlace(resolved *config.ResolvedAsset, dirTargetPath string, adap adapter.Adapter, mainFileName string, fieldMapping map[string]string, engine *template.Engine) error {
 	mainFilePath := filepath.Join(dirTargetPath, mainFileName)
 
 	info, err := os.Stat(mainFilePath)
@@ -1026,7 +1072,7 @@ func (i *Installer) transformMainFileInPlace(resolved *config.ResolvedAsset, dir
 		return fmt.Errorf("reading %s: %w", mainFileName, err)
 	}
 
-	transformed, err := i.transformMainFileContent(content, resolved.Type, resolved.Name, mainFileName, fieldMapping, adap)
+	transformed, err := i.transformMainFileContent(content, resolved.Type, resolved.Name, mainFileName, fieldMapping, adap, engine)
 	if err != nil {
 		return err
 	}
@@ -1036,7 +1082,21 @@ func (i *Installer) transformMainFileInPlace(resolved *config.ResolvedAsset, dir
 
 // transformMainFileContent parses, validates, and transforms main file content.
 // This is the shared logic used by both transformMainFileFromSource and transformMainFileInPlace.
-func (i *Installer) transformMainFileContent(content []byte, assetType, assetName, mainFileName string, fieldMapping map[string]string, adap adapter.Adapter) ([]byte, error) {
+func (i *Installer) transformMainFileContent(content []byte, assetType, assetName, mainFileName string, fieldMapping map[string]string, adap adapter.Adapter, engine *template.Engine) ([]byte, error) {
+	// Apply template processing before frontmatter parsing.
+	// {{ existing }} is not supported in directory assets - there's no
+	// single target file to read existing content from.
+	if engine != nil && template.HasTemplateSyntax(content) {
+		if template.HasExistingVar(content) {
+			return nil, fmt.Errorf("%s: {{ existing }} is not supported in directory assets", mainFileName)
+		}
+		processed, err := engine.Process(content, "")
+		if err != nil {
+			return nil, fmt.Errorf("processing template in %s: %w", mainFileName, err)
+		}
+		content = processed
+	}
+
 	parsed, err := frontmatter.Parse(content)
 	if err != nil {
 		return nil, fmt.Errorf("parsing %s frontmatter: %w", mainFileName, err)
@@ -1184,6 +1244,98 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return dstFile.Close()
+}
+
+// validateDirTemplates walks a source directory and validates that all files
+// with template syntax can be processed successfully. This catches errors in
+// Phase 1 before any files are copied to the target directory.
+func validateDirTemplates(dirPath string, engine *template.Engine) error {
+	return filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		if !template.HasTemplateSyntax(content) {
+			return nil
+		}
+
+		relPath, _ := filepath.Rel(dirPath, path)
+
+		if template.HasExistingVar(content) {
+			return fmt.Errorf("%s: {{ existing }} is not supported in directory assets", relPath)
+		}
+
+		if _, err := engine.Process(content, ""); err != nil {
+			return fmt.Errorf("processing template in %s: %w", relPath, err)
+		}
+
+		return nil
+	})
+}
+
+// templateProcessDirFiles walks a directory and applies template processing to
+// any files containing template syntax. Skips directories and excluded files.
+// Excluded files are matched by their path relative to dirPath (e.g. "SKILL.md"
+// excludes only a root-level file, not "subdir/SKILL.md").
+func templateProcessDirFiles(dirPath string, engine *template.Engine, excludeFiles ...string) error {
+	if engine == nil {
+		return nil
+	}
+
+	excludeSet := make(map[string]bool, len(excludeFiles))
+	for _, e := range excludeFiles {
+		excludeSet[e] = true
+	}
+
+	return filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(dirPath, path)
+		if err != nil {
+			return err
+		}
+		if excludeSet[relPath] {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", relPath, err)
+		}
+
+		if !template.HasTemplateSyntax(content) {
+			return nil
+		}
+
+		if template.HasExistingVar(content) {
+			return fmt.Errorf("%s: {{ existing }} is not supported in directory assets", relPath)
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return fmt.Errorf("stat %s: %w", relPath, err)
+		}
+
+		processed, err := engine.Process(content, "")
+		if err != nil {
+			return fmt.Errorf("processing template in %s: %w", relPath, err)
+		}
+
+		return os.WriteFile(path, processed, info.Mode().Perm())
+	})
 }
 
 // copyDirExcluding copies a directory recursively, excluding files with names in excludes.
