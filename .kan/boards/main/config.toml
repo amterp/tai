@@ -1,4 +1,4 @@
-kan_schema = "board/8"
+kan_schema = "board/9"
 id = "b_CNw8ylqO"
 name = "main"
 default_column = "backlog-hi"
@@ -25,7 +25,7 @@ default_column = "backlog-hi"
   name = "next"
   color = "#3b82f6"
   limit = 0
-  card_ids = ["a_cVjNRpNo"]
+  card_ids = ["a_cVjNRpNo", "a_kr0abe6C", "a_pCTNmXtO"]
 
 [[columns]]
   name = "in-progress"

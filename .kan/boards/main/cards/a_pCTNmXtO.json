@@ -1,0 +1,11 @@
+{
+  "_v": 1,
+  "alias": "make-code-review",
+  "alias_explicit": false,
+  "created_at_millis": 1774791260239,
+  "creator": "Alexander Terp",
+  "id": "a_pCTNmXtO",
+  "title": "make code-review bundles use sonnet, but as a variable (some setups might want opus)",
+  "type": "feature",
+  "updated_at_millis": 1774791266978
+}
