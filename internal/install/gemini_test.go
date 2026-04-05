@@ -60,26 +60,32 @@ Commit instructions.
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	// Persona should be installed to skills/, not personas/
+	// Persona should be wrapped in a directory for Gemini
 	if env.TargetFileExists("personas/senior-swe.md") {
 		t.Error("persona should NOT be installed to personas/ for Gemini")
 	}
-	if !env.TargetFileExists("skills/senior-swe.md") {
-		t.Fatal("persona should be installed to skills/senior-swe.md")
+	if env.TargetFileExists("skills/senior-swe.md") {
+		t.Error("persona should NOT be a loose file in skills/")
+	}
+	if !env.TargetFileExists("skills/senior-swe/SKILL.md") {
+		t.Fatal("persona should be installed to skills/senior-swe/SKILL.md")
 	}
 
-	// Skill should be in skills/ as normal
-	if !env.TargetFileExists("skills/commit.md") {
-		t.Fatal("skills/commit.md not created")
+	// Single-file skill should also be wrapped in a directory
+	if env.TargetFileExists("skills/commit.md") {
+		t.Error("single-file skill should NOT be a loose file in skills/")
+	}
+	if !env.TargetFileExists("skills/commit/SKILL.md") {
+		t.Fatal("single-file skill should be installed to skills/commit/SKILL.md")
 	}
 
 	// Persona warning about skill mapping
-	if !containsWarning(result.Warnings, "installed as skill instead") {
+	if !containsWarning(result.Warnings, "installed as skill instead: skills/senior-swe/SKILL.md") {
 		t.Errorf("missing persona-to-skill mapping warning, warnings: %#v", result.Warnings)
 	}
 
 	// Persona content should have name+description frontmatter (like a skill)
-	persona := env.ReadTargetFile("skills/senior-swe.md")
+	persona := env.ReadTargetFile("skills/senior-swe/SKILL.md")
 	if !strings.Contains(persona, "name: Senior SWE") {
 		t.Errorf("persona-as-skill missing name field: %q", persona)
 	}
@@ -88,7 +94,7 @@ Commit instructions.
 	}
 
 	// Skill should have name+description but NOT tools (Gemini uses minimal frontmatter)
-	skill := env.ReadTargetFile("skills/commit.md")
+	skill := env.ReadTargetFile("skills/commit/SKILL.md")
 	if !strings.Contains(skill, "name: commit") {
 		t.Errorf("skill missing name frontmatter: %q", skill)
 	}

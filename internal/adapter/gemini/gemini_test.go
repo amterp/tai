@@ -77,12 +77,18 @@ func TestAdapterMapAssetPath(t *testing.T) {
 		expected string
 	}{
 		{
-			// Persona maps to skills/
+			// Single-file persona wrapped in directory for Gemini
 			asset:    &config.Asset{Type: "persona", Name: "senior-swe.md"},
-			expected: "skills/senior-swe.md",
+			expected: "skills/senior-swe/SKILL.md",
 		},
 		{
-			asset:    &config.Asset{Type: "skill", Name: "my-skill"},
+			// Single-file skill also wrapped in directory
+			asset:    &config.Asset{Type: "skill", Name: "commit.md"},
+			expected: "skills/commit/SKILL.md",
+		},
+		{
+			// Directory skill stays as-is
+			asset:    &config.Asset{Type: "skill", Name: "my-skill", IsDir: true},
 			expected: "skills/my-skill",
 		},
 		{
@@ -131,6 +137,17 @@ func TestAdapterMapAssetPathUnknownType(t *testing.T) {
 	expected := "unknown/test.md"
 	if result != expected {
 		t.Errorf("MapAssetPath for unknown type = %q, want %q", result, expected)
+	}
+}
+
+func TestAdapterMapAssetPathPersonaDirectory(t *testing.T) {
+	a := New("")
+	// Directory persona stays as directory (no SKILL.md wrapping)
+	asset := &config.Asset{Type: "persona", Name: "senior-swe", IsDir: true}
+	result := a.MapAssetPath(asset)
+	expected := "skills/senior-swe"
+	if result != expected {
+		t.Errorf("MapAssetPath(dir persona) = %q, want %q", result, expected)
 	}
 }
 
@@ -256,8 +273,8 @@ func TestAdapterInstallWarnings(t *testing.T) {
 	if len(warnings) != 1 {
 		t.Fatalf("InstallWarnings(persona) returned %d warnings, want 1", len(warnings))
 	}
-	if !strings.Contains(warnings[0], "installed as skill instead") {
-		t.Errorf("persona warning should mention skill mapping, got: %q", warnings[0])
+	if !strings.Contains(warnings[0], "installed as skill instead: skills/senior-swe/SKILL.md") {
+		t.Errorf("persona warning should mention skill directory path, got: %q", warnings[0])
 	}
 
 	// Other types should not warn

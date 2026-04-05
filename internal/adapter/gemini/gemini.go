@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
@@ -61,8 +62,19 @@ func (a *Adapter) TargetDir() string {
 }
 
 // MapAssetPath maps a tai asset to a Gemini target path.
+// Single-file assets that map to skills/ are wrapped in a directory
+// (skills/name/SKILL.md) because Gemini CLI only discovers directory-format skills.
 func (a *Adapter) MapAssetPath(asset *config.Asset) string {
+	if !asset.IsDir && a.mapsToSkills(asset.Type) {
+		name := strings.TrimSuffix(asset.Name, ".md")
+		return filepath.Join("skills", name, "SKILL.md")
+	}
 	return adapter.DefaultMapAssetPath(a.AssetMapping(), asset)
+}
+
+// mapsToSkills returns true if the given asset type maps to the skills/ directory.
+func (a *Adapter) mapsToSkills(assetType string) bool {
+	return a.AssetMapping()[assetType] == "skills"
 }
 
 // TransformContent transforms asset content into Gemini's expected format.
@@ -116,7 +128,8 @@ func (a *Adapter) InstallWarnings(asset *config.Asset) []string {
 	switch asset.Type {
 	case config.AssetTypePersona:
 		return []string{
-			fmt.Sprintf("Gemini CLI does not support personas - installed as skill instead: skills/%s", asset.Name),
+			fmt.Sprintf("Gemini CLI does not support personas - installed as skill instead: skills/%s/SKILL.md",
+				strings.TrimSuffix(asset.Name, ".md")),
 		}
 	default:
 		return nil
