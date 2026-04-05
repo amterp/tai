@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Project Overview
 
-**tai** is a CLI tool for managing AI agent configurations across different targets (Claude Code, Codex, OpenCode). It organizes, composes, and installs target-agnostic assets (personas, delegates, skills, docs, MCPs, hooks) from multiple sources while maintaining version control and portability.
+**tai** is a CLI tool for managing AI agent configurations across different targets (Claude Code, Codex, Gemini CLI, OpenCode). It organizes, composes, and installs target-agnostic assets (personas, delegates, skills, docs, MCPs, hooks) from multiple sources while maintaining version control and portability.
 
 ## Commands
 
@@ -31,7 +31,7 @@ golangci-lint run ./...          # Runs errcheck, govet, staticcheck, unused, in
 
 | tai term | What it is | Example target equivalent |
 |----------|-----------|---------------------------|
-| **Target** | AI tool to install to | Claude Code, Codex, OpenCode |
+| **Target** | AI tool to install to | Claude Code, Codex, Gemini CLI, OpenCode |
 | **Persona** | Behavioral style/role | output-style |
 | **Delegate** | Specialized helper | agents (sub-agents) |
 | **Skill** | Procedural capability | skills |
@@ -83,6 +83,7 @@ Adapters translate tai concepts to target-specific formats. Key methods:
 - `TransformContent()` - Renders target-specific frontmatter from parsed tai metadata
 - `ProvideVariables()` - Returns target-specific template variables (e.g., `target_name`, `target_agents_file`)
 - `MapAssetPath()` - Maps tai asset paths to target paths, interpreting `dest` for file assets
+- `UnsupportedFileAssetTypes()` - Declares file asset types to skip entirely during install (vs `InstallWarnings` which warns but still installs)
 
 The Claude adapter maps:
 - `personas/` → `output-styles/` (renders `name`, `description` frontmatter)
@@ -114,6 +115,15 @@ The OpenCode adapter maps:
 Both personas and delegates map to `agents/` - OpenCode unifies these into a single agent concept, distinguished by the `mode` field. Tools are omitted because OpenCode uses a structurally incompatible format (boolean map vs comma-separated string).
 
 OpenCode `ProvideVariables()` returns: `target_name: "opencode"`, `target_name_display: "OpenCode"`, `target_agents_file: "AGENTS.md"`
+
+The Gemini adapter maps:
+- `personas/` → `skills/` (mapped to skills since Gemini has no persona concept; renders `name`, `description` frontmatter; warns on install)
+- `delegates/` → unsupported (skipped with warning; Gemini has no user-defined sub-agents)
+- `skills/` → `skills/` (SKILL.md gets `name`, `description` frontmatter)
+- `files/` → location specified by `dest` field (content copied as-is, no transformation)
+- `statuslines/` → unsupported (skipped with warning)
+
+Gemini `ProvideVariables()` returns: `target_name: "gemini"`, `target_name_display: "Gemini"`, `target_agents_file: "GEMINI.md"`
 
 ## User Config Repo Structure
 

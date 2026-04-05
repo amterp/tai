@@ -207,7 +207,7 @@ func (i *Installer) buildInstallContext(adap adapter.Adapter, existing *Manifest
 }
 
 // separateAssets splits assets into file assets and config assets.
-// Unsupported config asset types are logged as warnings.
+// Unsupported asset types (both config and file) are logged as warnings and skipped.
 func (i *Installer) separateAssets(adap adapter.Adapter, assets []*config.Asset, result *InstallResult) ([]*config.Asset, []*config.Asset) {
 	var fileAssets, configAssets []*config.Asset
 
@@ -216,7 +216,22 @@ func (i *Installer) separateAssets(adap adapter.Adapter, assets []*config.Asset,
 		supportedConfigTypes[t] = true
 	}
 
+	unsupportedFileTypes := make(map[string]bool)
+	for _, t := range adap.UnsupportedFileAssetTypes() {
+		unsupportedFileTypes[t] = true
+	}
+
 	for _, asset := range assets {
+		// Skip unsupported file types before emitting install warnings,
+		// since InstallWarnings is intended for assets that will be installed.
+		if unsupportedFileTypes[asset.Type] {
+			warning := fmt.Sprintf("Asset type '%s' is not supported by target '%s' - skipping %s",
+				asset.Type, adap.Name(), asset.Name)
+			result.Warnings = append(result.Warnings, warning)
+			i.logger.Printf("Warning: %s", warning)
+			continue
+		}
+
 		for _, warning := range adap.InstallWarnings(asset) {
 			result.Warnings = append(result.Warnings, warning)
 			i.logger.Printf("Warning: %s", warning)

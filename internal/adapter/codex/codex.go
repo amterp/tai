@@ -172,6 +172,12 @@ func (a *Adapter) MainFileName(assetType string) string {
 	return config.MainFileName(assetType)
 }
 
+// UnsupportedFileAssetTypes returns nil - Codex installs all file asset types
+// (though some are passive reference only, see InstallWarnings).
+func (a *Adapter) UnsupportedFileAssetTypes() []string {
+	return nil
+}
+
 // ProvideVariables returns Codex-specific template variables.
 func (a *Adapter) ProvideVariables() template.Variables {
 	return template.Variables{

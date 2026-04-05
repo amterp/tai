@@ -71,6 +71,12 @@ type Adapter interface {
 	//   - target_agents_file: global instructions filename (e.g., "CLAUDE.md")
 	// User-provided variables (via --var) take precedence over these.
 	ProvideVariables() template.Variables
+
+	// UnsupportedFileAssetTypes returns file asset types this adapter does not
+	// support at all. These assets will be skipped during install with a warning.
+	// This differs from InstallWarnings, which warns but still installs.
+	// Returns nil if all file asset types are supported.
+	UnsupportedFileAssetTypes() []string
 }
 
 // Registry holds all registered adapters.

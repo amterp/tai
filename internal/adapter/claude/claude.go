@@ -202,6 +202,11 @@ func (a *Adapter) MainFileName(assetType string) string {
 	return config.MainFileName(assetType)
 }
 
+// UnsupportedFileAssetTypes returns nil - Claude supports all file asset types.
+func (a *Adapter) UnsupportedFileAssetTypes() []string {
+	return nil
+}
+
 // ProvideVariables returns Claude-specific template variables.
 func (a *Adapter) ProvideVariables() template.Variables {
 	return template.Variables{

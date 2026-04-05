@@ -6,8 +6,8 @@ configuration version-controlled and portable.
 
 ## Why Tai?
 
-AI coding assistants like Claude Code, Codex, and OpenCode use configuration files to customize their behavior - output styles,
-custom agents, skills, and reference documentation. Managing these configurations across machines, sharing them between
+AI coding assistants like Claude Code, Codex, Gemini CLI, and OpenCode use configuration files to customize their behavior - output
+styles, custom agents, skills, and reference documentation. Managing these configurations across machines, sharing them between
 personal and work contexts, or keeping them version-controlled quickly becomes unwieldy.
 
 Tai solves this by:
@@ -37,7 +37,7 @@ go install github.com/amterp/tai/cmd/tai@latest
 | **Bundle**      | Named collection of assets                   | -                          |
 | **Profile**     | Bundle(s) bound to a target                  | -                          |
 | **Source**      | Location providing assets                    | -                          |
-| **Target**      | AI tool to install to                        | Claude Code, Codex, OpenCode |
+| **Target**      | AI tool to install to                        | Claude Code, Codex, Gemini CLI, OpenCode |
 | **Config Repo** | Repository containing your Tai configuration | -                          |
 
 ### How They Fit Together
@@ -343,6 +343,19 @@ Assets from later sources override earlier ones when paths conflict. Tai logs th
 - Behavior note:
     - Codex has first-class support for `AGENTS.md` and skills.
     - Tai installs personas and delegates as fallback reference files and warns for each one.
+
+### Gemini CLI
+
+- Target directory: `$GEMINI_HOME` (if set), otherwise `~/.gemini/`
+- Asset mapping:
+    - `personas/` -> `skills/` (mapped to skills; Gemini has no persona concept)
+    - `delegates/` -> unsupported (skipped with warning)
+    - `skills/` -> `skills/`
+    - `files/` -> location specified by `dest` field
+- Behavior note:
+    - Gemini CLI has no native persona or delegate concepts.
+    - Personas are installed as skills so their prompt content is still accessible.
+    - Delegates are skipped entirely since Gemini has no user-defined sub-agent system.
 
 ### OpenCode
 

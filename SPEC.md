@@ -5,7 +5,7 @@
 
 ## Overview
 
-tai is a CLI tool for managing AI agent configurations. It provides a framework for organizing, composing, and installing assets (personas, delegates, skills, reference docs) across different AI targets (Claude Code, Codex, OpenCode) while keeping configuration version-controlled and portable.
+tai is a CLI tool for managing AI agent configurations. It provides a framework for organizing, composing, and installing assets (personas, delegates, skills, reference docs) across different AI targets (Claude Code, Codex, Gemini CLI, OpenCode) while keeping configuration version-controlled and portable.
 
 ## Core Concepts
 
@@ -13,7 +13,7 @@ tai is a CLI tool for managing AI agent configurations. It provides a framework 
 
 | tai term | What it is | Claude Code equivalent |
 |----------|------------|------------------------|
-| **Target** | The AI tool we install to | Claude Code, Codex, OpenCode |
+| **Target** | The AI tool we install to | Claude Code, Codex, Gemini CLI, OpenCode |
 | **Persona** | A behavioral style/role | output-style |
 | **Delegate** | A specialized helper for tasks | agents (sub-agents) |
 | **Skill** | A procedural capability | skills |
@@ -101,7 +101,7 @@ This distinction matters because:
                               ▼ installed to (via adapter)
 ┌─────────────────────────────────────────────────────────────┐
 │                    Target Config                             │
-│  ~/.claude/, ~/.codex/, ~/.config/opencode/, etc.           │
+│  ~/.claude/, ~/.codex/, ~/.gemini/, ~/.config/opencode/     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -120,6 +120,7 @@ tai/
 │   │   ├── adapter.go    # Interface definition
 │   │   ├── claude/       # Claude Code adapter
 │   │   ├── codex/        # Codex adapter
+│   │   ├── gemini/       # Gemini CLI adapter
 │   │   ├── opencode/     # OpenCode adapter
 │   │   └── shared.go     # Shared adapter helpers
 │   ├── bundle/           # Bundle resolution
@@ -784,6 +785,21 @@ The Codex adapter:
 
 `statusline` assets are currently unsupported for Codex and are skipped with a warning.
 
+### Gemini CLI Adapter Specifics
+
+The Gemini adapter:
+- Targets `$GEMINI_HOME` if set, otherwise `~/.gemini/`
+- Maps tai terminology to Gemini-oriented paths:
+  - `personas/` -> `skills/` (mapped to skills since Gemini has no persona concept)
+  - `delegates/` -> unsupported (skipped entirely with warning)
+  - `skills/` -> `skills/`
+  - `files/` -> location specified by `dest` field (empty = root level)
+- Personas are installed as skills so their prompt content is still accessible; a warning is emitted explaining the mapping
+- Delegates are skipped entirely because Gemini CLI has no user-defined sub-agent system
+- Uses `target_agents_file: GEMINI.md`
+
+`statusline` assets are unsupported for Gemini CLI and are skipped with a warning.
+
 ### OpenCode Adapter Specifics
 
 The OpenCode adapter:
@@ -1098,11 +1114,11 @@ Missing environment variables render as empty string (standard `os.Getenv` behav
 
 Adapters provide target-specific variables with the `target_` prefix:
 
-| Variable | Claude | Codex | OpenCode |
-|----------|--------|-------|----------|
-| `target_name` | `claude` | `codex` | `opencode` |
-| `target_name_display` | `Claude` | `Codex` | `OpenCode` |
-| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` |
+| Variable | Claude | Codex | Gemini | OpenCode |
+|----------|--------|-------|--------|----------|
+| `target_name` | `claude` | `codex` | `gemini` | `opencode` |
+| `target_name_display` | `Claude` | `Codex` | `Gemini` | `OpenCode` |
+| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `GEMINI.md` | `AGENTS.md` |
 
 These variables enable target-aware assets. For example, a single "global instructions" file can be named appropriately per target:
 

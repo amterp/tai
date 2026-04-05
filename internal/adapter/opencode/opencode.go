@@ -192,6 +192,11 @@ func (a *Adapter) MainFileName(assetType string) string {
 	return config.MainFileName(assetType)
 }
 
+// UnsupportedFileAssetTypes returns nil - OpenCode supports all file asset types.
+func (a *Adapter) UnsupportedFileAssetTypes() []string {
+	return nil
+}
+
 // ProvideVariables returns OpenCode-specific template variables.
 func (a *Adapter) ProvideVariables() template.Variables {
 	return template.Variables{

@@ -11,6 +11,7 @@ import (
 	"github.com/amterp/tai/internal/adapter"
 	_ "github.com/amterp/tai/internal/adapter/claude"   // Register Claude adapter
 	_ "github.com/amterp/tai/internal/adapter/codex"    // Register Codex adapter
+	_ "github.com/amterp/tai/internal/adapter/gemini"   // Register Gemini adapter
 	_ "github.com/amterp/tai/internal/adapter/opencode" // Register OpenCode adapter
 	"github.com/amterp/tai/internal/bundle"
 	"github.com/amterp/tai/internal/config"
