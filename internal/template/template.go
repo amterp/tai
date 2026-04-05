@@ -226,8 +226,19 @@ func injectTagContext(ctx pongo2.Context, resolver ContentResolver, set *pongo2.
 // templateSyntaxPattern matches any pongo2 template syntax: {{ }}, {% %}, or {# #}.
 var templateSyntaxPattern = regexp.MustCompile(`\{\{|\{%|\{#`)
 
+// verbatimPattern matches {% verbatim %}...{% endverbatim %} blocks (including multiline).
+var verbatimPattern = regexp.MustCompile(`(?s)\{%[-\s]*verbatim\s*[-]?%\}.*?\{%[-\s]*endverbatim\s*[-]?%\}`)
+
+// stripVerbatimBlocks removes verbatim block content so that template syntax
+// checks don't match literal examples inside {% verbatim %} blocks.
+func stripVerbatimBlocks(content []byte) []byte {
+	return verbatimPattern.ReplaceAll(content, nil)
+}
+
 // HasTemplateSyntax checks if content contains any template syntax.
 // This detects {{ variables }}, {% tags %}, and {# comments #}.
+// Note: {% verbatim %} tags themselves ARE template syntax that needs
+// processing, so this intentionally does NOT strip verbatim blocks.
 func HasTemplateSyntax(content []byte) bool {
 	return templateSyntaxPattern.Match(content)
 }
@@ -236,8 +247,9 @@ func HasTemplateSyntax(content []byte) bool {
 var existingPattern = regexp.MustCompile(`\{\{\s*existing\s*\}\}`)
 
 // HasExistingVar checks if content contains the {{ existing }} variable.
+// Content inside {% verbatim %} blocks is ignored.
 func HasExistingVar(content []byte) bool {
-	return existingPattern.Match(content)
+	return existingPattern.Match(stripVerbatimBlocks(content))
 }
 
 // Deprecated: HasTemplateVars is an alias for HasTemplateSyntax, kept for

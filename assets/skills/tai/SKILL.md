@@ -172,7 +172,7 @@ assets:
 
 tai uses Jinja2-style templates (pongo2). Supports variables, conditionals, comments, and asset inlining.
 
-### Variables
+{% verbatim %}### Variables
 
 ```markdown
 # Project: {{ project_name }}
@@ -193,7 +193,7 @@ vars:
 
 CLI override: `tai install work --var project_name=MyApp`
 
-Undefined variables cause an error. For optional behavior, define with empty string (`vars: { opt: "" }`). Use `{% verbatim %}...{% endverbatim %}` for literal `{{ }}`.
+Undefined variables cause an error. For optional behavior, define with empty string (`vars: { opt: "" }`). Use verbatim blocks for literal template syntax.
 
 ### Environment Variables
 
@@ -263,6 +263,7 @@ Inject current target file contents (useful for wrapping existing config):
 ```
 
 Tai backs up the original and restores it on uninstall.
+{% endverbatim %}
 
 ## Common Workflows
 

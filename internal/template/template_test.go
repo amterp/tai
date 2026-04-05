@@ -198,6 +198,13 @@ func TestHasExistingVar(t *testing.T) {
 		{"Has {{  existing  }}", true},
 		{"{{name}} but not existing", false},
 		{"Multiple {{existing}} instances {{existing}}", true},
+		// Verbatim blocks are ignored
+		{"{% verbatim %}{{ existing }}{% endverbatim %}", false},
+		{"{% verbatim %}{{existing}}{% endverbatim %}", false},
+		{"before {% verbatim %}{{ existing }}{% endverbatim %} after", false},
+		// Real existing outside verbatim still detected
+		{"{{ existing }} {% verbatim %}{{ existing }}{% endverbatim %}", true},
+		{"{% verbatim %}docs{% endverbatim %} {{ existing }}", true},
 	}
 
 	for _, tt := range tests {
@@ -207,6 +214,18 @@ func TestHasExistingVar(t *testing.T) {
 				t.Errorf("HasExistingVar(%q) = %v, want %v", tt.content, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestHasTemplateSyntaxDetectsVerbatim(t *testing.T) {
+	// Verbatim tags themselves ARE template syntax that the engine needs to process
+	if !HasTemplateSyntax([]byte("{% verbatim %}{{ name }}{% endverbatim %}")) {
+		t.Error("HasTemplateSyntax should detect verbatim tags as template syntax")
+	}
+
+	// Plain text with no syntax
+	if HasTemplateSyntax([]byte("plain text no syntax")) {
+		t.Error("HasTemplateSyntax should return false for plain text")
 	}
 }
 
