@@ -1,10 +1,12 @@
 {
-  "_v": 1,
-  "id": "a_CPqB0dZy",
+  "_v": 2,
   "alias": "implement-proper-go-vet-lint",
   "alias_explicit": false,
-  "title": "implement proper go vet + lint",
-  "creator": "Alexander Terp",
+  "column": "done",
   "created_at_millis": 1769060348033,
+  "creator": "Alexander Terp",
+  "id": "a_CPqB0dZy",
+  "position": "T!",
+  "title": "implement proper go vet + lint",
   "updated_at_millis": 1769060348033
 }

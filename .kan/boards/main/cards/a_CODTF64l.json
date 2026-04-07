@@ -1,10 +1,12 @@
 {
-  "_v": 1,
-  "id": "a_CODTF64l",
+  "_v": 2,
   "alias": "create-rad-skill",
   "alias_explicit": false,
-  "title": "create rad skill",
-  "creator": "Alexander Terp",
+  "column": "done",
   "created_at_millis": 1769056476893,
+  "creator": "Alexander Terp",
+  "id": "a_CODTF64l",
+  "position": "i!",
+  "title": "create rad skill",
   "updated_at_millis": 1769056476893
 }

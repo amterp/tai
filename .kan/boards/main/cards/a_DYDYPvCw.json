@@ -1,10 +1,12 @@
 {
-  "_v": 1,
+  "_v": 2,
   "alias": "new-asset-statusline-2",
   "alias_explicit": false,
+  "column": "done",
   "created_at_millis": 1769228076267,
   "creator": "Alexander Terp",
   "id": "a_DYDYPvCw",
+  "position": "B!",
   "title": "new asset: statusline",
   "type": "feature",
   "updated_at_millis": 1769361949808

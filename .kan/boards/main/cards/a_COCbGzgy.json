@@ -1,10 +1,12 @@
 {
-  "_v": 1,
-  "id": "a_COCbGzgy",
+  "_v": 2,
   "alias": "write-readme",
   "alias_explicit": false,
-  "title": "write readme",
-  "creator": "Alexander Terp",
+  "column": "done",
   "created_at_millis": 1769056443429,
+  "creator": "Alexander Terp",
+  "id": "a_COCbGzgy",
+  "position": "r!",
+  "title": "write readme",
   "updated_at_millis": 1769056443429
 }

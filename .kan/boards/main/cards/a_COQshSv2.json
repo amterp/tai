@@ -1,11 +1,13 @@
 {
-  "_v": 1,
-  "id": "a_COQshSv2",
+  "_v": 2,
   "alias": "config-assets-adapter",
   "alias_explicit": false,
-  "title": "Config assets: Adapter interface",
-  "description": "Add SupportedAssetTypes(), ConfigAssetTypes(), MergeConfigAsset(), and RemoveConfigAsset() to adapter interface. Implement for Claude adapter.",
-  "creator": "Alexander Terp",
+  "column": "backlog-lo",
   "created_at_millis": 1769056992396,
+  "creator": "Alexander Terp",
+  "description": "Add SupportedAssetTypes(), ConfigAssetTypes(), MergeConfigAsset(), and RemoveConfigAsset() to adapter interface. Implement for Claude adapter.",
+  "id": "a_COQshSv2",
+  "position": "i!",
+  "title": "Config assets: Adapter interface",
   "updated_at_millis": 1769056992396
 }

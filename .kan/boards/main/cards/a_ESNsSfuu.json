@@ -1,10 +1,12 @@
 {
-  "_v": 1,
+  "_v": 2,
   "alias": "how-does-persona-model-work",
   "alias_explicit": false,
+  "column": "backlog-hi",
   "created_at_millis": 1769361936778,
   "creator": "Alexander Terp",
   "id": "a_ESNsSfuu",
+  "position": "9T",
   "title": "how does persona 'model' work? is it abstracted?",
   "type": "feature",
   "updated_at_millis": 1769361943665

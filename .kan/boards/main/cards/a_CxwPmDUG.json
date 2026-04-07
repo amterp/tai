@@ -1,10 +1,12 @@
 {
-  "_v": 1,
-  "id": "a_CxwPmDUG",
+  "_v": 2,
   "alias": "move-my-agents-into-tai",
   "alias_explicit": false,
-  "title": "move my agents into tai",
-  "creator": "Alexander Terp",
+  "column": "done",
   "created_at_millis": 1769141619348,
+  "creator": "Alexander Terp",
+  "id": "a_CxwPmDUG",
+  "position": "H!",
+  "title": "move my agents into tai",
   "updated_at_millis": 1769141622856
 }

@@ -1,10 +1,12 @@
 {
-  "_v": 1,
-  "id": "a_CQ2njJ9r",
+  "_v": 2,
   "alias": "tai-uninstall-seems-to-take-a",
   "alias_explicit": false,
-  "title": "tai uninstall seems to take a target, why not a profile? should mirror install",
-  "creator": "Alexander Terp",
+  "column": "backlog-hi",
   "created_at_millis": 1769060833321,
+  "creator": "Alexander Terp",
+  "id": "a_CQ2njJ9r",
+  "position": "PB",
+  "title": "tai uninstall seems to take a target, why not a profile? should mirror install",
   "updated_at_millis": 1769060833321
 }

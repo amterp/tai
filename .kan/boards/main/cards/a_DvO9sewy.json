@@ -1,10 +1,12 @@
 {
-  "_v": 1,
-  "id": "a_DvO9sewy",
+  "_v": 2,
   "alias": "asset-dependencies",
   "alias_explicit": false,
-  "title": "asset dependencies",
-  "creator": "Alexander Terp",
+  "column": "backlog-hi",
   "created_at_millis": 1769283299343,
+  "creator": "Alexander Terp",
+  "id": "a_DvO9sewy",
+  "position": "pN",
+  "title": "asset dependencies",
   "updated_at_millis": 1769283299343
 }
