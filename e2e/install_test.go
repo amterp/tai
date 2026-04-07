@@ -384,6 +384,66 @@ bundles:
 	}
 }
 
+// TestE2EInstallSkillDirectoryVerbatimExisting tests that {{ existing }} inside
+// {% verbatim %} blocks does not trigger the "not supported in directory assets" error.
+func TestE2EInstallSkillDirectoryVerbatimExisting(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "verbatim-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\ntai-schema-version: 1\nname: verbatim-skill\ndescription: Skill with verbatim docs\n---\n\n# Verbatim Skill\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	docsContent := "# Docs\nUse this template syntax:\n{% verbatim %}{{ existing }}{% endverbatim %}\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "docs.md"), []byte(docsContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	env.SetupBundle("test", `name: test
+assets:
+  - type: skill
+    path: skills/verbatim-skill
+`)
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
+	adapter := claude.New(env.TargetDir)
+
+	asset, _ := sources["local"].ResolveAsset("skills/verbatim-skill", config.AssetTypeSkill)
+	_, err := installer.Install(adapter, "test", []*config.Asset{asset}, install.InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if !env.TargetFileExists("skills/verbatim-skill/docs.md") {
+		t.Error("docs.md not copied")
+	}
+
+	// Pongo2 unwraps verbatim blocks, so {{ existing }} should appear as literal text
+	docsResult := env.ReadTargetFile("skills/verbatim-skill/docs.md")
+	expectedDocs := "# Docs\nUse this template syntax:\n{{ existing }}\n"
+	if docsResult != expectedDocs {
+		t.Errorf("docs.md content = %q, want %q", docsResult, expectedDocs)
+	}
+}
+
 // TestE2EInstallSkillWithIncludes tests installing a skill with tai.yaml includes.
 func TestE2EInstallSkillWithIncludes(t *testing.T) {
 	env := testutil.NewTestEnv(t)

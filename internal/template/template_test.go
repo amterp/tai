@@ -205,6 +205,15 @@ func TestHasExistingVar(t *testing.T) {
 		// Real existing outside verbatim still detected
 		{"{{ existing }} {% verbatim %}{{ existing }}{% endverbatim %}", true},
 		{"{% verbatim %}docs{% endverbatim %} {{ existing }}", true},
+		// Whitespace-trimming variants on verbatim tags
+		{"{%- verbatim %}{{ existing }}{%- endverbatim %}", false},
+		{"{% verbatim -%}{{ existing }}{% endverbatim -%}", false},
+		{"{%- verbatim -%}{{ existing }}{%- endverbatim -%}", false},
+		// Trimming tags with real existing outside
+		{"{{ existing }} {%- verbatim -%}safe{%- endverbatim -%}", true},
+		// Multiline verbatim blocks
+		{"{% verbatim %}\nline1\n{{ existing }}\nline3\n{% endverbatim %}", false},
+		{"{{ existing }}\n{% verbatim %}\n{{ existing }}\n{% endverbatim %}", true},
 	}
 
 	for _, tt := range tests {
