@@ -775,12 +775,12 @@ The Claude adapter:
 The Codex adapter:
 - Targets `$CODEX_HOME` if set, otherwise `~/.codex/`
 - Maps tai terminology to Codex-oriented paths:
-  - `personas/` → `personas/` (passive reference files)
+  - `personas/` → `skills/` (mapped to skills since Codex has no persona concept; single-file personas are wrapped as `skills/<name>/SKILL.md`)
   - `delegates/` → `delegates/` (passive reference files)
   - `skills/` → `skills/`
   - `files/` → location specified by `dest` field (empty = root level)
 - Installs files additively like other adapters
-- Emits a warning for each `persona` and `delegate` asset because Codex does not natively consume them as first-class config entries
+- Emits a warning for each `persona` asset noting the persona-to-skill remapping, and for each `delegate` asset because Codex does not natively consume delegates as first-class config entries
 - Uses `target_agents_file: AGENTS.md`
 
 `statusline` assets are currently unsupported for Codex and are skipped with a warning.

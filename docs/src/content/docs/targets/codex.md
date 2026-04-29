@@ -3,7 +3,7 @@ title: Codex
 description: How tai's Codex adapter maps assets, handles unsupported types, and installs configuration
 ---
 
-Codex is tai's second supported target. The Codex adapter translates tai's vocabulary into Codex's formats, though Codex does not natively consume all tai asset types. Where native support is missing, tai installs assets as passive reference files and warns you about each one.
+Codex is tai's second supported target. The Codex adapter translates tai's vocabulary into Codex's formats. Codex does not natively support every tai asset type: personas are remapped onto skills (so they remain functional) and delegates are installed as passive reference files. In both cases tai warns you per asset.
 
 ## Target directory
 
@@ -15,7 +15,7 @@ The Codex adapter maps tai asset types to Codex's directory structure:
 
 | Tai asset type | Codex directory | Frontmatter rendered | Notes |
 |----------------|-----------------|---------------------|-------|
-| `persona` | `personas/` | `name`, `description` | Passive reference file (warning per asset) |
+| `persona` | `skills/` | `name`, `description` | Mapped to skills since Codex has no persona concept; single-file personas are wrapped as `skills/<name>/SKILL.md` (warning per asset) |
 | `delegate` | `delegates/` | `name`, `description`, `tools`, `model` | Passive reference file (warning per asset) |
 | `skill` | `skills/` | `name`, `description` | First-class support |
 | `file` | Location specified by `dest` | None (copied as-is) | |
@@ -23,22 +23,20 @@ The Codex adapter maps tai asset types to Codex's directory structure:
 
 ## Partial support and warnings
 
-Codex has first-class support for `AGENTS.md` and skills. However, it does not natively consume persona or delegate assets the way Claude Code does.
+Codex has first-class support for `AGENTS.md` and skills. It does not have a native persona concept, and it does not natively consume delegate assets the way Claude Code does.
 
-When tai installs a persona or delegate to Codex, it:
+For personas, tai mirrors what it does for Gemini: each persona is installed under `skills/` as a regular skill so Codex's skill discovery actually picks it up. Single-file personas are wrapped into directory form (`skills/<name>/SKILL.md`); directory-form personas keep their layout. A per-asset warning notes the remapping.
 
-1. Copies the file to the mapped directory (`personas/` or `delegates/`)
-2. Renders frontmatter with the available metadata
-3. Prints a warning for each asset explaining that Codex does not natively consume it
+For delegates, tai copies the file to `delegates/` as a passive reference and warns per asset.
 
 For example:
 
 ```
-WARN: Codex does not natively consume persona assets - installed as passive reference file: personas/senior-swe.md
+WARN: Codex does not support personas - installed as skill instead: skills/senior-swe/SKILL.md
 WARN: Codex does not natively consume delegate assets - installed as passive reference file: delegates/code-reviewer.md
 ```
 
-These files are still installed so they are available as reference material, but Codex will not automatically discover or use them the way Claude Code uses output-styles and agents.
+Personas-as-skills are real, discoverable Codex skills. Delegate files are still installed so they are available as reference material, but Codex will not automatically discover or use them the way Claude Code uses agents.
 
 **StatusLine assets are unsupported entirely.** If a profile includes a statusline asset and targets Codex, the asset is skipped and tai logs a warning. No file is written.
 
@@ -46,7 +44,7 @@ These files are still installed so they are available as reference material, but
 
 During installation, the adapter re-renders frontmatter for each asset type:
 
-- **Personas** get `name` and `description` fields.
+- **Personas** are transformed as skills - they get `name` and `description` fields.
 - **Delegates** get `name`, `description`, `tools`, and `model` fields.
 - **Skills** get `name` and `description` fields. Note that unlike Claude Code, Codex skills do not include `tools` or `model` in their frontmatter.
 - **Files** receive no transformation. Content is copied as-is.

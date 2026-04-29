@@ -21,7 +21,7 @@ func TestAdapterAssetMapping(t *testing.T) {
 	mapping := a.AssetMapping()
 
 	expected := map[string]string{
-		"persona":  "personas",
+		"persona":  "skills",
 		"delegate": "delegates",
 		"skill":    "skills",
 	}
@@ -30,6 +30,13 @@ func TestAdapterAssetMapping(t *testing.T) {
 		if mapping[k] != v {
 			t.Errorf("mapping[%q] = %q, want %q", k, mapping[k], v)
 		}
+	}
+
+	// Personas and skills should both map to skills/ since Codex has no native
+	// persona concept.
+	if mapping["persona"] != mapping["skill"] {
+		t.Errorf("persona and skill should both map to 'skills', got %q and %q",
+			mapping["persona"], mapping["skill"])
 	}
 }
 
@@ -67,15 +74,22 @@ func TestAdapterMapAssetPath(t *testing.T) {
 		expected string
 	}{
 		{
+			// Single-file persona wrapped in directory for Codex
 			asset:    &config.Asset{Type: "persona", Name: "senior-swe.md"},
-			expected: "personas/senior-swe.md",
+			expected: "skills/senior-swe/SKILL.md",
 		},
 		{
 			asset:    &config.Asset{Type: "delegate", Name: "code-reviewer.md"},
 			expected: "delegates/code-reviewer.md",
 		},
 		{
-			asset:    &config.Asset{Type: "skill", Name: "my-skill"},
+			// Single-file skill also wrapped in directory
+			asset:    &config.Asset{Type: "skill", Name: "commit.md"},
+			expected: "skills/commit/SKILL.md",
+		},
+		{
+			// Directory skill stays as-is
+			asset:    &config.Asset{Type: "skill", Name: "my-skill", IsDir: true},
 			expected: "skills/my-skill",
 		},
 		{
@@ -124,6 +138,17 @@ func TestAdapterMapAssetPathUnknownType(t *testing.T) {
 	expected := "unknown/test.md"
 	if result != expected {
 		t.Errorf("MapAssetPath for unknown type = %q, want %q", result, expected)
+	}
+}
+
+func TestAdapterMapAssetPathPersonaDirectory(t *testing.T) {
+	a := New("")
+	// Directory persona stays as directory (no SKILL.md wrapping)
+	asset := &config.Asset{Type: "persona", Name: "senior-swe", IsDir: true}
+	result := a.MapAssetPath(asset)
+	expected := "skills/senior-swe"
+	if result != expected {
+		t.Errorf("MapAssetPath(dir persona) = %q, want %q", result, expected)
 	}
 }
 
@@ -235,12 +260,12 @@ func TestAdapterSupportedConfigAssetTypes(t *testing.T) {
 func TestAdapterInstallWarnings(t *testing.T) {
 	a := New("")
 
-	personaWarnings := a.InstallWarnings(&config.Asset{Type: config.AssetTypePersona, Name: "p.md"})
+	personaWarnings := a.InstallWarnings(&config.Asset{Type: config.AssetTypePersona, Name: "senior-swe.md"})
 	if len(personaWarnings) != 1 {
 		t.Fatalf("len(persona warnings) = %d, want 1", len(personaWarnings))
 	}
-	if !strings.Contains(personaWarnings[0], "passive reference") {
-		t.Errorf("persona warning = %q, want passive reference message", personaWarnings[0])
+	if !strings.Contains(personaWarnings[0], "installed as skill instead: skills/senior-swe/SKILL.md") {
+		t.Errorf("persona warning should mention skill directory path, got: %q", personaWarnings[0])
 	}
 
 	delegateWarnings := a.InstallWarnings(&config.Asset{Type: config.AssetTypeDelegate, Name: "d.md"})

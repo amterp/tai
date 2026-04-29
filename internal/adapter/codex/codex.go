@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
@@ -44,9 +45,10 @@ func (a *Adapter) Name() string {
 }
 
 // AssetMapping returns how tai asset types map to Codex paths.
+// Codex has no native persona concept, so personas are mapped to skills.
 func (a *Adapter) AssetMapping() map[string]string {
 	return map[string]string{
-		config.AssetTypePersona:  "personas",
+		config.AssetTypePersona:  "skills",
 		config.AssetTypeDelegate: "delegates",
 		config.AssetTypeSkill:    "skills",
 		// Note: "file" type uses asset.Dest directly, not this mapping
@@ -59,37 +61,35 @@ func (a *Adapter) TargetDir() string {
 }
 
 // MapAssetPath maps a tai asset to a Codex target path.
+// Single-file assets that map to skills/ are wrapped in a directory
+// (skills/name/SKILL.md) because Codex only discovers directory-format skills.
 func (a *Adapter) MapAssetPath(asset *config.Asset) string {
+	if !asset.IsDir && a.mapsToSkills(asset.Type) {
+		name := strings.TrimSuffix(asset.Name, ".md")
+		return filepath.Join("skills", name, "SKILL.md")
+	}
 	return adapter.DefaultMapAssetPath(a.AssetMapping(), asset)
 }
 
+// mapsToSkills returns true if the given asset type maps to the skills/ directory.
+func (a *Adapter) mapsToSkills(assetType string) bool {
+	return a.AssetMapping()[assetType] == "skills"
+}
+
 // TransformContent transforms asset content into Codex-compatible format.
+// Personas are mapped to skills, so they get the same frontmatter (name + description).
 // Files are returned as-is. Other types get frontmatter re-rendered from tai metadata.
 func (a *Adapter) TransformContent(asset *config.ResolvedAsset) ([]byte, error) {
 	switch asset.Type {
-	case config.AssetTypePersona:
-		return a.transformPersona(asset), nil
+	case config.AssetTypePersona, config.AssetTypeSkill:
+		return a.transformSkill(asset), nil
 	case config.AssetTypeDelegate:
 		return a.transformDelegate(asset), nil
-	case config.AssetTypeSkill:
-		return a.transformSkill(asset), nil
 	case config.AssetTypeFile:
 		return asset.Content, nil
 	default:
 		return asset.Content, nil
 	}
-}
-
-func (a *Adapter) transformPersona(asset *config.ResolvedAsset) []byte {
-	fields := map[string]string{fm.FieldName: asset.Metadata[fm.FieldName]}
-	order := []string{fm.FieldName}
-
-	if desc := asset.Metadata[fm.FieldDescription]; desc != "" {
-		fields[fm.FieldDescription] = desc
-		order = append(order, fm.FieldDescription)
-	}
-
-	return fm.Render(fields, order, asset.Content)
 }
 
 func (a *Adapter) transformDelegate(asset *config.ResolvedAsset) []byte {
@@ -141,7 +141,8 @@ func (a *Adapter) InstallWarnings(asset *config.Asset) []string {
 	switch asset.Type {
 	case config.AssetTypePersona:
 		return []string{
-			fmt.Sprintf("Codex does not natively consume persona assets - installed as passive reference file: personas/%s", asset.Name),
+			fmt.Sprintf("Codex does not support personas - installed as skill instead: skills/%s/SKILL.md",
+				strings.TrimSuffix(asset.Name, ".md")),
 		}
 	case config.AssetTypeDelegate:
 		return []string{

@@ -75,24 +75,25 @@ Skill body.
 		t.Fatalf("Install failed: %v", err)
 	}
 
-	if !env.TargetFileExists("personas/p.md") {
-		t.Fatal("personas/p.md not created")
+	// Personas are wrapped as skills/<name>/SKILL.md since Codex has no persona concept.
+	if !env.TargetFileExists("skills/p/SKILL.md") {
+		t.Fatal("skills/p/SKILL.md not created")
 	}
 	if !env.TargetFileExists("delegates/d.md") {
 		t.Fatal("delegates/d.md not created")
 	}
-	if !env.TargetFileExists("skills/s.md") {
-		t.Fatal("skills/s.md not created")
+	if !env.TargetFileExists("skills/s/SKILL.md") {
+		t.Fatal("skills/s/SKILL.md not created")
 	}
 
-	if !containsWarning(result.Warnings, "persona assets") {
-		t.Errorf("missing persona passive warning, warnings: %#v", result.Warnings)
+	if !containsWarning(result.Warnings, "installed as skill instead") {
+		t.Errorf("missing persona-as-skill warning, warnings: %#v", result.Warnings)
 	}
 	if !containsWarning(result.Warnings, "delegate assets") {
 		t.Errorf("missing delegate passive warning, warnings: %#v", result.Warnings)
 	}
 
-	persona := env.ReadTargetFile("personas/p.md")
+	persona := env.ReadTargetFile("skills/p/SKILL.md")
 	if !strings.Contains(persona, "name: Persona A") {
 		t.Errorf("persona missing rendered name field: %q", persona)
 	}
@@ -102,7 +103,7 @@ Skill body.
 		t.Errorf("delegate missing tools frontmatter: %q", delegate)
 	}
 
-	skill := env.ReadTargetFile("skills/s.md")
+	skill := env.ReadTargetFile("skills/s/SKILL.md")
 	if !strings.Contains(skill, "name: skill-a") {
 		t.Errorf("skill missing name frontmatter: %q", skill)
 	}

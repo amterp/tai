@@ -336,13 +336,14 @@ Assets from later sources override earlier ones when paths conflict. Tai logs th
 
 - Target directory: `$CODEX_HOME` (if set), otherwise `~/.codex/`
 - Asset mapping:
-    - `personas/` → `personas/` (passive reference files)
+    - `personas/` → `skills/` (mapped to skills since Codex has no persona concept; warns per asset)
     - `delegates/` → `delegates/` (passive reference files)
     - `skills/` → `skills/`
     - `files/` → location specified by `dest` field
 - Behavior note:
     - Codex has first-class support for `AGENTS.md` and skills.
-    - Tai installs personas and delegates as fallback reference files and warns for each one.
+    - Personas are installed as skills (`skills/<name>/SKILL.md`) so Codex actually consumes them; tai warns for each one.
+    - Delegates are installed as fallback reference files and warned about.
 
 ### Gemini CLI
 

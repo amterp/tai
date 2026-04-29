@@ -97,7 +97,7 @@ The Claude adapter maps:
 Claude's `ProvideVariables()` returns: `target_name: "claude"`, `target_name_display: "Claude"`, `target_agents_file: "CLAUDE.md"`
 
 The Codex adapter maps:
-- `personas/` → `personas/` (passive reference files; tai warns per asset)
+- `personas/` → `skills/` (mapped to skills since Codex has no persona concept; renders `name`, `description` frontmatter; warns on install)
 - `delegates/` → `delegates/` (passive reference files; tai warns per asset)
 - `skills/` → `skills/` (SKILL.md gets `name`, `description` frontmatter)
 - `files/` → location specified by `dest` field (content copied as-is, no transformation)

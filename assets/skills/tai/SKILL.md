@@ -30,13 +30,13 @@ Tai uses target-agnostic terminology. Here's how asset types map to current targ
 
 | Tai Type | Claude | Codex | Gemini | OpenCode | Purpose |
 |----------|--------|-------|--------|----------|---------|
-| `persona` | `output-styles/` | `personas/` (passive) | `skills/` (mapped) | `agents/` | Behavioral styles and roles |
+| `persona` | `output-styles/` | `skills/` (mapped) | `skills/` (mapped) | `agents/` | Behavioral styles and roles |
 | `delegate` | `agents/` | `delegates/` (passive) | unsupported | `agents/` | Specialized helper agents |
 | `skill` | `skills/` | `skills/` | `skills/` | `skills/` | Procedural capabilities |
 | `file` | (per `dest`) | (per `dest`) | (per `dest`) | (per `dest`) | Loose files copied as-is |
 
 Target-specific notes:
-- **Codex**: Warns for each persona and delegate (installed as passive reference files, not consumed natively).
+- **Codex**: Personas are mapped to skills since Codex has no persona concept (single-file personas wrap as `skills/<name>/SKILL.md`). Delegates are installed as passive reference files (warns per asset).
 - **Gemini**: Personas are mapped to skills (Gemini has no persona concept). Delegates are skipped entirely (no sub-agent system).
 - **OpenCode**: Both personas and delegates map to `agents/`, distinguished by `mode: subagent` on delegates.
 
