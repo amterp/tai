@@ -4,9 +4,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
+
+// DefaultCommandIncludeTimeout is the default timeout for command-based includes
+// when the include doesn't specify one.
+const DefaultCommandIncludeTimeout = 30 * time.Second
 
 // SkillManifest represents a skill's tai.yaml build configuration.
 // It declares external file dependencies that should be resolved at install time.
@@ -15,14 +21,25 @@ type SkillManifest struct {
 }
 
 // Include represents an external file dependency for a skill.
-// Either From+Path (source-based) or URL (URL-based) must be set, not both.
+// Exactly one of (From+Path), URL, or Command must be set.
 type Include struct {
-	// Source-based include (mutually exclusive with URL)
+	// Source-based include (mutually exclusive with URL and Command)
 	From string `yaml:"from"` // Named source from config's tai.yaml
 	Path string `yaml:"path"` // Path within the source
 
-	// URL-based include (mutually exclusive with From)
+	// URL-based include (mutually exclusive with From and Command)
 	URL string `yaml:"url"`
+
+	// Command-based include (mutually exclusive with From and URL).
+	// The command is executed with a tai-provided staging directory (via the
+	// TAI_DEST_DIR env var); any files it writes there are atomically swapped
+	// into Dest on success.
+	Command []string `yaml:"command"`
+
+	// Timeout for command-based includes, parsed via time.ParseDuration.
+	// Defaults to DefaultCommandIncludeTimeout when unset. Ignored for
+	// non-command includes.
+	Timeout string `yaml:"timeout"`
 
 	// Destination within the skill directory.
 	// If ends with "/", preserves the original filename/dirname.
@@ -40,18 +57,53 @@ func (i *Include) Validate() error {
 	hasFrom := i.From != ""
 	hasPath := i.Path != ""
 	hasURL := i.URL != ""
+	hasCommand := len(i.Command) > 0
 
-	// Must have either from+path or url, not both, not neither
+	// Enforce mutual exclusion across the three modes.
+	if hasCommand && (hasFrom || hasPath || hasURL) {
+		return fmt.Errorf("include cannot mix 'command' with 'url' or 'from'/'path'")
+	}
 	if hasURL && (hasFrom || hasPath) {
 		return fmt.Errorf("include cannot have both 'url' and 'from'/'path'")
 	}
 
-	if hasURL {
+	switch {
+	case hasCommand:
+		// Command-based include
+		for idx, arg := range i.Command {
+			if arg == "" {
+				return fmt.Errorf("include 'command' has empty string at index %d", idx)
+			}
+		}
+		if i.Dest == "" {
+			return fmt.Errorf("include with 'command' requires 'dest'")
+		}
+		// Reject dest values that resolve to the skill root itself - swapping
+		// the staging dir into place would otherwise wipe the just-copied
+		// skill contents (including SKILL.md).
+		if cleanedDest := filepath.Clean(strings.TrimRight(i.Dest, "/")); cleanedDest == "." || cleanedDest == "" {
+			return fmt.Errorf("include 'dest' %q resolves to the skill root; choose a subdirectory (e.g. refs/)", i.Dest)
+		}
+		// 'fields' is a frontmatter-remap feature for source-based includes
+		// of SKILL.md - meaningless and silently ignored otherwise.
+		if len(i.Fields) > 0 {
+			return fmt.Errorf("include 'fields' is only valid with 'from'+'path', not 'command'")
+		}
+		if i.Timeout != "" {
+			d, err := time.ParseDuration(i.Timeout)
+			if err != nil {
+				return fmt.Errorf("include 'timeout' %q is not a valid duration: %w", i.Timeout, err)
+			}
+			if d <= 0 {
+				return fmt.Errorf("include 'timeout' must be positive, got %q", i.Timeout)
+			}
+		}
+	case hasURL:
 		// URL-based include
 		if i.Dest == "" {
 			return fmt.Errorf("include with 'url' requires 'dest'")
 		}
-	} else if hasFrom || hasPath {
+	case hasFrom || hasPath:
 		// Source-based include - both from and path are required
 		if !hasFrom {
 			return fmt.Errorf("include with 'path' requires 'from'")
@@ -62,8 +114,13 @@ func (i *Include) Validate() error {
 		if i.Dest == "" {
 			return fmt.Errorf("include with 'from' requires 'dest'")
 		}
-	} else {
-		return fmt.Errorf("include must have either 'from'+'path' or 'url'")
+	default:
+		return fmt.Errorf("include must have one of 'from'+'path', 'url', or 'command'")
+	}
+
+	// Timeout is meaningful only for command includes.
+	if !hasCommand && i.Timeout != "" {
+		return fmt.Errorf("include 'timeout' is only valid with 'command'")
 	}
 
 	return nil
@@ -72,6 +129,26 @@ func (i *Include) Validate() error {
 // IsURLBased returns true if this is a URL-based include.
 func (i *Include) IsURLBased() bool {
 	return i.URL != ""
+}
+
+// IsCommandBased returns true if this is a command-based include.
+func (i *Include) IsCommandBased() bool {
+	return len(i.Command) > 0
+}
+
+// ResolvedTimeout returns the parsed timeout for command-based includes, or
+// DefaultCommandIncludeTimeout when Timeout is empty. Validate guarantees the
+// string parses cleanly, so this never returns an error path; if Validate was
+// skipped and Timeout is malformed, the default is returned instead.
+func (i *Include) ResolvedTimeout() time.Duration {
+	if i.Timeout == "" {
+		return DefaultCommandIncludeTimeout
+	}
+	d, err := time.ParseDuration(i.Timeout)
+	if err != nil || d <= 0 {
+		return DefaultCommandIncludeTimeout
+	}
+	return d
 }
 
 // Validate checks that the skill manifest is well-formed.

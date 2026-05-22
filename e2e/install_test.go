@@ -3,6 +3,7 @@ package e2e
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -546,6 +547,88 @@ bundles:
 	expectedSkill := "---\nname: rad\ndescription: Write and debug Rad scripts\n---\n\n# Rad Skill\n"
 	if skillContent != expectedSkill {
 		t.Errorf("SKILL.md content = %q, want %q", skillContent, expectedSkill)
+	}
+}
+
+// TestE2EInstallSkillWithCommandInclude tests installing a skill whose tai.yaml
+// declares a command-based include - tai runs the command, the command writes
+// files into $TAI_DEST_DIR, and tai atomically swaps them into the skill.
+func TestE2EInstallSkillWithCommandInclude(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("command include e2e requires POSIX sh")
+	}
+
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "remote-docs")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: remote-docs\ndescription: Skill with command-fetched docs\n---\n\n# Remote Docs\n"),
+		0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The command writes two files into $TAI_DEST_DIR and exercises
+	// $TAI_ASSET_NAME so we can verify env-var passthrough end-to-end.
+	manifestContent := `include:
+  - command:
+      - sh
+      - -c
+      - |
+        printf 'hello from %s' "$TAI_ASSET_NAME" > "$TAI_DEST_DIR/greeting.md"
+        mkdir -p "$TAI_DEST_DIR/nested"
+        printf 'nested' > "$TAI_DEST_DIR/nested/inner.md"
+    dest: fetched/
+`
+	if err := os.WriteFile(filepath.Join(skillDir, "tai.yaml"), []byte(manifestContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	env.SetupBundle("test", `name: test
+assets:
+  - type: skill
+    path: skills/remote-docs
+`)
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adap := claude.New(env.TargetDir)
+
+	asset, _ := sources["local"].ResolveAsset("skills/remote-docs", config.AssetTypeSkill)
+	if _, err := installer.Install(adap, "test", []*config.Asset{asset}, install.InstallOptions{}); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if !env.TargetFileExists("skills/remote-docs/SKILL.md") {
+		t.Error("SKILL.md not copied")
+	}
+	if env.TargetFileExists("skills/remote-docs/tai.yaml") {
+		t.Error("tai.yaml should NOT be copied to target")
+	}
+
+	greeting := env.ReadTargetFile("skills/remote-docs/fetched/greeting.md")
+	if greeting != "hello from remote-docs" {
+		t.Errorf("greeting = %q, want %q", greeting, "hello from remote-docs")
+	}
+	if env.ReadTargetFile("skills/remote-docs/fetched/nested/inner.md") != "nested" {
+		t.Error("nested/inner.md not written correctly")
 	}
 }
 

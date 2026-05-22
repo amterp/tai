@@ -68,6 +68,21 @@ type State struct {
 	// Installation
 	ManifestStore *install.ManifestStore
 	Installer     *install.Installer
+
+	// Version is the tai binary's version string. Propagated to the Installer
+	// (and any future Installer rebuilt by LoadConfigRepo) so command-based
+	// includes can surface it to scripts via TAI_VERSION.
+	Version string
+}
+
+// SetVersion sets the tai version string and propagates it to the current
+// Installer. Call this early - before any install runs - so subsequent
+// installers (e.g. created by LoadConfigRepo) also pick it up.
+func (s *State) SetVersion(v string) {
+	s.Version = v
+	if s.Installer != nil {
+		s.Installer.SetVersion(v)
+	}
 }
 
 // LoadGlobalConfig loads the global config file.
@@ -194,6 +209,9 @@ func (s *State) LoadConfigRepo(path string) error {
 
 	// Create installer with sources for include resolution
 	s.Installer = install.NewInstaller(s.ManifestStore, absPath, sources)
+	if s.Version != "" {
+		s.Installer.SetVersion(s.Version)
+	}
 
 	return nil
 }

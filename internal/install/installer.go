@@ -67,6 +67,7 @@ type Installer struct {
 	sources       map[string]*source.LoadedSource
 	httpClient    *http.Client
 	logger        Logger
+	version       string // exposed to command-based includes via TAI_VERSION
 }
 
 // noopLogger discards all log messages.
@@ -88,6 +89,13 @@ func NewInstaller(manifestStore *ManifestStore, configRepo string, sources map[s
 // SetLogger sets the logger for the installer.
 func (i *Installer) SetLogger(logger Logger) {
 	i.logger = logger
+}
+
+// SetVersion sets the tai version string surfaced to command-based skill
+// includes via the TAI_VERSION env var. Optional; unset means scripts see no
+// TAI_VERSION.
+func (i *Installer) SetVersion(v string) {
+	i.version = v
 }
 
 // resolvedFileAsset holds per-asset state during the two-phase install process.
@@ -1012,6 +1020,13 @@ func (i *Installer) installSkillDirAsset(resolved *config.ResolvedAsset, fullTar
 	}
 	if manifest != nil && len(manifest.Include) > 0 {
 		resolver := NewIncludeResolver(i.sources, i.httpClient)
+		resolver.SetCommandContext(CommandContext{
+			AssetType:   config.AssetTypeSkill,
+			AssetName:   resolved.Name,
+			TargetName:  adap.Name(),
+			ManifestDir: resolved.SourcePath,
+			Version:     i.version,
+		})
 		if err := resolver.ResolveIncludes(manifest, fullTargetPath); err != nil {
 			return fmt.Errorf("resolving includes: %w", err)
 		}

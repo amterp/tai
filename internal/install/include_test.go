@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -548,8 +549,7 @@ func TestCopyDirectoryPreservesPermissions(t *testing.T) {
 	}
 
 	dstDir := filepath.Join(t.TempDir(), "dest")
-	resolver := NewIncludeResolver(nil, nil)
-	if err := resolver.copyDirectory(srcDir, dstDir); err != nil {
+	if err := copyDirectory(srcDir, dstDir); err != nil {
 		t.Fatalf("copyDirectory failed: %v", err)
 	}
 
@@ -578,6 +578,340 @@ func TestCopyDirectoryPreservesPermissions(t *testing.T) {
 	if binInfo.Mode().Perm() != 0750 {
 		t.Errorf("bin dir permissions = %o, want %o", binInfo.Mode().Perm(), os.FileMode(0750))
 	}
+}
+
+func TestResolveCommandInclude(t *testing.T) {
+	// Skip on Windows: these tests rely on /bin/sh.
+	if runtime.GOOS == "windows" {
+		t.Skip("command include tests require POSIX sh")
+	}
+
+	t.Run("happy path - single file", func(t *testing.T) {
+		targetDir := t.TempDir()
+		resolver := NewIncludeResolver(nil, nil)
+
+		inc := config.Include{
+			Command: []string{"sh", "-c", `printf 'hello world' > "$TAI_DEST_DIR/out.md"`},
+			Dest:    "docs/",
+		}
+
+		if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+			t.Fatalf("resolveCommandInclude() error = %v", err)
+		}
+
+		content, err := os.ReadFile(filepath.Join(targetDir, "docs", "out.md"))
+		if err != nil {
+			t.Fatalf("reading dest file: %v", err)
+		}
+		if string(content) != "hello world" {
+			t.Errorf("content = %q, want %q", string(content), "hello world")
+		}
+	})
+
+	t.Run("happy path - multiple files in nested dirs", func(t *testing.T) {
+		targetDir := t.TempDir()
+		resolver := NewIncludeResolver(nil, nil)
+
+		inc := config.Include{
+			Command: []string{"sh", "-c", `
+				mkdir -p "$TAI_DEST_DIR/sub"
+				printf 'a' > "$TAI_DEST_DIR/a.txt"
+				printf 'b' > "$TAI_DEST_DIR/sub/b.txt"
+			`},
+			Dest: "refs/",
+		}
+
+		if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+			t.Fatalf("resolveCommandInclude() error = %v", err)
+		}
+
+		for _, rel := range []string{"refs/a.txt", "refs/sub/b.txt"} {
+			if _, err := os.Stat(filepath.Join(targetDir, rel)); err != nil {
+				t.Errorf("expected %s, got: %v", rel, err)
+			}
+		}
+	})
+
+	t.Run("empty output returns error", func(t *testing.T) {
+		targetDir := t.TempDir()
+		resolver := NewIncludeResolver(nil, nil)
+
+		inc := config.Include{
+			Command: []string{"sh", "-c", "true"}, // exits 0 but writes nothing
+			Dest:    "docs/",
+		}
+
+		err := resolver.resolveCommandInclude(inc, targetDir)
+		if err == nil {
+			t.Fatal("expected error for empty output")
+		}
+		if !strings.Contains(err.Error(), "no files") {
+			t.Errorf("error should mention 'no files', got: %v", err)
+		}
+	})
+
+	t.Run("nonzero exit returns error with stderr", func(t *testing.T) {
+		targetDir := t.TempDir()
+		resolver := NewIncludeResolver(nil, nil)
+
+		// Use a binary that doesn't echo the exit code in its argv so the
+		// assertion can't pass incidentally via the argv being printed.
+		inc := config.Include{
+			Command: []string{"sh", "-c", `printf 'boom on stderr' >&2; exit 7`},
+			Dest:    "docs/",
+		}
+
+		err := resolver.resolveCommandInclude(inc, targetDir)
+		if err == nil {
+			t.Fatal("expected error for nonzero exit")
+		}
+		if !strings.Contains(err.Error(), "exited 7") {
+			t.Errorf("error should mention 'exited 7', got: %v", err)
+		}
+		// Ensure the exit code isn't duplicated (we used to render it twice
+		// via both the wrapped error and an explicit suffix).
+		if strings.Count(err.Error(), "exit status 7") > 0 {
+			t.Errorf("error should not include both 'exited 7' and 'exit status 7' (duplication), got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "boom on stderr") {
+			t.Errorf("error should include stderr tail, got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "staging:") {
+			t.Errorf("error should include staging dir path, got: %v", err)
+		}
+	})
+
+	t.Run("timeout returns error and preserves staging", func(t *testing.T) {
+		targetDir := t.TempDir()
+		resolver := NewIncludeResolver(nil, nil)
+
+		inc := config.Include{
+			Command: []string{"sh", "-c", "sleep 5"},
+			Dest:    "docs/",
+			Timeout: "100ms",
+		}
+
+		err := resolver.resolveCommandInclude(inc, targetDir)
+		if err == nil {
+			t.Fatal("expected timeout error")
+		}
+		if !strings.Contains(err.Error(), "timed out") {
+			t.Errorf("error should mention timeout, got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "staging:") {
+			t.Errorf("error should include staging dir path, got: %v", err)
+		}
+	})
+
+	t.Run("env vars are set", func(t *testing.T) {
+		targetDir := t.TempDir()
+		resolver := NewIncludeResolver(nil, nil)
+		resolver.SetCommandContext(CommandContext{
+			AssetType:   "skill",
+			AssetName:   "my-skill",
+			TargetName:  "claude",
+			ManifestDir: "/some/manifest/dir",
+			Version:     "1.2.3",
+		})
+
+		// Write a probe script that dumps a few env vars into TAI_DEST_DIR.
+		inc := config.Include{
+			Command: []string{"sh", "-c", `
+				printf '%s' "$TAI_ASSET_TYPE" > "$TAI_DEST_DIR/asset_type"
+				printf '%s' "$TAI_ASSET_NAME" > "$TAI_DEST_DIR/asset_name"
+				printf '%s' "$TAI_TARGET"     > "$TAI_DEST_DIR/target"
+				printf '%s' "$TAI_MANIFEST_DIR" > "$TAI_DEST_DIR/manifest_dir"
+				printf '%s' "$TAI_VERSION"    > "$TAI_DEST_DIR/version"
+				test -n "$TAI_DEST_DIR"       # ensure it's set
+			`},
+			Dest: "out/",
+		}
+
+		if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+			t.Fatalf("resolveCommandInclude() error = %v", err)
+		}
+
+		expect := map[string]string{
+			"asset_type":   "skill",
+			"asset_name":   "my-skill",
+			"target":       "claude",
+			"manifest_dir": "/some/manifest/dir",
+			"version":      "1.2.3",
+		}
+		for f, want := range expect {
+			got, err := os.ReadFile(filepath.Join(targetDir, "out", f))
+			if err != nil {
+				t.Fatalf("reading %s: %v", f, err)
+			}
+			if string(got) != want {
+				t.Errorf("%s = %q, want %q", f, string(got), want)
+			}
+		}
+	})
+
+	t.Run("atomic swap replaces existing dest", func(t *testing.T) {
+		targetDir := t.TempDir()
+		resolver := NewIncludeResolver(nil, nil)
+
+		// Pre-existing dest with stale content.
+		preExisting := filepath.Join(targetDir, "docs")
+		if err := os.MkdirAll(preExisting, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(preExisting, "stale.md"), []byte("stale"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		inc := config.Include{
+			Command: []string{"sh", "-c", `printf 'fresh' > "$TAI_DEST_DIR/fresh.md"`},
+			Dest:    "docs/",
+		}
+
+		if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+			t.Fatalf("resolveCommandInclude() error = %v", err)
+		}
+
+		// stale.md should be gone, fresh.md should exist.
+		if _, err := os.Stat(filepath.Join(preExisting, "stale.md")); !os.IsNotExist(err) {
+			t.Errorf("stale.md should be removed, stat err = %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(preExisting, "fresh.md")); err != nil {
+			t.Errorf("fresh.md should exist, err = %v", err)
+		}
+	})
+
+	t.Run("failure leaves pre-existing dest untouched", func(t *testing.T) {
+		targetDir := t.TempDir()
+		resolver := NewIncludeResolver(nil, nil)
+
+		preExisting := filepath.Join(targetDir, "docs")
+		if err := os.MkdirAll(preExisting, 0755); err != nil {
+			t.Fatal(err)
+		}
+		original := []byte("original")
+		if err := os.WriteFile(filepath.Join(preExisting, "keep.md"), original, 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		inc := config.Include{
+			Command: []string{"sh", "-c", "exit 1"},
+			Dest:    "docs/",
+		}
+
+		if err := resolver.resolveCommandInclude(inc, targetDir); err == nil {
+			t.Fatal("expected error from failing script")
+		}
+
+		got, err := os.ReadFile(filepath.Join(preExisting, "keep.md"))
+		if err != nil {
+			t.Fatalf("reading preserved file: %v", err)
+		}
+		if string(got) != string(original) {
+			t.Errorf("pre-existing content should be untouched on failure, got %q", string(got))
+		}
+	})
+
+	t.Run("path traversal in dest rejected", func(t *testing.T) {
+		targetDir := t.TempDir()
+		resolver := NewIncludeResolver(nil, nil)
+
+		inc := config.Include{
+			Command: []string{"sh", "-c", `printf 'x' > "$TAI_DEST_DIR/out"`},
+			Dest:    "../../../etc/malicious",
+		}
+
+		err := resolver.resolveCommandInclude(inc, targetDir)
+		if err == nil {
+			t.Fatal("expected path traversal rejection")
+		}
+		if !strings.Contains(err.Error(), "path traversal") {
+			t.Errorf("error should mention path traversal, got: %v", err)
+		}
+	})
+
+	t.Run("dest pointing at skill root rejected by runtime", func(t *testing.T) {
+		// Validate() would normally reject this, but the resolver's own
+		// computeCommandDestPath also guards against it - exercising that
+		// backstop guards against future validation bypasses or callers that
+		// skip Validate().
+		targetDir := t.TempDir()
+		resolver := NewIncludeResolver(nil, nil)
+
+		for _, dest := range []string{".", "./", ""} {
+			inc := config.Include{
+				Command: []string{"sh", "-c", `printf 'x' > "$TAI_DEST_DIR/out"`},
+				Dest:    dest,
+			}
+			err := resolver.resolveCommandInclude(inc, targetDir)
+			if err == nil {
+				t.Errorf("dest %q should be rejected at runtime", dest)
+			}
+		}
+	})
+
+	t.Run("TAI_DEST_DIR from inherited env is overridden", func(t *testing.T) {
+		// Some users may have a stale TAI_DEST_DIR exported in their shell;
+		// the resolver must strip TAI_* from the inherited env so its own
+		// authoritative value is the only one visible to the script.
+		t.Setenv("TAI_DEST_DIR", "/should/not/win")
+		t.Setenv("TAI_ASSET_NAME", "stale-name")
+
+		targetDir := t.TempDir()
+		resolver := NewIncludeResolver(nil, nil)
+		resolver.SetCommandContext(CommandContext{AssetName: "real-name"})
+
+		inc := config.Include{
+			Command: []string{"sh", "-c", `
+				printf '%s' "$TAI_DEST_DIR"   > "$TAI_DEST_DIR/dest"
+				printf '%s' "$TAI_ASSET_NAME" > "$TAI_DEST_DIR/name"
+			`},
+			Dest: "out/",
+		}
+
+		if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+			t.Fatalf("resolveCommandInclude() error = %v", err)
+		}
+
+		destEcho := string(mustReadFile(t, filepath.Join(targetDir, "out", "dest")))
+		if destEcho == "/should/not/win" {
+			t.Errorf("inherited TAI_DEST_DIR leaked through, got %q", destEcho)
+		}
+		nameEcho := string(mustReadFile(t, filepath.Join(targetDir, "out", "name")))
+		if nameEcho != "real-name" {
+			t.Errorf("TAI_ASSET_NAME = %q, want 'real-name' (inherited value leaked)", nameEcho)
+		}
+	})
+
+	t.Run("all TAI_ env vars are set even when context is zero", func(t *testing.T) {
+		// Scripts running under `set -u` reference these unconditionally;
+		// the resolver must always set them, even to empty string.
+		targetDir := t.TempDir()
+		resolver := NewIncludeResolver(nil, nil)
+		// No SetCommandContext call - cmdCtx is the zero value.
+
+		inc := config.Include{
+			Command: []string{"sh", "-c", `
+				set -u
+				: "$TAI_DEST_DIR" "$TAI_ASSET_TYPE" "$TAI_ASSET_NAME"
+				: "$TAI_TARGET"   "$TAI_MANIFEST_DIR" "$TAI_VERSION"
+				printf 'ok' > "$TAI_DEST_DIR/marker"
+			`},
+			Dest: "out/",
+		}
+
+		if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+			t.Fatalf("resolveCommandInclude() error = %v\n(set -u under zero context should still see all TAI_* vars)", err)
+		}
+	})
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	return b
 }
 
 func TestDefaultHTTPClient(t *testing.T) {

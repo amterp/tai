@@ -1252,19 +1252,32 @@ include:
   - from: shared-scripts
     path: helpers/               # Copy entire directory
     dest: scripts/               # Into skill's scripts/ directory
+
+  # From a command (escape hatch for authenticated/custom fetches).
+  # tai runs the argv directly with no shell - wrap in ["sh","-c","..."] if
+  # you need redirection, pipes, or env-var expansion. The script must write
+  # files into $TAI_DEST_DIR (see Command Includes below).
+  - command:
+      - sh
+      - -c
+      - "glab api 'projects/123/repository/files/docs%2Ffoo.md/raw?ref=main' > $TAI_DEST_DIR/foo.md"
+    dest: refs/                  # tai stages files here; atomic swap on success
+    timeout: 60s                 # optional, default 30s
 ```
 
 ### Include Fields
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| `from` | Yes* | Named source (mutually exclusive with `url`) |
+| `from` | Yes* | Named source (mutually exclusive with `url` and `command`) |
 | `path` | Yes* | Path within source |
-| `url` | Yes* | URL to fetch (mutually exclusive with `from`) |
+| `url` | Yes* | URL to fetch (mutually exclusive with `from` and `command`) |
+| `command` | Yes* | Argv-list to execute (mutually exclusive with `from` and `url`) |
+| `timeout` | No | Duration string for `command` includes (e.g. `"60s"`, `"2m"`). Default 30s. Rejected on non-command includes. |
 | `dest` | Yes | Destination within skill directory |
 | `fields` | No | Map of tai field names to source field names for frontmatter remapping |
 
-*Either `from`+`path` OR `url` must be specified.
+*Exactly one of `from`+`path`, `url`, or `command` must be specified.
 
 #### Field Mapping
 
@@ -1302,6 +1315,71 @@ sources:
 
 This keeps skills portable—the same skill definition works on any machine by having each machine define its sources with local paths.
 
+### Command Includes
+
+`command` includes are an escape hatch for any fetch shape that doesn't fit
+`url` (authenticated APIs, internal tooling, private artifact stores, etc.).
+The user supplies an argv list; tai executes it with a tai-managed staging
+directory and atomically swaps the script's output into the install location.
+
+The user is responsible for the script: its authentication, its dependencies
+(`gh`, `glab`, `curl`, etc.), and its behavior. Treat the manifest itself as
+trusted input — installing a skill someone else wrote runs whatever commands
+its manifest declares.
+
+#### Execution model
+
+For each `command:` include:
+
+1. tai creates a temporary staging directory and sets `TAI_DEST_DIR` to its
+   absolute path.
+2. tai runs the command with `exec.CommandContext` under the include's
+   timeout. The command runs directly (no shell) — wrap with `["sh", "-c",
+   "..."]` explicitly if shell parsing is needed.
+3. The user's environment is inherited, so `PATH`, `HOME`, and any
+   secret-bearing variables (`GITLAB_TOKEN`, etc.) are available. The
+   `TAI_*` variables below are appended and shadow any pre-existing values.
+4. On success with non-empty output, tai removes any existing content at the
+   final `dest` and atomically renames the staging dir into place
+   (cross-filesystem fallback: recursive copy + remove).
+5. On failure (nonzero exit, timeout, empty output, swap failure) tai leaves
+   the staging dir in place and surfaces its path plus the script's stderr
+   tail in the returned error. The previous install state is untouched.
+
+#### Environment variables injected
+
+All `TAI_*` variables are always set (possibly to empty string), so scripts
+running under `set -u` can reference any of them without surprise. Any
+pre-existing `TAI_*` values in the user's environment are stripped before
+tai's authoritative values are applied, so runtime-specific env-deduplication
+rules don't matter.
+
+| Variable | Value |
+|----------|-------|
+| `TAI_DEST_DIR` | Absolute path to the staging directory the script must write into |
+| `TAI_ASSET_TYPE` | The asset type (`skill` today) |
+| `TAI_ASSET_NAME` | The asset's name |
+| `TAI_TARGET` | The install target (`claude`, `codex`, `gemini`, `opencode`) |
+| `TAI_MANIFEST_DIR` | Absolute path to the skill source directory (use this to read sibling helper files) |
+| `TAI_VERSION` | tai's version string |
+
+#### Secrets and error output
+
+When a command include fails, tai's error message includes the script's argv
+verbatim plus the tail of its stderr. To avoid leaking credentials into logs,
+**keep secrets in environment variables, not in argv**, and avoid echoing
+them to stderr. The user's environment is inherited, so `$GITLAB_TOKEN` and
+similar are already visible to the script.
+
+#### Failure modes
+
+| Cause | Behavior |
+|-------|----------|
+| Command exits non-zero | Install fails. Error includes exit code, stderr tail, and staging dir path. |
+| Command exceeds `timeout` | Process is killed via context cancellation. Error mentions timeout and staging path. |
+| Command exits 0 with no files in `TAI_DEST_DIR` | Install fails (silent zero-output success is treated as a bug). |
+| `dest` escapes the skill directory | Rejected before the command runs. |
+
 ### Security
 
 Skill includes implement several security measures:
@@ -1312,6 +1390,7 @@ Skill includes implement several security measures:
 - **Size limits**: URL downloads are limited to 10MB per file
 - **HTTP timeout**: URL fetches timeout after 30 seconds
 - **Redirect validation**: Redirects to non-HTTP schemes are blocked
+- **Command execution trust**: `command:` includes run arbitrary processes with the user's environment. Read manifests before installing skills from sources you don't control.
 
 ### Error Handling
 
@@ -1320,6 +1399,7 @@ Includes follow tai's fail-fast philosophy:
 - Missing file in source → installation fails
 - URL fetch failure → installation fails
 - Path traversal attempt → installation fails
+- Command include failure (nonzero exit, timeout, empty output) → installation fails; previous install state is preserved
 
 ### Merge Strategies (Future)
 

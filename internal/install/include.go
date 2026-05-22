@@ -25,10 +25,24 @@ const (
 	MaxIncludeSize = 10 * 1024 * 1024
 )
 
-// IncludeResolver handles resolving skill includes from sources and URLs.
+// IncludeResolver handles resolving skill includes from sources, URLs, and commands.
 type IncludeResolver struct {
 	sources    map[string]*source.LoadedSource
 	httpClient *http.Client
+
+	// cmdCtx supplies the TAI_* env vars passed to command-based includes.
+	// Zero values are tolerated; the corresponding env vars are simply unset.
+	cmdCtx CommandContext
+}
+
+// CommandContext carries the per-skill metadata that gets exposed to
+// command-based include scripts via TAI_* environment variables.
+type CommandContext struct {
+	AssetType   string // e.g. "skill"
+	AssetName   string // the asset's name
+	TargetName  string // e.g. "claude", "codex"
+	ManifestDir string // absolute path to the source skill directory
+	Version     string // tai's version string
 }
 
 // NewIncludeResolver creates a new include resolver.
@@ -39,13 +53,24 @@ func NewIncludeResolver(sources map[string]*source.LoadedSource, httpClient *htt
 	}
 }
 
+// SetCommandContext configures the metadata exposed to command-based includes.
+// Must be called before ResolveIncludes when the manifest contains command
+// entries; otherwise the TAI_* env vars will be unset (harmless but less
+// useful for scripts that rely on them).
+func (r *IncludeResolver) SetCommandContext(ctx CommandContext) {
+	r.cmdCtx = ctx
+}
+
 // ResolveIncludes processes all includes for a skill, copying files to the target skill path.
 func (r *IncludeResolver) ResolveIncludes(manifest *config.SkillManifest, targetSkillPath string) error {
 	for i, inc := range manifest.Include {
 		var err error
-		if inc.IsURLBased() {
+		switch {
+		case inc.IsCommandBased():
+			err = r.resolveCommandInclude(inc, targetSkillPath)
+		case inc.IsURLBased():
 			err = r.resolveURLInclude(inc, targetSkillPath)
-		} else {
+		default:
 			err = r.resolveSourceInclude(inc, targetSkillPath)
 		}
 		if err != nil {
@@ -94,7 +119,7 @@ func (r *IncludeResolver) resolveSourceInclude(inc config.Include, targetSkillPa
 	}
 
 	if info.IsDir() {
-		return r.copyDirectory(srcPath, destPath)
+		return copyDirectory(srcPath, destPath)
 	}
 	return copyFile(srcPath, destPath)
 }
@@ -203,10 +228,11 @@ func extractFilename(srcPath, srcURL string) (string, error) {
 	return filename, nil
 }
 
-// copyDirectory copies a directory recursively.
-// Rejects symlinks for security.
-func (r *IncludeResolver) copyDirectory(src, dst string) error {
-	// Remove existing destination if it exists
+// copyDirectory copies a directory recursively, rejecting symlinks for
+// security. Existing destination contents are removed first. Package-level
+// (no receiver) so call sites that don't have a resolver - e.g. the
+// command-include cross-fs swap fallback - don't need to fabricate one.
+func copyDirectory(src, dst string) error {
 	_ = os.RemoveAll(dst)
 
 	return filepath.WalkDir(src, func(srcPath string, d fs.DirEntry, err error) error {

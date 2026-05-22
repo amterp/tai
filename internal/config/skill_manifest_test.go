@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestIncludeValidate(t *testing.T) {
@@ -52,6 +53,81 @@ func TestIncludeValidate(t *testing.T) {
 			include: Include{URL: "https://example.com/file.md", From: "rad", Path: "foo", Dest: "bar"},
 			wantErr: true,
 		},
+		{
+			name:    "valid command include",
+			include: Include{Command: []string{"echo", "hello"}, Dest: "docs/"},
+			wantErr: false,
+		},
+		{
+			name:    "command with explicit timeout",
+			include: Include{Command: []string{"sh", "-c", "true"}, Dest: "out/", Timeout: "5s"},
+			wantErr: false,
+		},
+		{
+			name:    "command without dest",
+			include: Include{Command: []string{"echo", "hello"}},
+			wantErr: true,
+		},
+		{
+			name:    "empty command list",
+			include: Include{Command: []string{}, Dest: "docs/"},
+			wantErr: true,
+		},
+		{
+			name:    "command with empty arg",
+			include: Include{Command: []string{"echo", ""}, Dest: "docs/"},
+			wantErr: true,
+		},
+		{
+			name:    "command and url both set",
+			include: Include{Command: []string{"echo"}, URL: "https://example.com/x", Dest: "docs/"},
+			wantErr: true,
+		},
+		{
+			name:    "command and from both set",
+			include: Include{Command: []string{"echo"}, From: "rad", Path: "x", Dest: "docs/"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid timeout string",
+			include: Include{Command: []string{"echo"}, Dest: "docs/", Timeout: "not-a-duration"},
+			wantErr: true,
+		},
+		{
+			name:    "zero timeout",
+			include: Include{Command: []string{"echo"}, Dest: "docs/", Timeout: "0s"},
+			wantErr: true,
+		},
+		{
+			name:    "negative timeout",
+			include: Include{Command: []string{"echo"}, Dest: "docs/", Timeout: "-1s"},
+			wantErr: true,
+		},
+		{
+			name:    "timeout without command",
+			include: Include{URL: "https://example.com/file.md", Dest: "docs/file.md", Timeout: "5s"},
+			wantErr: true,
+		},
+		{
+			name:    "command dest cannot be skill root .",
+			include: Include{Command: []string{"echo"}, Dest: "."},
+			wantErr: true,
+		},
+		{
+			name:    "command dest cannot be skill root ./",
+			include: Include{Command: []string{"echo"}, Dest: "./"},
+			wantErr: true,
+		},
+		{
+			name:    "command dest cannot be skill root /",
+			include: Include{Command: []string{"echo"}, Dest: "/"},
+			wantErr: true,
+		},
+		{
+			name:    "command include rejects fields",
+			include: Include{Command: []string{"echo"}, Dest: "docs/", Fields: map[string]string{"name": "title"}},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -86,6 +162,61 @@ func TestIncludeIsURLBased(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.include.IsURLBased(); got != tt.want {
 				t.Errorf("Include.IsURLBased() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIncludeIsCommandBased(t *testing.T) {
+	tests := []struct {
+		name    string
+		include Include
+		want    bool
+	}{
+		{
+			name:    "command-based",
+			include: Include{Command: []string{"echo", "hi"}, Dest: "docs/"},
+			want:    true,
+		},
+		{
+			name:    "URL-based",
+			include: Include{URL: "https://example.com/file.md", Dest: "docs/"},
+			want:    false,
+		},
+		{
+			name:    "source-based",
+			include: Include{From: "rad", Path: "SYNTAX.md", Dest: "references/"},
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.include.IsCommandBased(); got != tt.want {
+				t.Errorf("Include.IsCommandBased() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIncludeResolvedTimeout(t *testing.T) {
+	tests := []struct {
+		name    string
+		timeout string
+		want    time.Duration
+	}{
+		{name: "default when empty", timeout: "", want: DefaultCommandIncludeTimeout},
+		{name: "explicit 5s", timeout: "5s", want: 5 * time.Second},
+		{name: "explicit 2m", timeout: "2m", want: 2 * time.Minute},
+		{name: "malformed falls back to default", timeout: "not-a-duration", want: DefaultCommandIncludeTimeout},
+		{name: "zero falls back to default", timeout: "0s", want: DefaultCommandIncludeTimeout},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inc := Include{Command: []string{"echo"}, Dest: "docs/", Timeout: tt.timeout}
+			if got := inc.ResolvedTimeout(); got != tt.want {
+				t.Errorf("ResolvedTimeout() = %v, want %v", got, tt.want)
 			}
 		})
 	}

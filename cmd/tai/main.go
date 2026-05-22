@@ -297,6 +297,7 @@ func loadState() *state.State {
 	if err != nil {
 		fatal("loading state: %v", err)
 	}
+	s.SetVersion(version)
 	return s
 }
 

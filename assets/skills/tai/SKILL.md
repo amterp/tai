@@ -543,12 +543,54 @@ include:
     fields:
       name: title            # Source's "title" → tai's "name"
       description: summary   # Source's "summary" → tai's "description"
+
+  # From a command - escape hatch for auth, private APIs, custom protocols.
+  # tai runs the argv DIRECTLY with no shell. Use ["sh","-c","..."] for
+  # redirection, pipes, env-var expansion, etc.
+  # The script MUST write files into $TAI_DEST_DIR; tai treats that dir's
+  # contents as the include's output and atomically swaps them into `dest`.
+  - command:
+      - sh
+      - -c
+      - "glab api 'projects/123/repository/files/foo%2Fbar/raw?ref=main' > $TAI_DEST_DIR/foo.md"
+    dest: refs/              # final location inside the installed skill
+    timeout: 60s             # Optional, default 30s
 ```
 
 ### Destination Rules
 
 - `dest: dir/` (trailing slash) → preserves original filename
 - `dest: dir/file.md` (no trailing slash) → exact target path
+
+### Command Includes
+
+Use `command:` when no built-in mode fits - the script is responsible for
+authentication, dependencies, and whatever protocol it speaks. The user's env
+is inherited, so secrets in env vars (`$GITLAB_TOKEN`, etc.) are available.
+
+The script must write files into `$TAI_DEST_DIR`. tai treats the directory's
+contents as the include's output and atomically swaps them into `dest` on
+success. Empty output is an error; non-zero exit or timeout is an error and
+preserves the staging dir for debugging.
+
+Env vars injected for the script (all always set, possibly to empty string,
+so `set -u` is safe):
+
+| Variable | Meaning |
+|----------|---------|
+| `TAI_DEST_DIR` | Absolute path where the script must write files |
+| `TAI_ASSET_TYPE` | The asset type (`skill`) |
+| `TAI_ASSET_NAME` | The asset's name |
+| `TAI_TARGET` | The install target (`claude`, `codex`, ...) |
+| `TAI_MANIFEST_DIR` | Absolute path to the source skill directory |
+| `TAI_VERSION` | tai's version string |
+
+Mutually exclusive with `from`+`path` and `url`. `timeout` is only valid with
+`command`. `fields` (frontmatter remap) is rejected on `command:` includes.
+
+**Secrets:** keep credentials in env vars (e.g. `$GITLAB_TOKEN`), not in
+argv - tai echoes the full argv into error messages on failure. The user's
+env is inherited so env-var-based secrets work out of the box.
 
 ### Field Mapping
 

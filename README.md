@@ -415,7 +415,22 @@ include:
 
   - url: https://example.com/file.md
     dest: docs/remote.md
+
+  # Escape hatch: run any command to fetch files. Use for authenticated
+  # sources (self-hosted GitLab, private GitHub, etc.) - the script handles auth.
+  # The script must write into $TAI_DEST_DIR; tai stages output there and
+  # atomically swaps it into `dest` on success.
+  - command:
+      - sh
+      - -c
+      - "glab api 'projects/123/repository/files/foo%2Fbar/raw?ref=main' > $TAI_DEST_DIR/foo.md"
+    dest: refs/          # final location inside the installed skill
 ```
+
+> Note: tai runs `command` directly, with no shell - wrap in `["sh", "-c", "..."]`
+> if you need shell features like redirection or env-var expansion. Keep
+> credentials in environment variables (e.g. `$GITLAB_TOKEN`), not in argv -
+> argv is echoed verbatim in error messages.
 
 This keeps skills portable -- reference source names instead of machine-specific paths. See [SPEC.md](SPEC.md) for full details.
 
