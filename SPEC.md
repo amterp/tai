@@ -939,6 +939,15 @@ Options:
 - `--skip-conflicts`: Leave conflicting files as-is
 - `--dry-run`: Preview changes without applying
 
+**Target-path collisions:** Two distinct assets can map to the same install
+path for a given target - most commonly an OpenCode persona and delegate of the
+same name, which both map to `agents/<name>.md`. tai resolves these with the
+same "later wins" rule used for bundle/source conflicts: the last asset in
+resolution order is installed and recorded, the earlier one is shadowed (logged
+as an override). This keeps reinstall idempotent - a collision that produced two
+manifest entries for one path would otherwise report a phantom "updated" on
+every run.
+
 ### Error Handling
 
 tai follows a **fail-fast** philosophy. Installation MUST fail (not warn-and-continue) when:

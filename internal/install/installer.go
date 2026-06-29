@@ -236,21 +236,16 @@ func (i *Installer) separateAssets(adap adapter.Adapter, assets []*config.Asset,
 			warning := fmt.Sprintf("Asset type '%s' is not supported by target '%s' - skipping %s",
 				asset.Type, adap.Name(), asset.Name)
 			result.Warnings = append(result.Warnings, warning)
-			i.logger.Printf("Warning: %s", warning)
 			continue
 		}
 
-		for _, warning := range adap.InstallWarnings(asset) {
-			result.Warnings = append(result.Warnings, warning)
-			i.logger.Printf("Warning: %s", warning)
-		}
+		result.Warnings = append(result.Warnings, adap.InstallWarnings(asset)...)
 
 		if config.IsConfigAssetType(asset.Type) {
 			if !supportedConfigTypes[asset.Type] {
 				warning := fmt.Sprintf("Asset type '%s' is not supported by target '%s' - skipping %s",
 					asset.Type, adap.Name(), asset.Name)
 				result.Warnings = append(result.Warnings, warning)
-				i.logger.Printf("Warning: %s", warning)
 				continue
 			}
 			configAssets = append(configAssets, asset)
@@ -273,14 +268,37 @@ func (i *Installer) resolveAndDetectConflicts(
 	var resolvedAssets []resolvedFileAsset
 	var conflicts []ConflictDetail
 
-	// Resolve file assets
+	// Resolve file assets. Distinct assets can map to the same target path - for
+	// OpenCode a persona and a delegate of the same name both install to
+	// agents/<name>.md, for instance. Collapse such collisions to the last
+	// asset, mirroring the "later wins" semantics tai already applies to
+	// bundle/source conflicts and the path-keyed manifest dedup in
+	// buildInstallContext. Without this, every shadowed asset leaves a second
+	// manifest entry whose checksum can never match what's on disk, so reinstall
+	// reports a phantom "updated" for it on every run.
+	indexByPath := make(map[string]int) // targetPath -> index in resolvedAssets
+	var conflictByIndex []*ConflictDetail
 	for _, asset := range fileAssets {
 		ra, conflict, err := i.resolveFileAsset(ctx, asset)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
-		resolvedAssets = append(resolvedAssets, ra)
 
+		if idx, collides := indexByPath[ra.targetPath]; collides {
+			prev := resolvedAssets[idx].asset
+			i.logger.Printf("Override: %s/%s overrides %s/%s (both install to %s)",
+				ra.asset.Type, ra.asset.Name, prev.Type, prev.Name, ra.targetPath)
+			resolvedAssets[idx] = ra
+			conflictByIndex[idx] = conflict
+			continue
+		}
+
+		indexByPath[ra.targetPath] = len(resolvedAssets)
+		resolvedAssets = append(resolvedAssets, ra)
+		conflictByIndex = append(conflictByIndex, conflict)
+	}
+
+	for _, conflict := range conflictByIndex {
 		if conflict != nil {
 			conflicts = append(conflicts, *conflict)
 		}

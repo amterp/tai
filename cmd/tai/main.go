@@ -571,6 +571,7 @@ func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts 
 	}
 
 	s.ProfileResolver.SetLogger(&outputLogger{out: out})
+	s.Installer.SetLogger(&outputLogger{out: out})
 
 	cliVars, err := parseVariables(varsStr)
 	if err != nil {
