@@ -3,6 +3,8 @@ package source
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/amterp/tai/internal/config"
@@ -270,4 +272,157 @@ func TestLoadedSourceListAllAssets(t *testing.T) {
 			t.Errorf("missing expected asset: %s", expected)
 		}
 	}
+}
+
+func TestLoaderCommandSource(t *testing.T) {
+	commandSource := func(argv ...string) config.Source {
+		return config.Source{
+			Name:    "private",
+			Type:    config.SourceTypeCommand,
+			Command: argv,
+		}
+	}
+
+	t.Run("resolvePath points into cache dir", func(t *testing.T) {
+		env := testutil.NewTestEnv(t)
+		loader := NewLoader(env.ConfigRepo)
+		loader.SetCacheDir(env.CacheDir)
+
+		path, err := loader.resolvePath(commandSource("sh", "-c", "true"))
+		if err != nil {
+			t.Fatalf("resolvePath() error = %v", err)
+		}
+		wantPrefix := filepath.Join(env.CacheDir, "sources") + string(filepath.Separator)
+		if !strings.HasPrefix(path, wantPrefix) {
+			t.Errorf("resolved path %q not under %q", path, wantPrefix)
+		}
+		if filepath.Base(path) != "private" {
+			t.Errorf("resolved path %q should end in source name", path)
+		}
+	})
+
+	t.Run("load without cache dir errors", func(t *testing.T) {
+		env := testutil.NewTestEnv(t)
+		loader := NewLoader(env.ConfigRepo)
+
+		if _, err := loader.Load(commandSource("sh", "-c", "true")); err == nil {
+			t.Fatal("expected error when no cache dir configured")
+		}
+	})
+
+	t.Run("load with missing cache tolerated", func(t *testing.T) {
+		env := testutil.NewTestEnv(t)
+		loader := NewLoader(env.ConfigRepo)
+		loader.SetCacheDir(env.CacheDir)
+
+		ls, err := loader.Load(commandSource("sh", "-c", "true"))
+		if err != nil {
+			t.Fatalf("Load() error = %v (missing cache must not fail the load)", err)
+		}
+		if ls.Materialized {
+			t.Error("Materialized should be false before first fetch")
+		}
+		if err := ls.RequireMaterialized(); err == nil {
+			t.Error("RequireMaterialized() should error before first fetch")
+		} else if !strings.Contains(err.Error(), "tai refresh") {
+			t.Errorf("error should hint at 'tai refresh', got: %v", err)
+		}
+		if got := len(ls.ListAllAssets()); got != 0 {
+			t.Errorf("unfetched source should list 0 assets, got %d", got)
+		}
+	})
+
+	t.Run("refresh materializes then load discovers assets", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("command source tests require POSIX sh")
+		}
+		env := testutil.NewTestEnv(t)
+		loader := NewLoader(env.ConfigRepo)
+		loader.SetCacheDir(env.CacheDir)
+
+		src := commandSource("sh", "-c", `
+			mkdir -p "$TAI_DEST_DIR/personas" "$TAI_DEST_DIR/skills/tool"
+			printf '# P' > "$TAI_DEST_DIR/personas/p.md"
+			printf '# S' > "$TAI_DEST_DIR/skills/tool/SKILL.md"
+			printf '%s' "$TAI_SOURCE" > "$TAI_DEST_DIR/personas/source-name.md"
+		`)
+
+		if err := loader.Refresh(src, "1.2.3"); err != nil {
+			t.Fatalf("Refresh() error = %v", err)
+		}
+
+		ls, err := loader.Load(src)
+		if err != nil {
+			t.Fatalf("Load() after refresh error = %v", err)
+		}
+		if !ls.Materialized {
+			t.Error("Materialized should be true after refresh")
+		}
+		if err := ls.RequireMaterialized(); err != nil {
+			t.Errorf("RequireMaterialized() after refresh = %v", err)
+		}
+
+		wantAssets := map[string]bool{
+			filepath.Join("personas", "p.md"):           false,
+			filepath.Join("personas", "source-name.md"): false,
+			filepath.Join("skills", "tool"):             false,
+		}
+		for _, a := range ls.ListAllAssets() {
+			if _, ok := wantAssets[a]; ok {
+				wantAssets[a] = true
+			}
+		}
+		for a, found := range wantAssets {
+			if !found {
+				t.Errorf("asset %q not discovered; got %v", a, ls.ListAllAssets())
+			}
+		}
+
+		got, err := os.ReadFile(filepath.Join(ls.ResolvedPath, "personas", "source-name.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != "private" {
+			t.Errorf("TAI_SOURCE = %q, want 'private'", string(got))
+		}
+	})
+
+	t.Run("failed refresh preserves previous cache", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("command source tests require POSIX sh")
+		}
+		env := testutil.NewTestEnv(t)
+		loader := NewLoader(env.ConfigRepo)
+		loader.SetCacheDir(env.CacheDir)
+
+		good := commandSource("sh", "-c", `mkdir -p "$TAI_DEST_DIR/x"; printf 'v1' > "$TAI_DEST_DIR/x/f"`)
+		if err := loader.Refresh(good, ""); err != nil {
+			t.Fatalf("initial Refresh() error = %v", err)
+		}
+
+		bad := commandSource("sh", "-c", "exit 1")
+		if err := loader.Refresh(bad, ""); err == nil {
+			t.Fatal("expected error from failing fetch")
+		}
+
+		ls, err := loader.Load(good)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(filepath.Join(ls.ResolvedPath, "x", "f"))
+		if err != nil || string(got) != "v1" {
+			t.Errorf("previous cache should survive failed refresh, got %q, err %v", string(got), err)
+		}
+	})
+
+	t.Run("refresh on non-command source rejected", func(t *testing.T) {
+		env := testutil.NewTestEnv(t)
+		loader := NewLoader(env.ConfigRepo)
+		loader.SetCacheDir(env.CacheDir)
+
+		err := loader.Refresh(config.Source{Name: "local", Type: "local", Path: "./assets"}, "")
+		if err == nil {
+			t.Fatal("expected error refreshing non-command source")
+		}
+	})
 }
