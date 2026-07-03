@@ -1750,3 +1750,167 @@ bundles:
 		t.Errorf("error should mention the undefined variable name, got: %q", err.Error())
 	}
 }
+
+// TestE2EInstallFromCommandSource tests the full flow of a command source:
+// refresh materializes assets into the cache, resolution + install serve
+// them like a local source, and a re-refresh picks up changed content.
+func TestE2EInstallFromCommandSource(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("command source e2e requires POSIX sh")
+	}
+
+	env := testutil.NewTestEnv(t)
+
+	// The "remote" content lives in a directory the fetch script copies from,
+	// standing in for a git clone. Editing it simulates upstream changes.
+	remote := filepath.Join(env.Root, "remote")
+	if err := os.MkdirAll(filepath.Join(remote, "personas"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	skillDir := filepath.Join(remote, "skills", "private-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(remote, "personas", "remote.md"),
+		[]byte("---\ntai-schema-version: 1\nname: remote\ndescription: Remote persona\n---\n\n# Remote v1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: private-skill\ndescription: Private skill\n---\n\n# Private Skill\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+  - name: private
+    type: command
+    command:
+      - sh
+      - -c
+      - 'cp -R "` + remote + `/." "$TAI_DEST_DIR/"'
+`)
+	env.SetupBundle("test", `name: test
+assets:
+  - type: persona
+    path: private:personas/remote.md
+  - type: skill
+    path: private:skills/private-skill
+`)
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	taiConfig, err := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	loader := source.NewLoader(env.ConfigRepo)
+	loader.SetCacheDir(env.CacheDir)
+
+	loadAndResolve := func() []*config.Asset {
+		t.Helper()
+		sources, err := loader.LoadAll(taiConfig.Sources)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bundles, err := config.LoadBundlesFromDir(filepath.Join(env.ConfigRepo, "bundles"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		profiles, err := config.LoadProfilesFromDir(filepath.Join(env.ConfigRepo, "profiles"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resolver := profile.NewResolver(profiles, bundles, sources)
+		resolved, err := resolver.Resolve("test")
+		if err != nil {
+			t.Fatalf("resolving profile: %v", err)
+		}
+		return resolved.Assets
+	}
+
+	// Before any refresh, resolution must fail with the actionable hint.
+	sources, err := loader.LoadAll(taiConfig.Sources)
+	if err != nil {
+		t.Fatalf("LoadAll with unfetched command source: %v", err)
+	}
+	bundles, _ := config.LoadBundlesFromDir(filepath.Join(env.ConfigRepo, "bundles"))
+	profiles, _ := config.LoadProfilesFromDir(filepath.Join(env.ConfigRepo, "profiles"))
+	if _, err := profile.NewResolver(profiles, bundles, sources).Resolve("test"); err == nil {
+		t.Fatal("expected resolution failure before first refresh")
+	} else if !strings.Contains(err.Error(), "tai refresh") {
+		t.Errorf("error should hint at 'tai refresh', got: %v", err)
+	}
+
+	// Refresh, then resolve + install.
+	privateSrc := taiConfig.Sources[1]
+	if err := loader.Refresh(privateSrc, "test-version"); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	sources, err = loader.LoadAll(taiConfig.Sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adap := claude.New(env.TargetDir)
+
+	assets := loadAndResolve()
+	if _, err := installer.Install(adap, "test", assets, install.InstallOptions{}); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if !env.TargetFileExists("output-styles/remote.md") {
+		t.Error("remote persona not installed")
+	}
+	if !env.TargetFileExists("skills/private-skill/SKILL.md") {
+		t.Error("private skill not installed")
+	}
+	if got := env.ReadTargetFile("output-styles/remote.md"); !strings.Contains(got, "# Remote v1") {
+		t.Errorf("persona content = %q, want it to contain '# Remote v1'", got)
+	}
+
+	// Simulate an upstream change; re-refresh + reinstall picks it up.
+	if err := os.WriteFile(filepath.Join(remote, "personas", "remote.md"),
+		[]byte("---\ntai-schema-version: 1\nname: remote\ndescription: Remote persona\n---\n\n# Remote v2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := loader.Refresh(privateSrc, "test-version"); err != nil {
+		t.Fatalf("second Refresh: %v", err)
+	}
+	sources, err = loader.LoadAll(taiConfig.Sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer = install.NewInstaller(manifestStore, env.ConfigRepo, sources)
+	assets = loadAndResolve()
+	if _, err := installer.Install(adap, "test", assets, install.InstallOptions{}); err != nil {
+		t.Fatalf("reinstall failed: %v", err)
+	}
+	if got := env.ReadTargetFile("output-styles/remote.md"); !strings.Contains(got, "# Remote v2") {
+		t.Errorf("persona content after re-refresh = %q, want '# Remote v2'", got)
+	}
+
+	// A failing fetch must leave the cache (and installed files) intact.
+	badSrc := privateSrc
+	badSrc.Command = []string{"sh", "-c", "exit 1"}
+	if err := loader.Refresh(badSrc, "test-version"); err == nil {
+		t.Fatal("expected error from failing fetch")
+	}
+	sources, err = loader.LoadAll(taiConfig.Sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sources["private"].Materialized {
+		t.Error("cache should survive a failed refresh")
+	}
+	if got := env.ReadTargetFile("output-styles/remote.md"); !strings.Contains(got, "# Remote v2") {
+		t.Error("installed files should survive a failed refresh")
+	}
+}

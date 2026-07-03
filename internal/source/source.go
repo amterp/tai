@@ -271,6 +271,10 @@ func (ls *LoadedSource) HasAsset(assetPath string) bool {
 // The assetPath is the filesystem path within the source (e.g. "personas/senior-swe.md").
 // The assetType is the singular type (e.g. "persona").
 func (ls *LoadedSource) ResolveAsset(assetPath, assetType string) (*config.Asset, error) {
+	if err := ls.RequireMaterialized(); err != nil {
+		return nil, err
+	}
+
 	fullPath, ok := ls.GetAsset(assetPath)
 	if !ok {
 		return nil, fmt.Errorf("asset not found: %s", assetPath)

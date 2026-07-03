@@ -176,6 +176,7 @@ func (s *State) LoadConfigRepo(path string) error {
 
 	// Load sources
 	loader := source.NewLoader(absPath)
+	loader.SetCacheDir(s.Paths.CacheDir)
 	sources, err := loader.LoadAll(taiConfig.Sources)
 	if err != nil {
 		return err
@@ -214,6 +215,64 @@ func (s *State) LoadConfigRepo(path string) error {
 	}
 
 	return nil
+}
+
+// HasCommandSources reports whether the active config declares any command
+// sources.
+func (s *State) HasCommandSources() bool {
+	if s.TaiConfig == nil {
+		return false
+	}
+	for _, src := range s.TaiConfig.Sources {
+		if src.IsCommand() {
+			return true
+		}
+	}
+	return false
+}
+
+// RefreshCommandSources runs the fetch command for every command source
+// (or just the named one when name is non-empty), then reloads the config
+// repo so sources, resolvers, and the installer all see the freshly
+// materialized content - they capture the sources map at construction, so
+// mutating it in place would leave them stale. onRefresh (may be nil) is
+// called with each source name before its fetch runs, for progress output.
+func (s *State) RefreshCommandSources(name string, onRefresh func(name string)) error {
+	if err := s.RequireActiveConfig(); err != nil {
+		return err
+	}
+
+	loader := source.NewLoader(s.GlobalConfig.ActiveConfig)
+	loader.SetCacheDir(s.Paths.CacheDir)
+
+	refreshed := 0
+	for _, src := range s.TaiConfig.Sources {
+		if !src.IsCommand() {
+			if name != "" && src.Name == name {
+				return fmt.Errorf("source %q is not a command source (type %q)", src.Name, src.Type)
+			}
+			continue
+		}
+		if name != "" && src.Name != name {
+			continue
+		}
+		if onRefresh != nil {
+			onRefresh(src.Name)
+		}
+		if err := loader.Refresh(src, s.Version); err != nil {
+			return err
+		}
+		refreshed++
+	}
+
+	if name != "" && refreshed == 0 {
+		return fmt.Errorf("source not found: %s", name)
+	}
+	if refreshed == 0 {
+		return nil
+	}
+
+	return s.LoadConfigRepo(s.GlobalConfig.ActiveConfig)
 }
 
 // SetActiveConfig sets the active config repo path and saves it.
@@ -277,6 +336,10 @@ func (s *State) LocateAsset(assetPath string) (string, error) {
 	src, ok := s.Sources[sourceName]
 	if !ok {
 		return "", fmt.Errorf("source not found: %s", sourceName)
+	}
+
+	if err := src.RequireMaterialized(); err != nil {
+		return "", err
 	}
 
 	fullPath, ok := src.GetAsset(path)

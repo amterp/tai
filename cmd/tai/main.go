@@ -160,6 +160,15 @@ func main() {
 		Register(reinstallCmd)
 	reinstallUsed, _ := root.RegisterCmd(reinstallCmd)
 
+	// Refresh command
+	refreshCmd := ra.NewCmd("refresh")
+	refreshCmd.SetDescription("Fetch command sources into the cache")
+	refreshSource, _ := ra.NewString("source").
+		SetOptional(true).
+		SetUsage("Source to refresh (default: all command sources)").
+		Register(refreshCmd)
+	refreshUsed, _ := root.RegisterCmd(refreshCmd)
+
 	// Uninstall command
 	uninstallCmd := ra.NewCmd("uninstall")
 	uninstallCmd.SetDescription("Remove tai-managed files for a target")
@@ -247,6 +256,8 @@ func main() {
 		runInstall(*installProfile, *installDryRun, *installForce, *installSkipConflicts, *installVars, *installDiff)
 	case *reinstallUsed:
 		runReinstall(*reinstallTarget, *reinstallDryRun, *reinstallForce, *reinstallSkipConflicts, *reinstallVars, *reinstallDiff)
+	case *refreshUsed:
+		runRefresh(*refreshSource)
 	case *uninstallUsed:
 		runUninstall(*uninstallTarget)
 	case *statusUsed:
@@ -345,10 +356,17 @@ func runListSources() {
 		if typeStr == "" {
 			typeStr = "local"
 		}
+		extra := src.Path
+		if src.IsCommand() {
+			extra = "not fetched (run 'tai refresh')"
+			if loaded, ok := s.Sources[src.Name]; ok && loaded.Materialized {
+				extra = "cached"
+			}
+		}
 		items = append(items, output.ListItem{
 			Name:        src.Name,
 			Description: typeStr,
-			Extra:       src.Path,
+			Extra:       extra,
 		})
 	}
 	out.List("Sources:", items)
@@ -424,6 +442,9 @@ func runListAssets(sourceName string) {
 		src, ok := s.Sources[sourceName]
 		if !ok {
 			fatal("source not found: %s", sourceName)
+		}
+		if err := src.RequireMaterialized(); err != nil {
+			fatal("%v", err)
 		}
 		assets := src.ListAllAssets()
 		sort.Strings(assets)
@@ -510,7 +531,53 @@ func runShowBundle(name string) {
 func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr string, showDiff bool) {
 	s := loadState()
 	requireActiveConfig(s)
-	doInstall(s, profileName, dryRun, force, skipConflicts, varsStr, showDiff)
+	refreshSourcesForInstall(s, dryRun)
+	if err := doInstall(s, profileName, dryRun, force, skipConflicts, varsStr, showDiff); err != nil {
+		os.Exit(1)
+	}
+}
+
+// refreshSourcesForInstall fetches command sources so installs always see
+// fresh content. Dry-run skips the fetch (it's a side effect a preview
+// shouldn't have) and resolves from whatever is cached.
+func refreshSourcesForInstall(s *state.State, dryRun bool) {
+	if !s.HasCommandSources() {
+		return
+	}
+	if dryRun {
+		for _, src := range s.TaiConfig.Sources {
+			if src.IsCommand() {
+				out.Info("Would refresh command source '" + src.Name + "'")
+			}
+		}
+		return
+	}
+	err := s.RefreshCommandSources("", func(name string) {
+		out.Info("Refreshing command source '" + name + "'...")
+	})
+	if err != nil {
+		fatal("refreshing sources: %v", err)
+	}
+}
+
+func runRefresh(sourceName string) {
+	s := loadState()
+	requireActiveConfig(s)
+
+	if !s.HasCommandSources() {
+		out.Info("No command sources configured.")
+		return
+	}
+
+	refreshed := 0
+	err := s.RefreshCommandSources(sourceName, func(name string) {
+		out.Info("Refreshing command source '" + name + "'...")
+		refreshed++
+	})
+	if err != nil {
+		fatal("refreshing sources: %v", err)
+	}
+	out.Success(fmt.Sprintf("Refreshed %d source(s).", refreshed))
 }
 
 func runReinstall(target string, dryRun, force, skipConflicts bool, varsStr string, showDiff bool) {
@@ -550,16 +617,29 @@ func runReinstall(target string, dryRun, force, skipConflicts bool, varsStr stri
 		}
 	}
 
+	refreshSourcesForInstall(s, dryRun)
+
+	failed := false
 	for i, rt := range toReinstall {
 		if i > 0 {
 			out.Blank()
 		}
-		doInstall(s, rt.profile, dryRun, force, skipConflicts, varsStr, showDiff)
+		if err := doInstall(s, rt.profile, dryRun, force, skipConflicts, varsStr, showDiff); err != nil {
+			// Keep reinstalling the remaining targets; surface the failure
+			// in the exit code at the end.
+			failed = true
+		}
+	}
+	if failed {
+		os.Exit(1)
 	}
 }
 
-// doInstall performs profile resolution and installation against pre-loaded state.
-func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts bool, varsStr string, showDiff bool) {
+// doInstall performs profile resolution and installation against pre-loaded
+// state. Errors that abort the install are fatal (they exit the process);
+// the returned error reports post-install-hook failure, where the install
+// itself succeeded but tai should exit nonzero.
+func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts bool, varsStr string, showDiff bool) error {
 	resolved, err := s.ResolveProfile(profileName)
 	if err != nil {
 		fatal("resolving profile: %v", err)
@@ -644,6 +724,8 @@ func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts 
 		DryRun:    dryRun,
 		Manifest:  manifestPath,
 	})
+
+	return nil
 }
 
 // outputLogger wraps Output to implement the logger interface expected by ProfileResolver.

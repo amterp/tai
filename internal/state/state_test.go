@@ -3,6 +3,8 @@ package state
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/amterp/tai/internal/testutil"
@@ -294,4 +296,113 @@ func TestStateWithHomeTilde(t *testing.T) {
 	// We can't easily test it without creating files in home dir
 	_ = home
 	_ = state
+}
+
+func TestStateCommandSources(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("command source tests require POSIX sh")
+	}
+
+	setup := func(t *testing.T) (*testutil.TestEnv, *State) {
+		env := testutil.NewTestEnv(t)
+		env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+  - name: private
+    type: command
+    command:
+      - sh
+      - -c
+      - 'mkdir -p "$TAI_DEST_DIR/personas" && printf "# Remote" > "$TAI_DEST_DIR/personas/remote.md"'
+`)
+		env.SetupAsset("personas", "default.md", "# Default")
+		env.SetupBundle("core", `name: core
+assets:
+  - type: persona
+    path: private:personas/remote.md
+`)
+		env.SetupProfile("default", `name: default
+target: claude
+bundles:
+  - core
+`)
+
+		paths := &Paths{
+			ConfigDir:   env.ConfigDir,
+			CacheDir:    env.CacheDir,
+			ManifestDir: filepath.Join(env.ConfigDir, "manifests"),
+			ConfigFile:  filepath.Join(env.ConfigDir, "config.yaml"),
+		}
+		state := &State{
+			Paths:        paths,
+			GlobalConfig: &GlobalConfig{ActiveConfig: env.ConfigRepo},
+		}
+		return env, state
+	}
+
+	t.Run("load tolerates unfetched command source", func(t *testing.T) {
+		_, state := setup(t)
+		if err := state.LoadConfigRepo(state.GlobalConfig.ActiveConfig); err != nil {
+			t.Fatalf("LoadConfigRepo with unfetched command source failed: %v", err)
+		}
+		if !state.HasCommandSources() {
+			t.Error("HasCommandSources() = false, want true")
+		}
+
+		// Resolving a profile that references the unfetched source should
+		// error with the refresh hint.
+		_, err := state.ResolveProfile("default")
+		if err == nil {
+			t.Fatal("expected error resolving profile against unfetched source")
+		}
+		if !strings.Contains(err.Error(), "tai refresh") {
+			t.Errorf("error should hint at 'tai refresh', got: %v", err)
+		}
+	})
+
+	t.Run("refresh materializes and rebuilds resolvers", func(t *testing.T) {
+		_, state := setup(t)
+		if err := state.LoadConfigRepo(state.GlobalConfig.ActiveConfig); err != nil {
+			t.Fatal(err)
+		}
+
+		var refreshedNames []string
+		if err := state.RefreshCommandSources("", func(name string) {
+			refreshedNames = append(refreshedNames, name)
+		}); err != nil {
+			t.Fatalf("RefreshCommandSources() error = %v", err)
+		}
+		if len(refreshedNames) != 1 || refreshedNames[0] != "private" {
+			t.Errorf("refreshed = %v, want [private]", refreshedNames)
+		}
+
+		// Post-refresh, the same State must resolve the profile - proving
+		// the resolvers were rebuilt against the fresh sources.
+		resolved, err := state.ResolveProfile("default")
+		if err != nil {
+			t.Fatalf("ResolveProfile after refresh: %v", err)
+		}
+		if len(resolved.Assets) != 1 || resolved.Assets[0].Name != "remote.md" {
+			t.Errorf("assets = %+v, want single remote.md", resolved.Assets)
+		}
+
+		// LocateAsset should also work now.
+		if _, err := state.LocateAsset("private:personas/remote.md"); err != nil {
+			t.Errorf("LocateAsset after refresh: %v", err)
+		}
+	})
+
+	t.Run("refresh of named non-command source rejected", func(t *testing.T) {
+		_, state := setup(t)
+		if err := state.LoadConfigRepo(state.GlobalConfig.ActiveConfig); err != nil {
+			t.Fatal(err)
+		}
+		if err := state.RefreshCommandSources("local", nil); err == nil {
+			t.Error("expected error refreshing non-command source by name")
+		}
+		if err := state.RefreshCommandSources("nope", nil); err == nil {
+			t.Error("expected error refreshing unknown source")
+		}
+	})
 }
