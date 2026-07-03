@@ -168,3 +168,25 @@ func TestAssetContentResolverRejectsBinaryContent(t *testing.T) {
 		t.Errorf("error = %q, should mention binary content", err.Error())
 	}
 }
+
+func TestAssetContentResolverUnmaterializedSource(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	loader := source.NewLoader(tmpDir)
+	loader.SetCacheDir(filepath.Join(tmpDir, "cache"))
+	sources, err := loader.LoadAll([]config.Source{
+		{Name: "private", Type: config.SourceTypeCommand, Command: []string{"sh", "-c", "true"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := NewAssetContentResolver(sources)
+
+	_, err = resolver.ResolveAssetContent("private:personas/remote.md")
+	if err == nil {
+		t.Fatal("expected error for unfetched command source")
+	}
+	if !strings.Contains(err.Error(), "tai refresh") {
+		t.Errorf("error should hint at 'tai refresh', got: %v", err)
+	}
+}

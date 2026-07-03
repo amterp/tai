@@ -57,7 +57,9 @@ func SwapInto(staging, dest string) error {
 		return fmt.Errorf("rename: %w", err)
 	}
 
-	// Cross-filesystem fallback: copy then remove.
+	// Cross-filesystem fallback: copy then remove. A partial CopyDir failure
+	// can leave a half-written dest; restoreOld's RemoveAll(dest) clears it
+	// before the old content is renamed back.
 	if err := pathutil.CopyDir(staging, dest); err != nil {
 		restoreOld()
 		return fmt.Errorf("cross-fs copy: %w", err)

@@ -46,6 +46,12 @@ func (r *AssetContentResolver) ResolveAssetContent(ref string) ([]byte, error) {
 		return nil, fmt.Errorf("source %q not found", sourceName)
 	}
 
+	// An unfetched command source would otherwise fall through to a bare
+	// "asset not found"; surface the actionable remedy instead.
+	if err := src.RequireMaterialized(); err != nil {
+		return nil, err
+	}
+
 	// Infer asset type from the first path segment (e.g. "personas/" -> "persona")
 	assetType := inferAssetType(assetPath)
 	if assetType == "" {
