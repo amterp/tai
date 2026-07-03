@@ -9,6 +9,7 @@ import (
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/adapter/claude"
+	"github.com/amterp/tai/internal/cmdexec"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/install"
 	"github.com/amterp/tai/internal/profile"
@@ -1912,5 +1913,120 @@ bundles:
 	}
 	if got := env.ReadTargetFile("output-styles/remote.md"); !strings.Contains(got, "# Remote v2") {
 		t.Error("installed files should survive a failed refresh")
+	}
+}
+
+// TestE2EPostInstallHook exercises the post_install contract end to end:
+// resolve a profile with a hook, install it, run the hook the way the CLI
+// does, and verify the env contract and failure semantics.
+func TestE2EPostInstallHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("post_install e2e requires POSIX sh")
+	}
+
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+	env.SetupAsset("personas", "default.md", `---
+tai-schema-version: 1
+name: default
+description: Default persona
+---
+
+# Default
+`)
+	env.SetupBundle("core", `name: core
+assets:
+  - type: persona
+    path: personas/default.md
+`)
+	capture := filepath.Join(env.Root, "hook-capture")
+	env.SetupProfile("hooked", `name: hooked
+target: claude
+bundles:
+  - core
+post_install:
+  - sh
+  - -c
+  - printf "%s|%s|%s|%s" "$TAI_TARGET" "$TAI_PROFILE" "$TAI_MANIFEST_DIR" "$TAI_VERSION" > `+capture+`
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, err := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources, err := loader.LoadAll(taiConfig.Sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundles, err := config.LoadBundlesFromDir(filepath.Join(env.ConfigRepo, "bundles"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profiles, err := config.LoadProfilesFromDir(filepath.Join(env.ConfigRepo, "profiles"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := profile.NewResolver(profiles, bundles, sources).Resolve("hooked")
+	if err != nil {
+		t.Fatalf("resolving profile: %v", err)
+	}
+
+	manifestDir := filepath.Join(env.ConfigDir, "manifests")
+	manifestStore := install.NewManifestStore(manifestDir)
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adap := claude.New(env.TargetDir)
+
+	if _, err := installer.Install(adap, "hooked", resolved.Assets, install.InstallOptions{}); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	// Run the hook with the same env contract the CLI provides.
+	hookEnv := map[string]string{
+		"TAI_TARGET":       resolved.Target,
+		"TAI_PROFILE":      resolved.Name,
+		"TAI_MANIFEST_DIR": manifestDir,
+		"TAI_VERSION":      "test-version",
+	}
+	if err := cmdexec.Run(cmdexec.Spec{
+		Argv:    resolved.PostInstall,
+		Timeout: resolved.PostInstallTimeout,
+		Env:     hookEnv,
+	}); err != nil {
+		t.Fatalf("post_install hook failed: %v", err)
+	}
+
+	got, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatalf("hook capture file: %v", err)
+	}
+	want := "claude|hooked|" + manifestDir + "|test-version"
+	if string(got) != want {
+		t.Errorf("hook env capture = %q, want %q", string(got), want)
+	}
+
+	// A failing hook must not disturb the completed install.
+	failErr := cmdexec.Run(cmdexec.Spec{
+		Argv:    []string{"sh", "-c", "printf 'hook broke' >&2; exit 3"},
+		Timeout: resolved.PostInstallTimeout,
+		Env:     hookEnv,
+	})
+	if failErr == nil {
+		t.Fatal("expected error from failing hook")
+	}
+	if !strings.Contains(failErr.Error(), "exited 3") || !strings.Contains(failErr.Error(), "hook broke") {
+		t.Errorf("hook error should carry exit code and stderr tail, got: %v", failErr)
+	}
+	if !env.TargetFileExists("output-styles/default.md") {
+		t.Error("installed files must survive a failing hook")
+	}
+	if m, err := manifestStore.Load("claude"); err != nil || m == nil {
+		t.Errorf("manifest must survive a failing hook (m=%v, err=%v)", m, err)
 	}
 }

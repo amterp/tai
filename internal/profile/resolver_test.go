@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/source"
@@ -305,5 +306,48 @@ func TestResolverGetProfile(t *testing.T) {
 	_, ok = resolver.GetProfile("nonexistent")
 	if ok {
 		t.Error("GetProfile returned true for non-existing profile")
+	}
+}
+
+func TestResolverPropagatesPostInstall(t *testing.T) {
+	_, sources, bundles := setupTestEnv(t)
+
+	profiles := map[string]*config.Profile{
+		"hooked": {
+			Name:               "hooked",
+			Target:             "claude",
+			Bundles:            []string{"core"},
+			PostInstall:        []string{"sh", "-c", "./notify.sh"},
+			PostInstallTimeout: "90s",
+		},
+		"plain": {
+			Name:    "plain",
+			Target:  "claude",
+			Bundles: []string{"core"},
+		},
+	}
+
+	resolver := NewResolver(profiles, bundles, sources)
+
+	hooked, err := resolver.Resolve("hooked")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if len(hooked.PostInstall) != 3 || hooked.PostInstall[2] != "./notify.sh" {
+		t.Errorf("PostInstall = %v, want propagated argv", hooked.PostInstall)
+	}
+	if hooked.PostInstallTimeout != 90*time.Second {
+		t.Errorf("PostInstallTimeout = %v, want 90s", hooked.PostInstallTimeout)
+	}
+
+	plain, err := resolver.Resolve("plain")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if len(plain.PostInstall) != 0 {
+		t.Errorf("PostInstall = %v, want empty", plain.PostInstall)
+	}
+	if plain.PostInstallTimeout != config.DefaultCommandTimeout {
+		t.Errorf("PostInstallTimeout = %v, want default", plain.PostInstallTimeout)
 	}
 }

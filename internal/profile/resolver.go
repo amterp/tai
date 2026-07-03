@@ -3,6 +3,7 @@ package profile
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/amterp/tai/internal/bundle"
 	"github.com/amterp/tai/internal/config"
@@ -22,11 +23,13 @@ func (noopLogger) Printf(string, ...any) {}
 
 // ResolvedProfile contains the fully resolved assets for a profile.
 type ResolvedProfile struct {
-	Name    string
-	Target  string
-	Options map[string]any
-	Vars    map[string]string // Template variables from profile definition
-	Assets  []*config.Asset
+	Name               string
+	Target             string
+	Options            map[string]any
+	Vars               map[string]string // Template variables from profile definition
+	Assets             []*config.Asset
+	PostInstall        []string // Hook run after a successful install
+	PostInstallTimeout time.Duration
 }
 
 // Resolver handles profile resolution.
@@ -126,11 +129,13 @@ func (r *Resolver) resolveProfile(profile *config.Profile) (*ResolvedProfile, er
 	}
 
 	return &ResolvedProfile{
-		Name:    profile.Name,
-		Target:  profile.Target,
-		Options: profile.Options,
-		Vars:    profile.Vars,
-		Assets:  assets,
+		Name:               profile.Name,
+		Target:             profile.Target,
+		Options:            profile.Options,
+		Vars:               profile.Vars,
+		Assets:             assets,
+		PostInstall:        profile.PostInstall,
+		PostInstallTimeout: profile.ResolvedPostInstallTimeout(),
 	}, nil
 }
 

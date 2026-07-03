@@ -10,9 +10,11 @@ import (
 
 	"github.com/amterp/ra"
 	"github.com/amterp/tai/internal/adapter"
+	"github.com/amterp/tai/internal/cmdexec"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/install"
 	"github.com/amterp/tai/internal/output"
+	"github.com/amterp/tai/internal/profile"
 	"github.com/amterp/tai/internal/state"
 	"github.com/amterp/tai/internal/template"
 )
@@ -725,6 +727,36 @@ func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts 
 		Manifest:  manifestPath,
 	})
 
+	return runPostInstallHook(s, resolved, dryRun)
+}
+
+// runPostInstallHook runs the profile's post_install command, if any. It runs
+// only after a successful install; a failure is reported (the install itself
+// stands - files and manifest are already in place, and side effects can't be
+// rolled back) and returned so callers exit nonzero.
+func runPostInstallHook(s *state.State, resolved *profile.ResolvedProfile, dryRun bool) error {
+	if len(resolved.PostInstall) == 0 {
+		return nil
+	}
+	if dryRun {
+		out.Info("Would run post_install hook")
+		return nil
+	}
+
+	err := cmdexec.Run(cmdexec.Spec{
+		Argv:    resolved.PostInstall,
+		Timeout: resolved.PostInstallTimeout,
+		Env: map[string]string{
+			"TAI_TARGET":       resolved.Target,
+			"TAI_PROFILE":      resolved.Name,
+			"TAI_MANIFEST_DIR": s.Paths.ManifestDir,
+			"TAI_VERSION":      s.Version,
+		},
+	})
+	if err != nil {
+		out.Error(fmt.Sprintf("post_install hook failed (install succeeded): %v", err))
+		return err
+	}
 	return nil
 }
 
