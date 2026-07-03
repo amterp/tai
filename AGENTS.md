@@ -42,7 +42,7 @@ golangci-lint run ./...          # Runs errcheck, govet, staticcheck, unused, in
 | **Asset** | Atomic configuration unit | Single persona/delegate/skill/file/statusline/mcp/hook |
 | **Bundle** | Named collection of assets | Shopping list of related assets |
 | **Profile** | Bundle(s) + target | What you actually install |
-| **Source** | Asset provider | Local dir, tai repo |
+| **Source** | Asset provider | Local dir, tai repo, command (fetched into cache) |
 
 **Asset shapes:** File assets (personas, delegates, skills, files) are copied to target paths. Config assets (statuslines, mcps, hooks) are merged into target JSON config files.
 
@@ -61,7 +61,8 @@ Sources → Assets → Bundles → Profiles → Install Pipeline → Target Conf
 - **cmd/tai/main.go** - CLI entry point, command routing & handlers
 - **internal/state/** - Global state management; loads config repo, creates resolvers
 - **internal/config/** - Core types (TaiConfig, Source, Bundle, Profile, Asset, Manifest) and YAML parsing
-- **internal/source/** - Discovers and loads assets from filesystem sources
+- **internal/source/** - Discovers and loads assets from filesystem sources; materializes command sources into `~/.cache/tai/sources/`
+- **internal/cmdexec/** - Shared runner for user-declared commands (skill includes, command sources, post-install hooks): staging dir + TAI_* env, timeouts with process-group cleanup, capped output, atomic swap
 - **internal/bundle/** - Recursive bundle composition with cycle detection
 - **internal/profile/** - Composes bundles into profiles, handles asset deduplication
 - **internal/install/** - Installation logic with manifest tracking, conflict detection, backup/restore
@@ -160,6 +161,7 @@ tai locate <asset-path>            # Print full filesystem path
 tai install <profile> [--dry-run] [--force] [--skip-conflicts]
 tai uninstall <target>
 tai status [target]
+tai refresh [source]               # Fetch command sources without installing
 
 # Convenience
 tai run <target> [args...]         # Run target with tai config applied

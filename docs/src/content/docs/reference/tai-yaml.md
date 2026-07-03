@@ -49,9 +49,11 @@ Optional. A list of locations that provide assets. Each source makes its assets 
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `name` | string | yes | | Unique identifier for this source. Used in `source:path` references. |
-| `path` | string | yes | | Filesystem path to the source directory. Supports `~` expansion. |
-| `type` | string | no | `local` | Source type: `local` or `tai-repo`. |
+| `name` | string | yes | | Unique identifier for this source. Used in `source:path` references. Must be a plain name (no path separators, `.`, or `..`). |
+| `path` | string | local/tai-repo | | Filesystem path to the source directory. Supports `~` expansion. Rejected for `command` sources. |
+| `type` | string | no | `local` | Source type: `local`, `tai-repo`, or `command`. |
+| `command` | string list | command | | Argv list that fetches the source's assets into `$TAI_DEST_DIR`. Only valid with `type: command`. |
+| `timeout` | string | no | `30s` | Duration bound for `command` (e.g. `"60s"`, `"2m"`). Only valid with `type: command`. |
 
 ### Source types
 
@@ -59,6 +61,7 @@ Optional. A list of locations that provide assets. Each source makes its assets 
 |------|-------------|
 | `local` | A directory containing asset files directly. Assets are read from the directory root. |
 | `tai-repo` | Another tai config repo. Assets are read from its `assets/` subdirectory. |
+| `command` | Assets are fetched by running `command` and cached under `~/.cache/tai/sources/`. See [Sources](/tai/concepts/sources/) for the fetch contract and freshness rules. |
 
 ### The implicit local source
 
@@ -134,9 +137,10 @@ default_profile: personal
 Tai validates `tai.yaml` on load and fails fast with a clear error if:
 
 - `version` is missing or not `1`
-- A source has no `name`
-- A source has no `path`
-- A source `type` is not `local` or `tai-repo`
+- A source has no `name`, or the name contains path separators or is `.`/`..`
+- A `local` or `tai-repo` source has no `path`, or sets `command`/`timeout`
+- A `command` source has no `command`, sets `path`, has an empty argv element, or has a non-positive/unparseable `timeout`
+- A source `type` is not `local`, `tai-repo`, or `command`
 - Two sources share the same `name`
 
 ## Minimal example

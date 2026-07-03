@@ -79,6 +79,7 @@ tai install <profile> --var key=val     # Pass template variables
 
 tai uninstall <target>             # Remove tai-managed files
 tai status [target]                # Show what's installed
+tai refresh [source]               # Fetch command sources without installing
 ```
 
 ### Running
@@ -115,11 +116,30 @@ sources:
   - name: personal
     type: tai-repo        # References another tai config repo
     path: ~/personal-tai-config
+  # Command source: fetches its whole asset tree by running a command.
+  # Use for private repos behind SSH/token auth. Argv runs with NO shell;
+  # wrap in ["sh","-c",...] for shell features. Script must write the asset
+  # tree (personas/, skills/, ...) into $TAI_DEST_DIR.
+  - name: company
+    type: command
+    command:
+      - sh
+      - -c
+      - git clone --depth=1 git@github.com:company/ai-standards.git "$TAI_DEST_DIR"
+    timeout: 2m           # Optional, default 30s. 'path' is rejected.
 
 default_profile: personal
 ```
 
 **Source priority:** Later sources override earlier ones on path conflicts.
+
+**Command sources:** materialize into `~/.cache/tai/sources/`. `tai install`
+and `tai reinstall` re-fetch them automatically; `tai refresh [source]`
+fetches without installing (needed on a fresh machine before read-only
+commands like `tai list assets` can see the source). Dry-run never fetches.
+A failed fetch fails the install and leaves the previous cache intact.
+Script env: `TAI_DEST_DIR`, `TAI_SOURCE`, `TAI_CONFIG_REPO`, `TAI_VERSION`,
+plus the inherited user env - keep credentials in env vars, not argv.
 
 ### Bundle Definition
 
@@ -166,6 +186,14 @@ bundles:
 assets:
   - type: persona
     path: personas/brainstormer.md
+
+# Optional: argv run after a successful install (side effects only:
+# notifications, follow-up scripts). Env: TAI_TARGET, TAI_PROFILE,
+# TAI_MANIFEST_DIR, TAI_VERSION. Failure does NOT undo the install;
+# tai reports install success, prints the hook error, and exits nonzero.
+post_install:
+  - ./scripts/after-install.sh
+post_install_timeout: 1m  # Optional, default 30s; requires post_install
 ```
 
 ## Templating

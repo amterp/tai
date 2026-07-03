@@ -39,6 +39,8 @@ scope: project
 | `assets` | list of [asset entries](#assets) | no | | Direct asset references. |
 | `options` | map | no | | Adapter-specific settings (reserved for future use). |
 | `scope` | string | no | `project` | Installation scope for config assets. |
+| `post_install` | list of strings | no | | Argv list run after a successful install. |
+| `post_install_timeout` | string | no | `30s` | Duration bound for `post_install` (e.g. `"60s"`, `"2m"`). |
 
 A profile must have at least one of `bundles` or `assets`.
 
@@ -139,6 +141,22 @@ The scope affects which settings file config assets are merged into. File assets
 
 See [Config Assets](/tai/reference/config-assets/) for details on how scope maps to specific files per target.
 
+## post_install
+
+Optional. An argv list run after the profile installs successfully - for side effects like notifications or follow-up scripts. The command runs directly with no shell; wrap with `["sh", "-c", ...]` for shell features.
+
+```yaml
+post_install:
+  - sh
+  - -c
+  - osascript -e 'display notification "tai installed"'
+post_install_timeout: 1m
+```
+
+The hook sees the inherited user environment plus `TAI_TARGET`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, and `TAI_VERSION` (always set, so `set -u` scripts are safe). It does not run on `--dry-run` or when the install fails.
+
+A failing hook does not undo the install - files and manifest are already in place. Tai reports the install as succeeded, prints the hook's error with a tail of its stderr, and exits nonzero.
+
 ## Validation rules
 
 Tai validates profiles on load and fails fast if:
@@ -148,5 +166,7 @@ Tai validates profiles on load and fails fast if:
 - Neither `bundles` nor `assets` is specified
 - An asset entry is missing `type` or `path`
 - An asset entry uses an invalid `type`
+- `post_install` contains an empty argv element
+- `post_install_timeout` is set without `post_install`, is unparseable, or is not positive
 - An asset entry uses `dest` on a non-file type
 - A `dest` value is an absolute path or contains path traversal (`..`)

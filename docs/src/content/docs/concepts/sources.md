@@ -51,17 +51,32 @@ sources:
 
 This makes `~/personal-tai-config/assets/` available as the `personal` source. The difference from a plain local directory is that tai knows to look inside the `assets/` subdirectory.
 
-### Git remote (planned)
+### Command source
 
-Git remote sources will allow referencing assets from a git repository. This is planned for a future release.
+A command source materializes its assets by running a command you declare. This covers remote repos - including private ones behind SSH or token auth - and any other fetch shape, without tai needing to understand each auth scheme.
 
 ```yaml
-# Future syntax
 sources:
   - name: company
-    git: github.com/company/ai-standards
-    ref: main
+    type: command
+    command:
+      - sh
+      - -c
+      - git clone --depth=1 git@github.com:company/ai-standards.git "$TAI_DEST_DIR"
+    timeout: 2m   # optional, default 30s
 ```
+
+The command is an argv list executed directly (no shell - wrap with `sh -c` for shell features). tai runs it with a staging directory exposed as `$TAI_DEST_DIR`; whatever the command writes there is atomically swapped into a cache under `~/.cache/tai/sources/` and from then on the source behaves exactly like a local directory - the command's output should contain the usual `personas/`, `skills/`, etc. subdirectories.
+
+The command also sees `TAI_SOURCE` (the source name), `TAI_CONFIG_REPO` (absolute path of the config repo), and `TAI_VERSION`. Your full environment is inherited, so keep credentials in env vars (e.g. `$GITLAB_TOKEN`) rather than in the argv - argv is echoed in error messages, env vars are not.
+
+Freshness works like this:
+
+- `tai install` and `tai reinstall` re-fetch command sources first, so installs always reflect upstream. A failed fetch fails the install and leaves the previous cache intact.
+- `tai refresh [source]` fetches without installing - use it on a fresh machine or to update the cache for read-only commands.
+- Read-only commands (`list`, `show`, `locate`) serve the cache without fetching. Before the first fetch, resolving assets from the source fails with a hint to run `tai refresh`.
+
+Command sources run arbitrary code with your environment - treat a config repo that declares them the same as running its code.
 
 ## Source priority
 

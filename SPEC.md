@@ -193,14 +193,61 @@ sources:
     type: tai-repo
     path: ~/personal-tai-config
 
-  # Future: Git remote
-  # - name: company
-  #   git: github.com/company/ai-standards
-  #   ref: main
+  # A command source: an argv-list command materializes the source's entire
+  # asset tree. Covers remote repos behind SSH/token auth (and any other
+  # fetch shape) - keep credentials in env vars, not argv.
+  - name: company
+    type: command
+    command:
+      - sh
+      - -c
+      - git clone --depth=1 git@github.com:company/ai-standards.git "$TAI_DEST_DIR"
+    timeout: 2m   # optional, default 30s
 
 # Default profile to use when none specified
 default_profile: personal
 ```
+
+#### Command Sources
+
+A `type: command` source runs its `command` (an argv list, executed directly
+without a shell - wrap with `["sh", "-c", ...]` for shell features) with a
+tai-managed staging directory exposed as `$TAI_DEST_DIR`. Whatever the command
+writes there is atomically swapped into the source's cache directory
+(`~/.cache/tai/sources/<repo-key>/<name>`, namespaced per config repo), which
+is then treated exactly like a local source: assets are discovered from the
+usual `personas/`, `skills/`, etc. layout the command produced.
+
+Field rules:
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `command` | Yes | Argv list; no empty elements |
+| `timeout` | No | Duration string (e.g. `"60s"`, `"2m"`). Default 30s. |
+| `path` | Rejected | Command sources have no on-disk path |
+
+Environment for the command: the user's env is inherited (so `PATH`, `HOME`,
+and credential env vars flow through; pre-existing `TAI_*` vars are stripped),
+plus `TAI_DEST_DIR` (staging dir), `TAI_SOURCE` (source name),
+`TAI_CONFIG_REPO` (absolute path of the active config repo), and
+`TAI_VERSION`.
+
+Freshness model:
+
+- `tai install` / `tai reinstall` re-run every command source's fetch first,
+  so installed content always reflects upstream. A fetch failure fails the
+  install (fail-fast); the previous cache is left intact by the atomic swap.
+- `tai refresh [source]` fetches without touching any target - the remedy for
+  a fresh machine or after `--dry-run`.
+- Read-only commands (`list`, `show`, `locate`, `status`) serve the cache
+  without fetching. Resolving assets from a never-fetched source fails with a
+  hint to run `tai refresh`.
+- `--dry-run` never runs fetch commands (a preview must not have side
+  effects); it resolves from the cache and prints what it would refresh.
+
+Trust model matches command skill-includes: source commands run arbitrary
+code with your environment. Treat a config repo that declares command sources
+the same as running its code.
 
 ### Bundle Definition
 
@@ -284,7 +331,29 @@ options:
 # Optional: installation scope for config assets (default: project)
 # Affects where MCPs and hooks are installed
 scope: project  # or "user" or "local"
+
+# Optional: argv list run after this profile installs successfully.
+# For side effects: notifications, restarting tools, chaining scripts.
+post_install:
+  - sh
+  - -c
+  - osascript -e 'display notification "tai installed"'
+post_install_timeout: 1m  # optional, default 30s
 ```
+
+#### Post-Install Hooks
+
+`post_install` runs only after the install completes (never on dry-run, never
+when the install itself failed). The command sees the inherited user env plus
+`TAI_TARGET`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, and `TAI_VERSION` - all
+always set, so `set -u` scripts are safe.
+
+A failing hook does **not** roll the install back: files and manifest are
+already in place, and side effects can't be un-run (the same model as dpkg,
+Homebrew, and npm post-install scripts). tai reports the install as
+succeeded, prints the hook failure with a tail of its stderr, and exits
+nonzero so scripts and CI notice. `tai reinstall` continues across remaining
+targets and aggregates hook failures into its final exit code.
 
 ### File Asset Formats
 
@@ -627,9 +696,9 @@ tai status [target]             # Show what's currently installed
 tai run claude [args...]        # Run claude with tai config applied
 tai run opencode [args...]      # Run opencode with tai config applied
 
-# Remote Source Management (Future)
-tai sync                        # Re-fetch all remote sources
-tai sync <source-name>          # Re-fetch specific remote source
+# Command Source Management
+tai refresh                     # Fetch all command sources into the cache
+tai refresh <source-name>       # Fetch a specific command source
 
 # Build (Future)
 tai build <profile>             # Build/compile assets without installing
@@ -1006,14 +1075,22 @@ bundles:
   - dev-tools
 ```
 
-### Remote Source Caching (Future)
+### Command Source Caching
 
-When using git remote sources:
-- Sources are cached in `~/.cache/tai/sources/`
-- `tai sync` fetches/updates cached sources
-- `tai install` does NOT require explicit sync first
-- `tai install` warns if cache is stale (configurable threshold, default 24h)
-- Cache miss during install triggers automatic fetch
+Command sources are cached in `~/.cache/tai/sources/<repo-key>/<name>`, where
+`<repo-key>` is derived from the active config repo's path - switching
+between config repos that declare same-named command sources cannot poison
+each other's cache.
+
+- `tai install` / `tai reinstall` re-fetch command sources automatically; no
+  explicit refresh is needed.
+- `tai refresh` fetches without installing.
+- Fetches stage into `~/.cache/tai/staging` and swap in atomically; a failed
+  fetch leaves the previous cache intact (the staging dir is preserved and
+  its path included in the error, for debugging).
+- `tai uninstall` leaves the cache alone - it's a cache. Removing a source
+  from tai.yaml orphans its cache directory; a `tai cache clean` command is a
+  possible future addition.
 
 ## Templating
 

@@ -91,6 +91,22 @@ Controls where config assets (statuslines, and in the future MCPs and hooks) are
 scope: user  # StatusLines install to user-level settings
 ```
 
+### `post_install`
+
+An argv list run after the profile installs successfully - for side effects like notifications, restarting tools, or chaining follow-up scripts.
+
+```yaml
+post_install:
+  - sh
+  - -c
+  - osascript -e 'display notification "tai installed"'
+post_install_timeout: 1m  # optional, default 30s
+```
+
+The hook sees your environment plus `TAI_TARGET`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, and `TAI_VERSION` (always set, so `set -u` scripts are safe). It does not run on dry-run or when the install fails.
+
+A failing hook does not undo the install - files and manifest are already in place. tai reports the install as succeeded, prints the hook's error with its stderr, and exits nonzero so scripts and CI notice.
+
 ## Default profile
 
 You can set a default profile in `tai.yaml` so you don't need to specify it every time:

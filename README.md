@@ -85,6 +85,14 @@ sources:
   - name: personal
     type: tai-repo
     path: ~/personal-tai-config
+  # Command sources fetch assets by running a command - e.g. cloning a
+  # private repo. tai re-fetches on install; 'tai refresh' fetches manually.
+  - name: company
+    type: command
+    command:
+      - sh
+      - -c
+      - git clone --depth=1 git@github.com:company/ai-standards.git "$TAI_DEST_DIR"
 
 default_profile: personal
 ```
@@ -137,6 +145,11 @@ bundles:
 assets:
   - type: persona
     path: personas/brainstormer.md
+
+# Optional: run a command after a successful install (notifications,
+# follow-up scripts). Failure doesn't undo the install, but tai exits nonzero.
+post_install:
+  - ./scripts/after-install.sh
 ```
 
 ### Asset File Formats
@@ -196,6 +209,7 @@ tai install <profile> --var key=val     # Pass template variables
 
 tai uninstall <target>             # Remove Tai-managed files
 tai status [target]                # Show what's installed
+tai refresh [source]               # Fetch command sources without installing
 ```
 
 ### Running

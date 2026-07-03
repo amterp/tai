@@ -237,6 +237,8 @@ tai install <profile> [flags]
 
 The install pipeline resolves bundles, processes templates, transforms frontmatter, and writes files to the target directory. See [Installation Behavior](/tai/reference/installation-behavior/) for details.
 
+If the config declares [command sources](/tai/concepts/sources/#command-source), install fetches them first so the installed content reflects upstream; a failed fetch fails the install. `--dry-run` never fetches (a preview must not have side effects) - it resolves from the cache and prints what it would refresh. After a successful install, the profile's `post_install` hook runs if declared; a hook failure leaves the install in place but makes tai exit nonzero.
+
 ```bash
 # Preview what would happen
 tai install work --dry-run
@@ -294,6 +296,8 @@ tai reinstall [target] [flags]
 
 Reinstall reads the manifest to determine which profile was last installed, then runs the install pipeline again. This is useful after editing assets in your config repo.
 
+Like `tai install`, reinstall re-fetches any command sources first (once, before all targets). If a profile's `post_install` hook fails, reinstall continues with the remaining targets and exits nonzero at the end.
+
 ```bash
 # Reinstall all targets
 tai reinstall
@@ -306,6 +310,27 @@ tai reinstall --dry-run
 ```
 
 If no profiles are currently installed, the command exits with an error message.
+
+## tai refresh
+
+Fetch command sources into the cache without installing anything.
+
+```bash
+tai refresh [source]
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `source` | no | Command source to fetch. If omitted, fetches all command sources. |
+
+Use this on a fresh machine (read-only commands like `tai list assets` need the cache populated) or to update the cache without touching targets. `tai install` and `tai reinstall` refresh automatically, so an explicit refresh before installing is not required.
+
+Naming a source that is not a command source is an error. A failed fetch leaves the previous cache intact.
+
+```bash
+tai refresh            # Fetch all command sources
+tai refresh company    # Fetch just the "company" source
+```
 
 ## tai uninstall
 
