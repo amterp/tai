@@ -3,7 +3,6 @@ package install
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -28,9 +27,9 @@ const (
 
 // InstallOptions configures installation behavior.
 type InstallOptions struct {
-	DryRun        bool               // Preview without making changes
-	Force         bool               // Overwrite conflicting files
-	SkipConflicts bool               // Leave conflicting files as-is
+	DryRun        bool // Preview without making changes
+	Force         bool // Overwrite conflicting files
+	SkipConflicts bool // Leave conflicting files as-is
 	// Variables holds user-provided template variables (tai.yaml + profile + CLI merged).
 	// Adapter vars are prepended at lowest priority by buildInstallContext - do not
 	// include them here, or they will be merged twice (harmlessly but wastefully).
@@ -485,7 +484,7 @@ func (i *Installer) installFileAsset(ctx *installContext, ra resolvedFileAsset, 
 		if _, err := os.Stat(ra.fullPath); os.IsNotExist(err) {
 			return ManifestEntry{}, false, fmt.Errorf("cannot create backup for %s: file was removed after conflict check", ra.targetPath)
 		}
-		if err := copyFile(ra.fullPath, ra.resolved.BackupPath); err != nil {
+		if err := pathutil.CopyFile(ra.fullPath, ra.resolved.BackupPath); err != nil {
 			return ManifestEntry{}, false, fmt.Errorf("creating backup for %s: %w", ra.targetPath, err)
 		}
 	}
@@ -857,7 +856,7 @@ func (i *Installer) resolveAsset(
 					backupPath := fullTargetPath + ".tai-backup"
 					// Only create actual backup if not dry-run
 					if !dryRun {
-						if err := copyFile(fullTargetPath, backupPath); err != nil {
+						if err := pathutil.CopyFile(fullTargetPath, backupPath); err != nil {
 							return nil, fmt.Errorf("creating backup: %w", err)
 						}
 					}
@@ -1260,40 +1259,6 @@ func cleanEmptyDirs(path, stopAt string) {
 	}
 }
 
-// mkdirPreservingMode creates a directory at dstPath using the permissions from the source DirEntry.
-func mkdirPreservingMode(dstPath string, d fs.DirEntry) error {
-	info, err := d.Info()
-	if err != nil {
-		return err
-	}
-	return os.MkdirAll(dstPath, info.Mode().Perm())
-}
-
-// copyFile copies a file from src to dst, preserving the source file's permissions.
-func copyFile(src, dst string) error {
-	srcInfo, err := os.Stat(src)
-	if err != nil {
-		return err
-	}
-
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = srcFile.Close() }()
-
-	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcInfo.Mode().Perm())
-	if err != nil {
-		return err
-	}
-	defer func() { _ = dstFile.Close() }()
-
-	if _, err = io.Copy(dstFile, srcFile); err != nil {
-		return err
-	}
-	return dstFile.Close()
-}
-
 // validateDirTemplates walks a source directory and validates that all files
 // with template syntax can be processed successfully. This catches errors in
 // Phase 1 before any files are copied to the target directory.
@@ -1418,10 +1383,10 @@ func copyDirExcluding(src, dst string, excludes ...string) error {
 		dstPath := filepath.Join(dst, relPath)
 
 		if d.IsDir() {
-			return mkdirPreservingMode(dstPath, d)
+			return pathutil.MkdirPreservingMode(dstPath, d)
 		}
 
-		return copyFile(path, dstPath)
+		return pathutil.CopyFile(path, dstPath)
 	})
 }
 

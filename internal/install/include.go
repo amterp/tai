@@ -3,7 +3,6 @@ package install
 import (
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -119,9 +118,9 @@ func (r *IncludeResolver) resolveSourceInclude(inc config.Include, targetSkillPa
 	}
 
 	if info.IsDir() {
-		return copyDirectory(srcPath, destPath)
+		return pathutil.CopyDir(srcPath, destPath)
 	}
-	return copyFile(srcPath, destPath)
+	return pathutil.CopyFile(srcPath, destPath)
 }
 
 // resolveURLInclude fetches a file from a URL and writes it to the destination.
@@ -226,37 +225,6 @@ func extractFilename(srcPath, srcURL string) (string, error) {
 	}
 
 	return filename, nil
-}
-
-// copyDirectory copies a directory recursively, rejecting symlinks for
-// security. Existing destination contents are removed first. Package-level
-// (no receiver) so call sites that don't have a resolver - e.g. the
-// command-include cross-fs swap fallback - don't need to fabricate one.
-func copyDirectory(src, dst string) error {
-	_ = os.RemoveAll(dst)
-
-	return filepath.WalkDir(src, func(srcPath string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Security: Skip symlinks
-		if d.Type()&os.ModeSymlink != 0 {
-			return nil // Skip symlinks silently in directory traversal
-		}
-
-		relPath, err := filepath.Rel(src, srcPath)
-		if err != nil {
-			return err
-		}
-		dstPath := filepath.Join(dst, relPath)
-
-		if d.IsDir() {
-			return mkdirPreservingMode(dstPath, d)
-		}
-
-		return copyFile(srcPath, dstPath)
-	})
 }
 
 // DefaultHTTPClient returns an HTTP client with sensible defaults for fetching includes.

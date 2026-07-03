@@ -2,6 +2,8 @@
 package pathutil
 
 import (
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,6 +105,70 @@ func ValidateRelativePath(path string) error {
 	}
 
 	return nil
+}
+
+// CopyDir copies a directory recursively, rejecting symlinks for security.
+// Existing destination contents are removed first.
+func CopyDir(src, dst string) error {
+	_ = os.RemoveAll(dst)
+
+	return filepath.WalkDir(src, func(srcPath string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Security: Skip symlinks silently in directory traversal
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(src, srcPath)
+		if err != nil {
+			return err
+		}
+		dstPath := filepath.Join(dst, relPath)
+
+		if d.IsDir() {
+			return MkdirPreservingMode(dstPath, d)
+		}
+
+		return CopyFile(srcPath, dstPath)
+	})
+}
+
+// MkdirPreservingMode creates a directory at dstPath using the permissions
+// from the source DirEntry.
+func MkdirPreservingMode(dstPath string, d fs.DirEntry) error {
+	info, err := d.Info()
+	if err != nil {
+		return err
+	}
+	return os.MkdirAll(dstPath, info.Mode().Perm())
+}
+
+// CopyFile copies a file from src to dst, preserving the source file's permissions.
+func CopyFile(src, dst string) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = srcFile.Close() }()
+
+	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcInfo.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dstFile.Close() }()
+
+	if _, err = io.Copy(dstFile, srcFile); err != nil {
+		return err
+	}
+	return dstFile.Close()
 }
 
 // InvalidPathError is returned when a path fails validation.

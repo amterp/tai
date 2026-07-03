@@ -9,6 +9,7 @@ import (
 
 	"github.com/amterp/tai/internal/adapter/claude"
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/pathutil"
 	"github.com/amterp/tai/internal/source"
 	"github.com/amterp/tai/internal/template"
 	"github.com/amterp/tai/internal/testutil"
@@ -644,7 +645,7 @@ func TestCopyFilePreservesPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := copyFile(srcPath, dstPath); err != nil {
+	if err := pathutil.CopyFile(srcPath, dstPath); err != nil {
 		t.Fatalf("copyFile failed: %v", err)
 	}
 
