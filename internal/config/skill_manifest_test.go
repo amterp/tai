@@ -205,11 +205,11 @@ func TestIncludeResolvedTimeout(t *testing.T) {
 		timeout string
 		want    time.Duration
 	}{
-		{name: "default when empty", timeout: "", want: DefaultCommandIncludeTimeout},
+		{name: "default when empty", timeout: "", want: DefaultCommandTimeout},
 		{name: "explicit 5s", timeout: "5s", want: 5 * time.Second},
 		{name: "explicit 2m", timeout: "2m", want: 2 * time.Minute},
-		{name: "malformed falls back to default", timeout: "not-a-duration", want: DefaultCommandIncludeTimeout},
-		{name: "zero falls back to default", timeout: "0s", want: DefaultCommandIncludeTimeout},
+		{name: "malformed falls back to default", timeout: "not-a-duration", want: DefaultCommandTimeout},
+		{name: "zero falls back to default", timeout: "0s", want: DefaultCommandTimeout},
 	}
 
 	for _, tt := range tests {

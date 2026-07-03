@@ -10,9 +10,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// DefaultCommandIncludeTimeout is the default timeout for command-based includes
+// DefaultCommandTimeout is the default timeout for command-based includes
 // when the include doesn't specify one.
-const DefaultCommandIncludeTimeout = 30 * time.Second
+const DefaultCommandTimeout = 30 * time.Second
 
 // SkillManifest represents a skill's tai.yaml build configuration.
 // It declares external file dependencies that should be resolved at install time.
@@ -37,7 +37,7 @@ type Include struct {
 	Command []string `yaml:"command"`
 
 	// Timeout for command-based includes, parsed via time.ParseDuration.
-	// Defaults to DefaultCommandIncludeTimeout when unset. Ignored for
+	// Defaults to DefaultCommandTimeout when unset. Ignored for
 	// non-command includes.
 	Timeout string `yaml:"timeout"`
 
@@ -70,10 +70,8 @@ func (i *Include) Validate() error {
 	switch {
 	case hasCommand:
 		// Command-based include
-		for idx, arg := range i.Command {
-			if arg == "" {
-				return fmt.Errorf("include 'command' has empty string at index %d", idx)
-			}
+		if err := validateCommandArgv(i.Command, "command"); err != nil {
+			return fmt.Errorf("include %w", err)
 		}
 		if i.Dest == "" {
 			return fmt.Errorf("include with 'command' requires 'dest'")
@@ -89,14 +87,8 @@ func (i *Include) Validate() error {
 		if len(i.Fields) > 0 {
 			return fmt.Errorf("include 'fields' is only valid with 'from'+'path', not 'command'")
 		}
-		if i.Timeout != "" {
-			d, err := time.ParseDuration(i.Timeout)
-			if err != nil {
-				return fmt.Errorf("include 'timeout' %q is not a valid duration: %w", i.Timeout, err)
-			}
-			if d <= 0 {
-				return fmt.Errorf("include 'timeout' must be positive, got %q", i.Timeout)
-			}
+		if err := validateTimeoutString(i.Timeout, "timeout"); err != nil {
+			return fmt.Errorf("include %w", err)
 		}
 	case hasURL:
 		// URL-based include
@@ -137,18 +129,11 @@ func (i *Include) IsCommandBased() bool {
 }
 
 // ResolvedTimeout returns the parsed timeout for command-based includes, or
-// DefaultCommandIncludeTimeout when Timeout is empty. Validate guarantees the
+// DefaultCommandTimeout when Timeout is empty. Validate guarantees the
 // string parses cleanly, so this never returns an error path; if Validate was
 // skipped and Timeout is malformed, the default is returned instead.
 func (i *Include) ResolvedTimeout() time.Duration {
-	if i.Timeout == "" {
-		return DefaultCommandIncludeTimeout
-	}
-	d, err := time.ParseDuration(i.Timeout)
-	if err != nil || d <= 0 {
-		return DefaultCommandIncludeTimeout
-	}
-	return d
+	return resolveTimeout(i.Timeout)
 }
 
 // Validate checks that the skill manifest is well-formed.

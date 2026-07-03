@@ -3,6 +3,7 @@ package config
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/amterp/tai/internal/testutil"
 )
@@ -107,6 +108,110 @@ sources:
   - name: local
     type: invalid
     path: ./assets
+`,
+			wantErr: true,
+		},
+		{
+			name: "valid command source",
+			content: `version: 1
+sources:
+  - name: private
+    type: command
+    command: [sh, -c, 'git clone repo "$TAI_DEST_DIR"']
+    timeout: 2m
+`,
+			check: func(t *testing.T, c *TaiConfig) {
+				src := c.Sources[1] // implicit local + private
+				if !src.IsCommand() {
+					t.Errorf("IsCommand() = false, want true")
+				}
+				if got := src.ResolvedTimeout(); got != 2*time.Minute {
+					t.Errorf("ResolvedTimeout() = %v, want 2m", got)
+				}
+			},
+		},
+		{
+			name: "command source defaults timeout",
+			content: `version: 1
+sources:
+  - name: private
+    type: command
+    command: [./fetch.sh]
+`,
+			check: func(t *testing.T, c *TaiConfig) {
+				if got := c.Sources[1].ResolvedTimeout(); got != DefaultCommandTimeout {
+					t.Errorf("ResolvedTimeout() = %v, want default %v", got, DefaultCommandTimeout)
+				}
+			},
+		},
+		{
+			name: "command source with path rejected",
+			content: `version: 1
+sources:
+  - name: private
+    type: command
+    command: [./fetch.sh]
+    path: ./assets
+`,
+			wantErr: true,
+		},
+		{
+			name: "command source without command rejected",
+			content: `version: 1
+sources:
+  - name: private
+    type: command
+`,
+			wantErr: true,
+		},
+		{
+			name: "command source with empty argv element rejected",
+			content: `version: 1
+sources:
+  - name: private
+    type: command
+    command: [sh, '', script]
+`,
+			wantErr: true,
+		},
+		{
+			name: "command source with bad timeout rejected",
+			content: `version: 1
+sources:
+  - name: private
+    type: command
+    command: [./fetch.sh]
+    timeout: banana
+`,
+			wantErr: true,
+		},
+		{
+			name: "command on local source rejected",
+			content: `version: 1
+sources:
+  - name: local
+    path: ./assets
+    command: [./fetch.sh]
+`,
+			wantErr: true,
+		},
+		{
+			name: "timeout on local source rejected",
+			content: `version: 1
+sources:
+  - name: local
+    path: ./assets
+    timeout: 1m
+`,
+			wantErr: true,
+		},
+		{
+			name: "source name with path separator rejected",
+			content: `version: 1
+sources:
+  - name: ../evil
+    type: command
+    command: [./fetch.sh]
 `,
 			wantErr: true,
 		},
@@ -290,6 +395,72 @@ bundles:
 					t.Errorf("len(bundles) = %d, want 2", len(p.Bundles))
 				}
 			},
+		},
+		{
+			name: "profile with post_install hook",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install:
+  - sh
+  - -c
+  - ./notify.sh
+post_install_timeout: 1m
+`,
+			check: func(t *testing.T, p *Profile) {
+				if len(p.PostInstall) != 3 {
+					t.Errorf("len(post_install) = %d, want 3", len(p.PostInstall))
+				}
+				if got := p.ResolvedPostInstallTimeout(); got != time.Minute {
+					t.Errorf("ResolvedPostInstallTimeout() = %v, want 1m", got)
+				}
+			},
+		},
+		{
+			name: "post_install defaults timeout",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install: [./notify.sh]
+`,
+			check: func(t *testing.T, p *Profile) {
+				if got := p.ResolvedPostInstallTimeout(); got != DefaultCommandTimeout {
+					t.Errorf("ResolvedPostInstallTimeout() = %v, want default %v", got, DefaultCommandTimeout)
+				}
+			},
+		},
+		{
+			name: "post_install with empty argv element rejected",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install: [sh, '']
+`,
+			wantErr: true,
+		},
+		{
+			name: "post_install with bad timeout rejected",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install: [./notify.sh]
+post_install_timeout: -3s
+`,
+			wantErr: true,
+		},
+		{
+			name: "post_install_timeout without post_install rejected",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install_timeout: 1m
+`,
+			wantErr: true,
 		},
 		{
 			name: "profile with direct assets",

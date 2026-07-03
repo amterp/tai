@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"io/fs"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -19,8 +20,34 @@ type TaiConfig struct {
 // Source represents a location that provides assets.
 type Source struct {
 	Name string `yaml:"name"`
-	Type string `yaml:"type"` // "local" (default) or "tai-repo"
-	Path string `yaml:"path"`
+	Type string `yaml:"type"` // "local" (default), "tai-repo", or "command"
+	Path string `yaml:"path"` // local/tai-repo only
+
+	// Command materializes the source ("command" type only). The argv list is
+	// executed with a tai-provided staging directory (via the TAI_DEST_DIR env
+	// var); any files it writes there are atomically swapped into the source's
+	// cache directory, which is then treated exactly like a local source.
+	Command []string `yaml:"command"`
+
+	// Timeout for the command, parsed via time.ParseDuration. Defaults to
+	// DefaultCommandTimeout when unset. Command sources only.
+	Timeout string `yaml:"timeout"`
+}
+
+// SourceTypeCommand is the source type whose assets are materialized by
+// running a user-declared command.
+const SourceTypeCommand = "command"
+
+// IsCommand returns true if this source is materialized by running a command.
+func (s *Source) IsCommand() bool {
+	return s.Type == SourceTypeCommand
+}
+
+// ResolvedTimeout returns the parsed command timeout, or DefaultCommandTimeout
+// when unset. Validation guarantees the string parses cleanly; if validation
+// was skipped and it's malformed, the default is returned instead.
+func (s *Source) ResolvedTimeout() time.Duration {
+	return resolveTimeout(s.Timeout)
 }
 
 // AssetEntry represents a structured asset reference in a bundle or profile.
@@ -67,6 +94,22 @@ type Profile struct {
 	Assets      []AssetEntry      `yaml:"assets"`  // Direct asset references
 	Options     map[string]any    `yaml:"options"` // Adapter-specific options
 	Vars        map[string]string `yaml:"vars"`    // Template variables (overrides tai.yaml vars)
+
+	// PostInstall is an argv list run after this profile installs
+	// successfully. It runs for side effects (notifications, follow-up
+	// tooling); a failure does not roll the install back, but is reported
+	// and makes tai exit nonzero.
+	PostInstall []string `yaml:"post_install"`
+
+	// PostInstallTimeout bounds the hook, parsed via time.ParseDuration.
+	// Defaults to DefaultCommandTimeout when unset.
+	PostInstallTimeout string `yaml:"post_install_timeout"`
+}
+
+// ResolvedPostInstallTimeout returns the parsed post-install hook timeout, or
+// DefaultCommandTimeout when unset.
+func (p *Profile) ResolvedPostInstallTimeout() time.Duration {
+	return resolveTimeout(p.PostInstallTimeout)
 }
 
 // Asset represents an atomic configuration unit.

@@ -57,20 +57,48 @@ func validateTaiConfig(config *TaiConfig) error {
 		if s.Name == "" {
 			return fmt.Errorf("source[%d]: missing name", i)
 		}
+		// The name doubles as a cache directory name for command sources;
+		// enforce it's a safe single path segment for all types so changing
+		// a source's type never introduces traversal.
+		if strings.ContainsAny(s.Name, `/\`) || s.Name == "." || s.Name == ".." {
+			return fmt.Errorf("source name %q must be a plain name (no path separators or '.'/'..')", s.Name)
+		}
 		if seen[s.Name] {
 			return fmt.Errorf("duplicate source name: %s", s.Name)
 		}
 		seen[s.Name] = true
 
-		if s.Path == "" {
-			return fmt.Errorf("source %q: missing path", s.Name)
-		}
-
 		// Normalize type
 		if s.Type == "" {
 			config.Sources[i].Type = "local"
-		} else if s.Type != "local" && s.Type != "tai-repo" {
-			return fmt.Errorf("source %q: invalid type %q (expected 'local' or 'tai-repo')", s.Name, s.Type)
+		}
+
+		switch config.Sources[i].Type {
+		case "local", "tai-repo":
+			if s.Path == "" {
+				return fmt.Errorf("source %q: missing path", s.Name)
+			}
+			if len(s.Command) > 0 {
+				return fmt.Errorf("source %q: 'command' is only valid with type 'command'", s.Name)
+			}
+			if s.Timeout != "" {
+				return fmt.Errorf("source %q: 'timeout' is only valid with type 'command'", s.Name)
+			}
+		case SourceTypeCommand:
+			if len(s.Command) == 0 {
+				return fmt.Errorf("source %q: type 'command' requires 'command'", s.Name)
+			}
+			if err := validateCommandArgv(s.Command, "command"); err != nil {
+				return fmt.Errorf("source %q: %w", s.Name, err)
+			}
+			if s.Path != "" {
+				return fmt.Errorf("source %q: 'path' is not valid with type 'command'", s.Name)
+			}
+			if err := validateTimeoutString(s.Timeout, "timeout"); err != nil {
+				return fmt.Errorf("source %q: %w", s.Name, err)
+			}
+		default:
+			return fmt.Errorf("source %q: invalid type %q (expected 'local', 'tai-repo', or 'command')", s.Name, s.Type)
 		}
 	}
 
@@ -146,6 +174,18 @@ func validateProfile(profile *Profile, path string) error {
 		if err := validateAssetEntry(entry, i); err != nil {
 			return fmt.Errorf("profile %q: %w", profile.Name, err)
 		}
+	}
+
+	if len(profile.PostInstall) > 0 {
+		if err := validateCommandArgv(profile.PostInstall, "post_install"); err != nil {
+			return fmt.Errorf("profile %q: %w", profile.Name, err)
+		}
+	}
+	if err := validateTimeoutString(profile.PostInstallTimeout, "post_install_timeout"); err != nil {
+		return fmt.Errorf("profile %q: %w", profile.Name, err)
+	}
+	if profile.PostInstallTimeout != "" && len(profile.PostInstall) == 0 {
+		return fmt.Errorf("profile %q: 'post_install_timeout' is only valid with 'post_install'", profile.Name)
 	}
 
 	return nil
