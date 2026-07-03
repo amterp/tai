@@ -205,3 +205,27 @@ func mustWriteTree(t *testing.T, dir string, files map[string]string) {
 		}
 	}
 }
+
+func TestSwapIntoSweepsStaleBackups(t *testing.T) {
+	root := t.TempDir()
+	staging := filepath.Join(root, "staging")
+	dest := filepath.Join(root, "dest")
+	mustWriteTree(t, staging, map[string]string{"fresh.md": "fresh"})
+	mustWriteTree(t, dest, map[string]string{"old.md": "old"})
+	// Simulate a crashed prior run's orphaned backup (different pid).
+	mustWriteTree(t, dest+".old-99999999", map[string]string{"ancient.md": "ancient"})
+
+	if err := SwapInto(staging, dest); err != nil {
+		t.Fatalf("SwapInto() error = %v", err)
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".old-") {
+			t.Errorf("stale backup %q should have been swept", e.Name())
+		}
+	}
+}

@@ -548,7 +548,14 @@ func refreshSourcesForInstall(s *state.State, dryRun bool) {
 	}
 	if dryRun {
 		for _, src := range s.TaiConfig.Sources {
-			if src.IsCommand() {
+			if !src.IsCommand() {
+				continue
+			}
+			if loaded, ok := s.Sources[src.Name]; ok && !loaded.Materialized {
+				// Resolution will fail if the profile uses this source; warn
+				// up front so the failure isn't a surprise.
+				out.Info("Would refresh command source '" + src.Name + "' (not fetched yet; run 'tai refresh' to enable previewing its assets)")
+			} else {
 				out.Info("Would refresh command source '" + src.Name + "'")
 			}
 		}
@@ -638,9 +645,11 @@ func runReinstall(target string, dryRun, force, skipConflicts bool, varsStr stri
 }
 
 // doInstall performs profile resolution and installation against pre-loaded
-// state. Errors that abort the install are fatal (they exit the process);
-// the returned error reports post-install-hook failure, where the install
-// itself succeeded but tai should exit nonzero.
+// state. Errors that abort the whole run (bad input, unresolvable profile)
+// are fatal and exit the process; failures already reported to the user that
+// should not stop other targets - conflicts, post_install hook failure -
+// are returned instead, so runReinstall can continue its loop and aggregate
+// them into the final exit code.
 func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts bool, varsStr string, showDiff bool) error {
 	resolved, err := s.ResolveProfile(profileName)
 	if err != nil {
@@ -708,7 +717,9 @@ func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts 
 			} else {
 				out.Info("Use --force to overwrite, --skip-conflicts to skip, or --diff to inspect.")
 			}
-			os.Exit(1)
+			// Already reported; return so multi-target reinstall can continue
+			// with its remaining targets.
+			return err
 		}
 		fatal("installation failed: %v", err)
 	}

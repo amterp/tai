@@ -1089,8 +1089,10 @@ each other's cache.
   fetch leaves the previous cache intact (the staging dir is preserved and
   its path included in the error, for debugging).
 - `tai uninstall` leaves the cache alone - it's a cache. Removing a source
-  from tai.yaml orphans its cache directory; a `tai cache clean` command is a
-  possible future addition.
+  from tai.yaml orphans its cache directory, and staging dirs preserved from
+  failed fetches accumulate under `~/.cache/tai/staging` until manually
+  removed; a `tai cache clean` command covering both is a possible future
+  addition.
 
 ## Templating
 

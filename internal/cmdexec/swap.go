@@ -22,11 +22,18 @@ func SwapInto(staging, dest string) error {
 		return fmt.Errorf("creating dest parent: %w", err)
 	}
 
+	// Sweep backup dirs left behind by crashed prior runs (any pid) - nothing
+	// else ever targets an orphaned .old dir again, so without this they
+	// accumulate forever.
+	if stale, err := filepath.Glob(dest + ".old-*"); err == nil {
+		for _, s := range stale {
+			_ = os.RemoveAll(s)
+		}
+	}
+
 	old := fmt.Sprintf("%s.old-%d", dest, os.Getpid())
 	haveOld := false
 	if _, err := os.Lstat(dest); err == nil {
-		// A leftover .old dir from a crashed prior run would make the rename
-		// fail on some platforms; clear it.
 		if err := os.RemoveAll(old); err != nil {
 			return fmt.Errorf("clearing stale backup %q: %w", old, err)
 		}
@@ -60,6 +67,11 @@ func SwapInto(staging, dest string) error {
 	// Cross-filesystem fallback: copy then remove. A partial CopyDir failure
 	// can leave a half-written dest; restoreOld's RemoveAll(dest) clears it
 	// before the old content is renamed back.
+	//
+	// Known divergence: rename preserves symlinks in staging, CopyDir skips
+	// them. Harmless in practice - the install-time copy paths reject
+	// symlinks anyway, so they never reach a target either way - but scripts
+	// should not rely on symlinks surviving a fetch.
 	if err := pathutil.CopyDir(staging, dest); err != nil {
 		restoreOld()
 		return fmt.Errorf("cross-fs copy: %w", err)
