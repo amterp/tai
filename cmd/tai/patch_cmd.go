@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/amterp/tai/internal/install"
 	"github.com/amterp/tai/internal/output"
@@ -224,4 +228,126 @@ func warnAboutPatchDrift(s *state.State) {
 				p.Name, p.FileRef(), r.qualifiedName()))
 		}
 	}
+}
+
+func runPatchWorkspace(sourceName string) {
+	s := loadState()
+	requireActiveConfig(s)
+
+	src, ok := s.Sources[sourceName]
+	if !ok {
+		fatal("unknown source %q", sourceName)
+	}
+	if !src.HasPatches() {
+		fatal("source %q declares no 'patches:' directory", sourceName)
+	}
+
+	patches, err := s.LoadPatches(src)
+	if err != nil {
+		fatal("%v", err)
+	}
+
+	path, skipped, err := s.BuildPatchWorkspace(src, patches)
+	if err != nil {
+		fatal("%v", err)
+	}
+
+	out.Success("Workspace ready: " + path)
+	if len(skipped) > 0 {
+		out.Warning("These patches could not be applied and are NOT reflected in the workspace:\n  " +
+			strings.Join(skipped, "\n  ") + "\nRe-make their changes by hand, then regenerate them.")
+	}
+	out.Info("Edit files there, then run:  tai patch regenerate <patch-name>")
+}
+
+func runPatchRegenerate(name string) {
+	s := loadState()
+	requireActiveConfig(s)
+
+	r := findPatch(s, name)
+	p := r.insp.Patch
+
+	patches, err := s.LoadPatches(r.source)
+	if err != nil {
+		fatal("%v", err)
+	}
+
+	wsPath, err := s.PatchWorkspacePath(r.source.Name)
+	if err != nil {
+		fatal("%v", err)
+	}
+	edited, err := os.ReadFile(filepath.Join(wsPath, filepath.FromSlash(p.File)))
+	if err != nil {
+		fatal("reading %s from the workspace: %v\nRun 'tai patch workspace %s' first.", p.File, err, r.source.Name)
+	}
+
+	// Measured against pristine plus every *other* patch on this file, so
+	// regenerating one patch can never absorb a sibling's changes.
+	baseline, err := r.source.RegenerationBaseline(patches, p)
+	if err != nil {
+		fatal("%v", err)
+	}
+
+	edits, err := patch.GenerateEdits(baseline, edited)
+	if err != nil {
+		fatal("%v", err)
+	}
+
+	p.Edits = edits
+	if err := writePatchFile(p); err != nil {
+		fatal("writing %s: %v", p.PatchPath, err)
+	}
+
+	out.Success(fmt.Sprintf("Regenerated '%s' with %d edit(s): %s", p.Name, len(edits), p.PatchPath))
+	out.Info("Review the result, then run:  tai patch bless " + r.qualifiedName())
+}
+
+// writePatchFile rewrites a patch file from its in-memory form.
+//
+// Built as a node tree rather than marshalled directly so multi-line find and
+// replace values use literal block style. A regenerated patch is meant to be
+// read and reviewed; the same content as escaped one-line strings is not.
+func writePatchFile(p *patch.Patch) error {
+	doc := &yaml.Node{Kind: yaml.MappingNode}
+
+	addScalar := func(key string, value *yaml.Node) {
+		doc.Content = append(doc.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, value)
+	}
+
+	addScalar("version", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(p.Version)})
+	addScalar("file", &yaml.Node{Kind: yaml.ScalarNode, Value: p.File})
+	if p.Description != "" {
+		addScalar("description", &yaml.Node{Kind: yaml.ScalarNode, Value: p.Description})
+	}
+
+	editsNode := &yaml.Node{Kind: yaml.SequenceNode}
+	for _, e := range p.Edits {
+		item := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Value: "find"}, scalarPreferringBlock(e.Find),
+			{Kind: yaml.ScalarNode, Value: "replace"}, scalarPreferringBlock(e.Replace),
+		}}
+		editsNode.Content = append(editsNode.Content, item)
+	}
+	addScalar("edits", editsNode)
+
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(doc); err != nil {
+		return err
+	}
+	if err := enc.Close(); err != nil {
+		return err
+	}
+	return os.WriteFile(p.PatchPath, buf.Bytes(), 0644)
+}
+
+// scalarPreferringBlock renders multi-line text as a literal block so the
+// patch file stays readable.
+func scalarPreferringBlock(s string) *yaml.Node {
+	n := &yaml.Node{Kind: yaml.ScalarNode, Value: s}
+	if strings.Contains(s, "\n") {
+		n.Style = yaml.LiteralStyle
+	}
+	return n
 }

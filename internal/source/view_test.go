@@ -186,3 +186,55 @@ func TestBuildViewRebuildsFromPristineEachTime(t *testing.T) {
 		t.Errorf("view content = %q, want it patched after rebuild", got)
 	}
 }
+
+func TestRegenerationBaselineExcludesOnlyTheTargetPatch(t *testing.T) {
+	// The failure that makes a whole-workspace `git diff` unusable: with two
+	// patches on one file, regenerating one must not absorb the other's change.
+	env, _, ls := viewFixture(t)
+	env.SetupAsset("personas", "remote.md", "---\nname: remote\n---\n\nalpha\nbeta\n")
+
+	set := patchSet(t, filepath.Join(env.Root, "patches"), map[string]string{
+		"a-first":  "version: 1\nfile: personas/remote.md\nedits:\n  - find: alpha\n    replace: ALPHA\n",
+		"b-second": "version: 1\nfile: personas/remote.md\nedits:\n  - find: beta\n    replace: BETA\n",
+	})
+
+	target, ok := set.Get("b-second")
+	if !ok {
+		t.Fatal("patch not found")
+	}
+
+	baseline, err := ls.RegenerationBaseline(set, target)
+	if err != nil {
+		t.Fatalf("RegenerationBaseline: %v", err)
+	}
+
+	// The sibling's change is present (it is not what we're regenerating)...
+	if !strings.Contains(string(baseline), "ALPHA") {
+		t.Errorf("baseline = %q, want the sibling patch applied", baseline)
+	}
+	// ...and the target's own change is not, so the diff measures only it.
+	if strings.Contains(string(baseline), "BETA") {
+		t.Errorf("baseline = %q, want the target patch NOT applied", baseline)
+	}
+}
+
+func TestBuildWorkspaceAppliesWhatItCanAndNamesTheRest(t *testing.T) {
+	env, loader, ls := viewFixture(t)
+
+	set := patchSet(t, filepath.Join(env.Root, "patches"), map[string]string{
+		"good":   pnpmPatch,
+		"broken": "version: 1\nfile: personas/remote.md\nedits:\n  - find: not present anywhere\n    replace: x\n",
+	})
+
+	ws, skipped, err := loader.BuildWorkspace(ls, set)
+	if err != nil {
+		t.Fatalf("BuildWorkspace: %v", err)
+	}
+
+	if got := env.ReadFile(filepath.Join(ws, "personas", "remote.md")); !strings.Contains(got, "pnpm") {
+		t.Errorf("workspace = %q, want the applicable patch applied", got)
+	}
+	if len(skipped) != 1 || skipped[0] != "broken" {
+		t.Errorf("skipped = %v, want [broken] so the user knows what to re-make", skipped)
+	}
+}

@@ -128,6 +128,20 @@ func main() {
 		Register(patchBlessCmd)
 	patchBlessUsed, _ := patchCmd.RegisterCmd(patchBlessCmd)
 
+	patchWorkspaceCmd := ra.NewCmd("workspace")
+	patchWorkspaceCmd.SetDescription("Open an editable copy of a source to author or repair patches in")
+	patchWorkspaceSource, _ := ra.NewString("source").
+		SetUsage("Source name").
+		Register(patchWorkspaceCmd)
+	patchWorkspaceUsed, _ := patchCmd.RegisterCmd(patchWorkspaceCmd)
+
+	patchRegenerateCmd := ra.NewCmd("regenerate")
+	patchRegenerateCmd.SetDescription("Rewrite a patch from your edits in its workspace")
+	patchRegenerateName, _ := ra.NewString("name").
+		SetUsage("Patch name (or source:name)").
+		Register(patchRegenerateCmd)
+	patchRegenerateUsed, _ := patchCmd.RegisterCmd(patchRegenerateCmd)
+
 	patchUsed, _ := root.RegisterCmd(patchCmd)
 
 	// Install command
@@ -293,8 +307,12 @@ func main() {
 			runPatchDiff(*patchDiffName)
 		case *patchBlessUsed:
 			runPatchBless(*patchBlessName, *patchBlessAll)
+		case *patchWorkspaceUsed:
+			runPatchWorkspace(*patchWorkspaceSource)
+		case *patchRegenerateUsed:
+			runPatchRegenerate(*patchRegenerateName)
 		default:
-			out.Error("Usage: tai patch <list|diff|bless>")
+			out.Error("Usage: tai patch <list|diff|bless|workspace|regenerate>")
 			os.Exit(1)
 		}
 	case *installUsed:

@@ -58,13 +58,9 @@ func (l *Loader) BuildView(ls *LoadedSource, patches *patch.Set) error {
 		return fmt.Errorf("creating view directory: %w", err)
 	}
 
-	stagingParent := filepath.Join(l.cacheDir, "staging")
-	if err := os.MkdirAll(stagingParent, 0755); err != nil {
-		return fmt.Errorf("creating staging directory: %w", err)
-	}
-	staging, err := os.MkdirTemp(stagingParent, "view-"+ls.Name+"-")
+	staging, err := l.newStagingDir("view-" + ls.Name + "-")
 	if err != nil {
-		return fmt.Errorf("creating staging directory: %w", err)
+		return err
 	}
 
 	if err := l.copyForView(ls, staging); err != nil {
@@ -73,9 +69,17 @@ func (l *Loader) BuildView(ls *LoadedSource, patches *patch.Set) error {
 	}
 
 	if err := applyPatchesInDir(staging, ls.Name, patches); err != nil {
-		// Staging is intentionally not removed - see ViewError.
 		var viewErr *ViewError
 		if errors.As(err, &viewErr) {
+			// Promote the half-built tree to the source's stable workspace, so
+			// the failure message and `tai patch regenerate` name one place
+			// rather than a temp path the user has to copy around.
+			if wsPath, wsErr := l.workspacePath(ls.Name); wsErr == nil {
+				if swapErr := cmdexec.SwapInto(staging, wsPath); swapErr == nil {
+					viewErr.Workspace = wsPath
+					return err
+				}
+			}
 			viewErr.Workspace = staging
 		}
 		return err
@@ -166,6 +170,116 @@ func applyPatchesInDir(dir, sourceName string, patches *patch.Set) error {
 		}
 	}
 	return nil
+}
+
+// BuildWorkspace materializes a source into a stable, editable directory with
+// every patch that applies already applied, and returns its path along with the
+// names of any patches that could not be applied.
+//
+// This is where a patch is authored or repaired: you edit the file normally and
+// `tai patch regenerate` works out the edits. A stable path per source means
+// neither command needs the location passed around.
+func (l *Loader) BuildWorkspace(ls *LoadedSource, patches *patch.Set) (string, []string, error) {
+	if err := ls.RequireMaterialized(); err != nil {
+		return "", nil, err
+	}
+
+	wsPath, err := l.workspacePath(ls.Name)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(wsPath), 0755); err != nil {
+		return "", nil, fmt.Errorf("creating workspace directory: %w", err)
+	}
+
+	staging, err := l.newStagingDir("workspace-" + ls.Name + "-")
+	if err != nil {
+		return "", nil, err
+	}
+	if err := l.copyForView(ls, staging); err != nil {
+		_ = os.RemoveAll(staging)
+		return "", nil, err
+	}
+
+	// Unlike a view build, a patch that cannot apply is expected here - it is
+	// the reason the user opened a workspace. Apply what works and name the
+	// rest so they know what to re-make by hand.
+	var skipped []string
+	for _, rel := range patches.Files() {
+		filePath := filepath.Join(staging, filepath.FromSlash(rel))
+		content, readErr := os.ReadFile(filePath)
+		if readErr != nil {
+			for _, p := range patches.ForFile(rel) {
+				skipped = append(skipped, p.Name)
+			}
+			continue
+		}
+		for _, p := range patches.ForFile(rel) {
+			next, applyErr := patch.Apply(content, p)
+			if applyErr != nil {
+				skipped = append(skipped, p.Name)
+				continue
+			}
+			content = next
+		}
+		if err := os.WriteFile(filePath, content, 0o644); err != nil {
+			_ = os.RemoveAll(staging)
+			return "", nil, fmt.Errorf("writing %s: %w", rel, err)
+		}
+	}
+
+	if err := cmdexec.SwapInto(staging, wsPath); err != nil {
+		return "", nil, fmt.Errorf("creating workspace for source %q: %w", ls.Name, err)
+	}
+	return wsPath, skipped, nil
+}
+
+// RegenerationBaseline is the content a patch's edits are measured against:
+// pristine, with every *other* patch on the same file applied.
+//
+// Excluding only the patch being regenerated is what stops regeneration from
+// absorbing a sibling's changes - the failure mode that makes a whole-directory
+// `git diff` unusable once a source has more than one patch.
+func (ls *LoadedSource) RegenerationBaseline(patches *patch.Set, target *patch.Patch) ([]byte, error) {
+	content, err := ls.PristineContent(target.File)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range patches.ForFile(target.File) {
+		if p.Name == target.Name {
+			continue
+		}
+		next, applyErr := patch.Apply(content, p)
+		if applyErr != nil {
+			return nil, fmt.Errorf("cannot establish a baseline: sibling patch %q on the same file does not apply (%s)", p.Name, applyErr.Error())
+		}
+		content = next
+	}
+	return content, nil
+}
+
+// WorkspacePath returns where this source's editable workspace lives.
+func (l *Loader) WorkspacePath(sourceName string) (string, error) {
+	return l.workspacePath(sourceName)
+}
+
+func (l *Loader) workspacePath(sourceName string) (string, error) {
+	if l.cacheDir == "" {
+		return "", fmt.Errorf("source %q: no cache directory configured", sourceName)
+	}
+	return filepath.Join(l.cacheDir, "workspaces", l.repoKey(), sourceName), nil
+}
+
+func (l *Loader) newStagingDir(prefix string) (string, error) {
+	stagingParent := filepath.Join(l.cacheDir, "staging")
+	if err := os.MkdirAll(stagingParent, 0755); err != nil {
+		return "", fmt.Errorf("creating staging directory: %w", err)
+	}
+	dir, err := os.MkdirTemp(stagingParent, prefix)
+	if err != nil {
+		return "", fmt.Errorf("creating staging directory: %w", err)
+	}
+	return dir, nil
 }
 
 // InspectPatches evaluates every patch in the set against this source's

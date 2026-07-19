@@ -299,8 +299,7 @@ func (s *State) BuildPatchedViews() error {
 		return err
 	}
 
-	loader := source.NewLoader(s.GlobalConfig.ActiveConfig)
-	loader.SetCacheDir(s.Paths.CacheDir)
+	loader := s.patchLoader()
 
 	for _, src := range s.Sources {
 		if !src.HasPatches() {
@@ -315,6 +314,23 @@ func (s *State) BuildPatchedViews() error {
 		}
 	}
 	return nil
+}
+
+// BuildPatchWorkspace materializes an editable copy of a source for authoring
+// or repairing patches.
+func (s *State) BuildPatchWorkspace(src *source.LoadedSource, patches *patch.Set) (string, []string, error) {
+	return s.patchLoader().BuildWorkspace(src, patches)
+}
+
+// PatchWorkspacePath is where a source's patch workspace lives.
+func (s *State) PatchWorkspacePath(sourceName string) (string, error) {
+	return s.patchLoader().WorkspacePath(sourceName)
+}
+
+func (s *State) patchLoader() *source.Loader {
+	loader := source.NewLoader(s.GlobalConfig.ActiveConfig)
+	loader.SetCacheDir(s.Paths.CacheDir)
+	return loader
 }
 
 // SetActiveConfig sets the active config repo path and saves it.
