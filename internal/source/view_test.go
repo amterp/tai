@@ -218,6 +218,62 @@ func TestRegenerationBaselineExcludesOnlyTheTargetPatch(t *testing.T) {
 	}
 }
 
+// Inspection must agree with the install pipeline about whether a patch
+// applies. When it didn't, a patch that installs fine was reported BROKEN,
+// bless refused it (bless refuses broken patches), and the drift warning could
+// never be cleared - so a supported setup nagged forever.
+func TestInspectPatchesFoldsEarlierSameFileSiblings(t *testing.T) {
+	env, loader, ls := viewFixture(t)
+	env.SetupAsset("personas", "remote.md", "---\nname: remote\n---\n\nbody\n")
+
+	set := patchSet(t, filepath.Join(env.Root, "patches"), map[string]string{
+		// b-edit's find text only exists once a-add has run.
+		"a-add":  "version: 1\nfile: personas/remote.md\nedits:\n  - find: body\n    replace: |-\n      body\n      MARKER\n",
+		"b-edit": "version: 1\nfile: personas/remote.md\nedits:\n  - find: MARKER\n    replace: MARKER-EDITED\n",
+	})
+
+	insps, err := ls.InspectPatches(set)
+	if err != nil {
+		t.Fatalf("InspectPatches: %v", err)
+	}
+	for _, insp := range insps {
+		if insp.Status == patch.StatusBroken {
+			t.Errorf("patch %q reported %v: %v", insp.Patch.Name, insp.Status, insp.ApplyErr)
+		}
+	}
+
+	// The pipeline's verdict is the one that counts - inspection must match it.
+	if err := loader.BuildView(ls, set); err != nil {
+		t.Fatalf("BuildView disagreed with inspection: %v", err)
+	}
+	if got := env.ReadFile(filepath.Join(ls.ViewPath, "personas", "remote.md")); !strings.Contains(got, "MARKER-EDITED") {
+		t.Errorf("view = %q, want the chained patches applied", got)
+	}
+}
+
+// Blessing is per-patch against pristine, so a chained patch must not have a
+// sibling's output baked into its snapshot - that would be tai's own bytes
+// recorded as upstream, and drift detection would go blind.
+func TestInspectPatchesReportPristineNotFoldedContent(t *testing.T) {
+	env, _, ls := viewFixture(t)
+	env.SetupAsset("personas", "remote.md", "---\nname: remote\n---\n\nbody\n")
+
+	set := patchSet(t, filepath.Join(env.Root, "patches"), map[string]string{
+		"a-add":  "version: 1\nfile: personas/remote.md\nedits:\n  - find: body\n    replace: |-\n      body\n      MARKER\n",
+		"b-edit": "version: 1\nfile: personas/remote.md\nedits:\n  - find: MARKER\n    replace: MARKER-EDITED\n",
+	})
+
+	insps, err := ls.InspectPatches(set)
+	if err != nil {
+		t.Fatalf("InspectPatches: %v", err)
+	}
+	for _, insp := range insps {
+		if strings.Contains(string(insp.Pristine), "MARKER") {
+			t.Errorf("patch %q sees Pristine = %q, want untouched upstream", insp.Patch.Name, insp.Pristine)
+		}
+	}
+}
+
 func TestBuildWorkspaceAppliesWhatItCanAndNamesTheRest(t *testing.T) {
 	env, loader, ls := viewFixture(t)
 

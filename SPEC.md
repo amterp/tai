@@ -1598,7 +1598,14 @@ upstream behavior you had explicitly rejected. If it replaced the first of
 several matches, you would quietly get an edit in the wrong place.
 
 Edits within a patch apply in order, each seeing the previous one's result. When
-several patches target the same file, they apply in name order.
+several patches target the same file, they apply in name order, and a later one
+may anchor on text an earlier one introduced. `tai patch list` and `tai patch
+bless` judge each patch against that same running content, so a chained patch is
+never reported broken for depending on its predecessor.
+
+Blessing stays per-patch against pristine upstream regardless, since a snapshot
+records what upstream said - folding tai's own output into it would leave drift
+detection comparing tai to itself.
 
 Occurrence counting is non-overlapping, so `find: "aa"` against `"aaa"` counts
 once and applies.

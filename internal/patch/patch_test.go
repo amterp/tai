@@ -369,6 +369,63 @@ func TestParseFileValidation(t *testing.T) {
 	}
 }
 
+// A broken patch must still carry its snapshot. `tai patch diff` is step one
+// of the printed repair flow, and gating the snapshot on the patch still
+// applying made that step unreachable in exactly the situation it exists for.
+func TestInspectLoadsBlessedEvenWhenBroken(t *testing.T) {
+	dir := t.TempDir()
+	writePatchFile(t, dir, "p.yaml", minimalPatch)
+	writePatchFile(t, dir, "p.blessed", "reviewed upstream\n")
+	p, err := ParseFile(filepath.Join(dir, "p.yaml"), dir, "up")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Upstream no longer contains the patch's find text.
+	upstream := []byte("something else entirely\n")
+	insp, err := Inspect(upstream, upstream, p)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+
+	if insp.Status != StatusBroken {
+		t.Fatalf("Status = %v, want StatusBroken", insp.Status)
+	}
+	if !insp.HasBlessed {
+		t.Error("HasBlessed = false, so 'tai patch diff' cannot show what moved upstream")
+	}
+	if string(insp.Blessed) != "reviewed upstream\n" {
+		t.Errorf("Blessed = %q, want the snapshot content", insp.Blessed)
+	}
+}
+
+// The apply check runs against baseline; blessing and diffing run against
+// pristine. They are the same only when one patch targets a file.
+func TestInspectChecksApplyAgainstBaselineNotPristine(t *testing.T) {
+	dir := t.TempDir()
+	writePatchFile(t, dir, "p.yaml", minimalPatch)
+	p, err := ParseFile(filepath.Join(dir, "p.yaml"), dir, "up")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// "a" is absent from pristine but present in baseline, as it would be had
+	// an earlier sibling introduced it.
+	pristine := []byte("no match here\n")
+	baseline := []byte("a\n")
+
+	insp, err := Inspect(pristine, baseline, p)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if insp.Status == StatusBroken {
+		t.Errorf("Status = StatusBroken, want the patch judged against baseline: %v", insp.ApplyErr)
+	}
+	if string(insp.Pristine) != string(pristine) {
+		t.Errorf("Pristine = %q, want upstream content for blessing", insp.Pristine)
+	}
+}
+
 func TestLoadBlessed(t *testing.T) {
 	dir := t.TempDir()
 	writePatchFile(t, dir, "p.yaml", minimalPatch)

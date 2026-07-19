@@ -42,28 +42,38 @@ type Inspection struct {
 	HasBlessed bool
 }
 
-// Inspect evaluates a patch against the current pristine content of its target.
+// Inspect evaluates a patch against current upstream.
 //
-// Deliberately against *pristine*, not against the patched view: comparing a
-// blessed snapshot to tai's own output would report drift on every install, and
-// re-applying a patch to already-patched content would fail exactly-once
-// matching and report every healthy patch as broken.
-func Inspect(pristine []byte, p *Patch) (*Inspection, error) {
+// The two content arguments are deliberately distinct, because the two
+// questions this answers have different baselines:
+//
+//   - "does it still apply?" is asked against baseline - pristine with any
+//     earlier patches on the same file already folded in, exactly as the
+//     install pipeline applies them. Checking each patch against raw pristine
+//     instead would report a patch that edits text an earlier sibling
+//     introduced as broken, when it installs perfectly well.
+//   - "has upstream moved?" is asked against pristine, never the view or a
+//     folded baseline: a blessed snapshot is a record of upstream, so
+//     comparing it to content tai itself produced would report drift forever.
+//
+// With one patch on a file the two are identical.
+func Inspect(pristine, baseline []byte, p *Patch) (*Inspection, error) {
 	insp := &Inspection{Patch: p, Pristine: pristine}
 
-	// Each patch is checked on its own against pristine, even when several
-	// target one file: they are each blessed against pristine, so that is the
-	// baseline each one has to fit.
-	if _, applyErr := Apply(pristine, p); applyErr != nil {
-		insp.Status, insp.ApplyErr = StatusBroken, applyErr
-		return insp, nil
-	}
-
+	// Loaded before the apply check, and regardless of its outcome. A broken
+	// patch is exactly when the snapshot earns its keep: "what changed upstream
+	// since I last looked" is the first question asked during a repair, and it
+	// does not need the patch to still apply in order to be answerable.
 	blessed, hasBlessed, err := p.LoadBlessed()
 	if err != nil {
 		return nil, err
 	}
 	insp.Blessed, insp.HasBlessed = blessed, hasBlessed
+
+	if _, applyErr := Apply(baseline, p); applyErr != nil {
+		insp.Status, insp.ApplyErr = StatusBroken, applyErr
+		return insp, nil
+	}
 
 	switch {
 	case !hasBlessed:

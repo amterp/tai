@@ -286,24 +286,64 @@ func (l *Loader) newStagingDir(prefix string) (string, error) {
 // pristine content, in set order. Used by the patch commands and by install to
 // warn about drift before building the view.
 func (ls *LoadedSource) InspectPatches(patches *patch.Set) ([]*patch.Inspection, error) {
+	pristine, baselines := ls.inspectionBaselines(patches)
+
 	out := make([]*patch.Inspection, 0, patches.Len())
 	for _, p := range patches.All() {
 		if !ls.Materialized {
 			out = append(out, patch.MissingInspection(p, patch.StatusSourceUnfetched))
 			continue
 		}
-		content, err := ls.PristineContent(p.File)
-		if err != nil {
+		content, ok := pristine[p.File]
+		if !ok {
 			out = append(out, patch.MissingInspection(p, patch.StatusFileMissing))
 			continue
 		}
-		insp, err := patch.Inspect(content, p)
+		insp, err := patch.Inspect(content, baselines[p.Name], p)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, insp)
 	}
 	return out, nil
+}
+
+// inspectionBaselines returns each patched file's pristine content, and the
+// content each patch is applied against once its earlier same-file siblings
+// have run.
+//
+// This mirrors applyPatchesInDir deliberately: inspection that disagreed with
+// the install pipeline about whether a patch applies would report healthy
+// patches as broken, and blessing refuses a broken patch - so the drift warning
+// could never be cleared.
+func (ls *LoadedSource) inspectionBaselines(patches *patch.Set) (map[string][]byte, map[string][]byte) {
+	pristine := make(map[string][]byte)
+	baselines := make(map[string][]byte)
+	if !ls.Materialized {
+		return pristine, baselines
+	}
+
+	for _, rel := range patches.Files() {
+		content, err := ls.PristineContent(rel)
+		if err != nil {
+			continue // reported per-patch as StatusFileMissing
+		}
+		pristine[rel] = content
+
+		current := content
+		for _, p := range patches.ForFile(rel) {
+			baselines[p.Name] = current
+			next, applyErr := patch.Apply(current, p)
+			if applyErr != nil {
+				// Leave the baseline where it is. This patch is about to be
+				// reported broken, which is the actionable finding; guessing at
+				// content it never produced would only mislead the ones after it.
+				continue
+			}
+			current = next
+		}
+	}
+	return pristine, baselines
 }
 
 // PristineContent reads a source-relative file from the unpatched source.

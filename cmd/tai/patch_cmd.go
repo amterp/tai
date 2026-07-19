@@ -125,9 +125,26 @@ func runPatchDiff(name string) {
 		fatal("patch %q targets %s, which the source does not carry", p.Name, p.FileRef())
 	}
 	if !r.insp.HasBlessed {
+		// Never suggest blessing a broken patch: bless refuses those, so the
+		// two commands would point at each other while the user is mid-repair.
+		if r.insp.Status == patch.StatusBroken {
+			fatal("patch %q was never blessed, so there is no snapshot to compare against - "+
+				"tai cannot show what moved upstream.\nRepair it instead:  tai patch workspace %s",
+				p.Name, p.SourceName)
+		}
 		fatal("patch %q has no blessed snapshot to compare against - run 'tai patch bless %s' first", p.Name, name)
 	}
 	if bytes.Equal(r.insp.Blessed, r.insp.Pristine) {
+		if r.insp.Status == patch.StatusBroken {
+			// Upstream is byte-identical to what was reviewed, so the patch is
+			// what moved. Saying only "no upstream changes" would read as "all
+			// is well" to someone who just watched an install fail.
+			out.Warning(fmt.Sprintf(
+				"%s is unchanged since '%s' was blessed, so the patch itself no longer fits it: %s\n"+
+					"Repair it:  tai patch workspace %s",
+				p.FileRef(), p.Name, r.insp.ApplyErr.Error(), p.SourceName))
+			return
+		}
 		out.Info(fmt.Sprintf("No upstream changes since '%s' was blessed.", p.Name))
 		return
 	}
