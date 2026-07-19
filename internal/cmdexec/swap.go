@@ -6,9 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/amterp/tai/internal/pathutil"
 )
+
+// staleBackupAge is how long a .old backup must have gone untouched before the
+// sweep treats it as abandoned. Comfortably longer than any real swap, and
+// short enough that debris does not survive a working session.
+const staleBackupAge = 30 * time.Minute
 
 // SwapInto replaces dest with staging as atomically as the filesystem allows.
 // An existing dest is first renamed aside rather than removed, so a failure
@@ -22,11 +28,21 @@ func SwapInto(staging, dest string) error {
 		return fmt.Errorf("creating dest parent: %w", err)
 	}
 
-	// Sweep backup dirs left behind by crashed prior runs (any pid) - nothing
-	// else ever targets an orphaned .old dir again, so without this they
-	// accumulate forever.
+	// Sweep backup dirs left behind by crashed prior runs - nothing else ever
+	// targets an orphaned .old dir again, so without this they accumulate
+	// forever.
+	//
+	// Only ones old enough to be certain they are abandoned. A concurrent tai
+	// swapping the same dest has a backup that is seconds old and is its only
+	// way back if it fails; deleting that can leave dest missing entirely. An
+	// age check costs nothing here and needs no process introspection, so it
+	// works the same on every platform.
 	if stale, err := filepath.Glob(dest + ".old-*"); err == nil {
 		for _, s := range stale {
+			info, statErr := os.Stat(s)
+			if statErr != nil || time.Since(info.ModTime()) < staleBackupAge {
+				continue
+			}
 			_ = os.RemoveAll(s)
 		}
 	}

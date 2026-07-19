@@ -206,14 +206,41 @@ func mustWriteTree(t *testing.T, dir string, files map[string]string) {
 	}
 }
 
+// A backup young enough to belong to a swap still in progress is another
+// process's only way back if it fails. Sweeping it can leave dest missing
+// outright - and for a patch workspace, dest holds hand-edits kept nowhere else.
+func TestSwapIntoLeavesFreshBackupsAlone(t *testing.T) {
+	root := t.TempDir()
+	staging := filepath.Join(root, "staging")
+	dest := filepath.Join(root, "dest")
+	mustWriteTree(t, staging, map[string]string{"fresh.md": "fresh"})
+	mustWriteTree(t, dest, map[string]string{"old.md": "old"})
+
+	live := dest + ".old-999999"
+	mustWriteTree(t, live, map[string]string{"in-flight.md": "someone else's only copy"})
+
+	if err := SwapInto(staging, dest); err != nil {
+		t.Fatalf("SwapInto() error = %v", err)
+	}
+	if _, err := os.Stat(live); err != nil {
+		t.Errorf("swept a backup a concurrent swap still needs: %v", err)
+	}
+}
+
 func TestSwapIntoSweepsStaleBackups(t *testing.T) {
 	root := t.TempDir()
 	staging := filepath.Join(root, "staging")
 	dest := filepath.Join(root, "dest")
 	mustWriteTree(t, staging, map[string]string{"fresh.md": "fresh"})
 	mustWriteTree(t, dest, map[string]string{"old.md": "old"})
-	// Simulate a crashed prior run's orphaned backup (different pid).
-	mustWriteTree(t, dest+".old-99999999", map[string]string{"ancient.md": "ancient"})
+	// Simulate a crashed prior run's orphaned backup (different pid), aged
+	// past the point where it could belong to a swap still in progress.
+	abandoned := dest + ".old-99999999"
+	mustWriteTree(t, abandoned, map[string]string{"ancient.md": "ancient"})
+	past := time.Now().Add(-2 * staleBackupAge)
+	if err := os.Chtimes(abandoned, past, past); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := SwapInto(staging, dest); err != nil {
 		t.Fatalf("SwapInto() error = %v", err)
