@@ -129,6 +129,41 @@ func TestBuildViewExcludesDroppedPaths(t *testing.T) {
 	}
 }
 
+// Asset discovery follows symlinks, so a view that skipped them would advertise
+// assets it cannot produce: adding `patches:` for one unrelated file would
+// silently stop installing every symlinked asset in the source.
+func TestBuildViewFollowsSymlinkedAssets(t *testing.T) {
+	env, loader, ls := viewFixture(t)
+
+	realDir := filepath.Join(env.Root, "external-skill")
+	if err := os.MkdirAll(realDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(realDir, "SKILL.md"), []byte("linked skill\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	skillsDir := filepath.Join(ls.ResolvedPath, "skills")
+	if err := os.MkdirAll(skillsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(realDir, filepath.Join(skillsDir, "linked")); err != nil {
+		t.Fatal(err)
+	}
+
+	// A patch on something else entirely is all it takes to build a view.
+	set := patchSet(t, filepath.Join(env.Root, "patches"), map[string]string{"pnpm": pnpmPatch})
+	if err := loader.BuildView(ls, set); err != nil {
+		t.Fatalf("BuildView failed: %v", err)
+	}
+
+	if got := env.ReadFile(filepath.Join(ls.ViewPath, "skills", "linked", "SKILL.md")); got != "linked skill\n" {
+		t.Errorf("symlinked asset = %q, want its content carried into the view", got)
+	}
+	if _, ok := ls.GetAsset("skills/linked"); !ok {
+		t.Error("GetAsset lost a symlinked asset that discovery still lists")
+	}
+}
+
 func TestBuildViewFailureKeepsWorkspaceAndPreviousView(t *testing.T) {
 	env, loader, ls := viewFixture(t)
 	patchDir := filepath.Join(env.Root, "patches")

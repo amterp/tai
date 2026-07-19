@@ -100,12 +100,6 @@ func (l *Loader) copyForView(ls *LoadedSource, staging string) error {
 		if err != nil {
 			return err
 		}
-		// Symlinks are skipped for the same reason CopyDir skips them: a link
-		// out of the source is an escape hatch we don't want to materialize.
-		if d.Type()&fs.ModeSymlink != 0 {
-			return nil
-		}
-
 		rel, err := filepath.Rel(ls.ResolvedPath, srcPath)
 		if err != nil {
 			return err
@@ -128,6 +122,32 @@ func (l *Loader) copyForView(ls *LoadedSource, staging string) error {
 		}
 
 		dstPath := filepath.Join(staging, rel)
+
+		// Symlinks are followed, not skipped. Asset discovery follows them, so
+		// a view that dropped them would advertise assets it cannot produce -
+		// declaring `patches:` for one file would silently stop installing every
+		// symlinked asset in the source. Copying the target keeps the view a
+		// faithful stand-in for what discovery saw.
+		if d.Type()&fs.ModeSymlink != 0 {
+			info, statErr := os.Stat(srcPath)
+			if statErr != nil {
+				// A dangling link is not ours to resolve; discovery ignores it
+				// too, so leaving it out keeps the two consistent.
+				return nil
+			}
+			if info.IsDir() {
+				// Resolved first: WalkDir does not descend when its root is
+				// itself a symlink, so copying via the link name silently
+				// produces nothing.
+				target, resolveErr := filepath.EvalSymlinks(srcPath)
+				if resolveErr != nil {
+					return nil
+				}
+				return pathutil.CopyDir(target, dstPath)
+			}
+			return pathutil.CopyFile(srcPath, dstPath)
+		}
+
 		if d.IsDir() {
 			return pathutil.MkdirPreservingMode(dstPath, d)
 		}

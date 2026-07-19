@@ -1645,6 +1645,11 @@ they neither pay for materialization nor can fail on a broken patch. `--dry-run`
 does build a view: a preview that resolved unpatched content would be previewing
 something tai will never install.
 
+Symlinked assets are followed and their content copied in, because discovery
+follows them too: a view that dropped them would advertise assets it could not
+produce, and adding `patches:` for one file would silently stop installing every
+symlinked asset in the source.
+
 Rebuilds are unconditional - `.git` is skipped implicitly, so a build is
 typically tens of milliseconds. There is no fingerprint cache, because a view
 that should have rebuilt but didn't would silently install stale content, which
