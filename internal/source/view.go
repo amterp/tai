@@ -81,7 +81,12 @@ func (l *Loader) BuildView(ls *LoadedSource, patches *patch.Set) error {
 				}
 			}
 			viewErr.Workspace = staging
+			return err
 		}
+		// Not an apply failure (a write error, say), so there is no half-applied
+		// tree worth keeping for the user to inspect - and nothing sweeps
+		// staging, so leaving it would leak.
+		_ = os.RemoveAll(staging)
 		return err
 	}
 
@@ -271,7 +276,8 @@ func (ls *LoadedSource) RegenerationBaseline(patches *patch.Set, target *patch.P
 		}
 		next, applyErr := patch.Apply(content, p)
 		if applyErr != nil {
-			return nil, fmt.Errorf("cannot establish a baseline: sibling patch %q on the same file does not apply (%s)", p.Name, applyErr.Error())
+			return nil, fmt.Errorf("cannot establish a baseline: sibling patch %q on the same file does not apply (%s).\n"+
+				"Repair %q first, then regenerate this one", p.Name, applyErr.Error(), p.Name)
 		}
 		content = next
 	}

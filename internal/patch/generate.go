@@ -101,6 +101,13 @@ func uniqueEdit(baseline string, baseLines, curLines []string, b1, b2, c1, c2 in
 		}
 	}
 
+	// An empty baseline has nothing to anchor against at all, which is a
+	// different problem from ambiguity and would send someone hunting for
+	// repetition that isn't there.
+	if len(baseLines) == 0 {
+		return Edit{}, fmt.Errorf("the unpatched file is empty, so there is no text for an edit to anchor to - " +
+			"a patch edits existing content and cannot create a file from nothing")
+	}
 	return Edit{}, fmt.Errorf("could not find a unique anchor for a change near line %d - the surrounding content repeats too often to patch reliably", b1+1)
 }
 
@@ -118,18 +125,4 @@ func splitLines(s string) []string {
 		lines = lines[:len(lines)-1]
 	}
 	return lines
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
