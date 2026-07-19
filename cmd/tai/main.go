@@ -889,14 +889,28 @@ func reportPatchFailure(err error) {
 		fmt.Fprintf(&b, "  %s\n", viewErr.Reason)
 	}
 
+	// Steps are numbered as they are written, so the workspace step can be
+	// omitted without leaving a gap in the sequence.
 	b.WriteString("\n  To fix:\n")
-	fmt.Fprintf(&b, "    1. See what changed upstream:   tai patch diff %s\n", p.Name)
-	if viewErr.Workspace != "" {
-		fmt.Fprintf(&b, "    2. Inspect or repair it in:     %s\n", viewErr.Workspace)
+	step := 0
+	addStep := func(format string, args ...any) {
+		step++
+		fmt.Fprintf(&b, "    %d. %s\n", step, fmt.Sprintf(format, args...))
 	}
-	fmt.Fprintf(&b, "    3. Update the edits in:         %s\n", p.PatchPath)
-	fmt.Fprintf(&b, "    4. Accept the new upstream:     tai patch bless %s\n", p.Name)
-	b.WriteString("    5. Re-run the install\n")
+
+	addStep("%-38s tai patch diff %s", "See what changed upstream:", p.Name)
+	if viewErr.Workspace != "" {
+		// Point at regenerate rather than the patch file: hand-writing
+		// find/replace is what the workspace exists to avoid, and every other
+		// message in this feature routes people through regenerate.
+		addStep("%-38s %s", "Edit the file to match what you want:", viewErr.Workspace)
+		addStep("%-38s tai patch regenerate %s", "Turn that edit into the patch:", p.Name)
+		addStep("%-38s %s", "Review the rewritten edits:", p.PatchPath)
+	} else {
+		addStep("%-38s %s", "Update the edits in:", p.PatchPath)
+	}
+	addStep("%-38s tai patch bless %s", "Accept the new upstream:", p.Name)
+	addStep("Re-run the install")
 
 	out.Raw(b.String())
 }

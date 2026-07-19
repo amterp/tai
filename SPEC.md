@@ -1734,11 +1734,12 @@ patch 'rad-skill' could not be applied - install aborted, nothing was changed:
     | Always install with npm.
 
   To fix:
-    1. See what changed upstream:   tai patch diff rad-skill
-    2. Inspect or repair it in:     ~/.cache/tai/workspaces/<repoKey>/shared-skills
-    3. Update the edits in:         patches/shared-skills/rad-skill.yaml
-    4. Accept the new upstream:     tai patch bless rad-skill
-    5. Re-run the install
+    1. See what changed upstream:             tai patch diff rad-skill
+    2. Edit the file to match what you want:  ~/.cache/tai/workspaces/<repoKey>/shared-skills
+    3. Turn that edit into the patch:         tai patch regenerate rad-skill
+    4. Review the rewritten edits:            patches/shared-skills/rad-skill.yaml
+    5. Accept the new upstream:               tai patch bless rad-skill
+    6. Re-run the install
 ```
 
 Two mistakes account for most failed finds, and both leave text that looks
