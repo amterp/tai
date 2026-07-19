@@ -738,6 +738,12 @@ func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts 
 		Manifest:  manifestPath,
 	})
 
+	// Warnings were collected but never shown, so users had no way to learn
+	// that an asset had been skipped as unsupported by their target.
+	for _, w := range result.Warnings {
+		out.Warning(w)
+	}
+
 	return runPostInstallHook(s, resolved, dryRun)
 }
 
