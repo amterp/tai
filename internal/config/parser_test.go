@@ -2,6 +2,7 @@ package config
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -660,6 +661,76 @@ func TestValidateDestPath(t *testing.T) {
 			}
 			if !tt.wantErr && err != nil {
 				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestSourceIsExcluded(t *testing.T) {
+	src := Source{Exclude: []string{"skills/legacy-*", "personas/draft.md", "docs/**"}}
+
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"skills/legacy-foo", true},
+		{"skills/legacy-foo/SKILL.md", true}, // excluding a dir excludes its subtree
+		{"skills/legacy-foo/refs/deep/guide.md", true},
+		{"skills/keeper", false},
+		{"skills/legacyfoo", false}, // pattern requires the hyphen
+		{"personas/draft.md", true},
+		{"personas/final.md", false},
+		{"docs/a/b/c.md", true}, // trailing /** is accepted and stripped
+		{"docs", true},
+		{"other/thing.md", false},
+	}
+
+	for _, tt := range tests {
+		if got := src.IsExcluded(tt.path); got != tt.want {
+			t.Errorf("IsExcluded(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
+
+func TestSourceNoExcludesMatchesNothing(t *testing.T) {
+	var src Source
+	if src.IsExcluded("anything/at/all.md") {
+		t.Error("a source without exclude patterns must exclude nothing")
+	}
+}
+
+func TestValidateSourcePatchesAndExclude(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		wantErr string
+	}{
+		{"valid", "    patches: patches/shared/\n", ""},
+		{"absolute patches", "    patches: /etc/patches\n", "cannot be an absolute path"},
+		{"traversal patches", "    patches: ../../elsewhere\n", "path traversal"},
+		{"valid exclude", "    exclude:\n      - \"skills/legacy-*\"\n", ""},
+		{"empty exclude", "    exclude:\n      - \"\"\n", "is empty"},
+		{"absolute exclude", "    exclude:\n      - \"/etc/*\"\n", "cannot be an absolute path"},
+		{"traversal exclude", "    exclude:\n      - \"../secrets\"\n", "path traversal"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := testutil.NewTestEnv(t)
+			env.SetupTaiConfig("version: 1\nsources:\n  - name: shared\n    path: ./shared\n" + tt.source)
+
+			_, err := ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected an error containing %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to contain %q", err, tt.wantErr)
 			}
 		})
 	}

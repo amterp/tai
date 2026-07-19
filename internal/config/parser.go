@@ -100,8 +100,38 @@ func validateTaiConfig(config *TaiConfig) error {
 		default:
 			return fmt.Errorf("source %q: invalid type %q (expected 'local', 'tai-repo', or 'command')", s.Name, s.Type)
 		}
+
+		// Patches and exclusions apply to every source type.
+		if s.Patches != "" {
+			if err := validateRelPath(s.Patches, "patches"); err != nil {
+				return fmt.Errorf("source %q: %w", s.Name, err)
+			}
+		}
+		for j, pattern := range s.Exclude {
+			if strings.TrimSpace(pattern) == "" {
+				return fmt.Errorf("source %q: exclude[%d] is empty", s.Name, j)
+			}
+			if err := validateRelPath(pattern, "exclude pattern"); err != nil {
+				return fmt.Errorf("source %q: %w", s.Name, err)
+			}
+		}
 	}
 
+	return nil
+}
+
+// validateRelPath rejects absolute paths and traversal, mirroring
+// validateDestPath. Used for source-declared patch dirs and exclude patterns,
+// both of which must stay inside their repo or source.
+func validateRelPath(p, field string) error {
+	if strings.HasPrefix(p, "/") {
+		return fmt.Errorf("%s cannot be an absolute path: %q", field, p)
+	}
+	for _, segment := range strings.Split(filepath.ToSlash(p), "/") {
+		if segment == ".." {
+			return fmt.Errorf("%s cannot contain path traversal (..): %q", field, p)
+		}
+	}
 	return nil
 }
 

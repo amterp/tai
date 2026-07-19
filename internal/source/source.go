@@ -190,7 +190,14 @@ func (l *Loader) discoverAssets(ls *LoadedSource) error {
 		if err != nil {
 			return err
 		}
-		ls.Assets[dirName] = assets
+
+		kept := assets[:0]
+		for _, name := range assets {
+			if !ls.IsExcluded(dirName + "/" + name) {
+				kept = append(kept, name)
+			}
+		}
+		ls.Assets[dirName] = kept
 	}
 	return nil
 }
@@ -244,8 +251,16 @@ func (l *Loader) discoverAssetsInDir(dir, assetType string) ([]string, error) {
 }
 
 // GetAsset returns the full path to an asset.
-// Returns false if the path escapes the source directory (path traversal protection).
+// Returns false if the path escapes the source directory (path traversal
+// protection), or if the source's `exclude:` patterns drop it.
 func (ls *LoadedSource) GetAsset(assetPath string) (string, bool) {
+	// Excluded paths still exist on disk, so this check has to be explicit -
+	// otherwise an exclusion would filter listings while leaving the file
+	// reachable by anyone who names it directly.
+	if ls.IsExcluded(assetPath) {
+		return "", false
+	}
+
 	// assetPath is like "personas/senior-swe.md" or "skills/my-skill"
 	fullPath := filepath.Join(ls.ResolvedPath, assetPath)
 
@@ -277,6 +292,12 @@ func (ls *LoadedSource) ResolveAsset(assetPath, assetType string) (*config.Asset
 
 	fullPath, ok := ls.GetAsset(assetPath)
 	if !ok {
+		// An excluded asset is usually sitting right there on disk, so a bare
+		// "not found" would send the user looking at the source instead of at
+		// their own exclude list.
+		if ls.IsExcluded(assetPath) {
+			return nil, fmt.Errorf("asset %s is excluded by source %q's 'exclude' patterns; remove the exclusion or stop referencing the asset", assetPath, ls.Name)
+		}
 		return nil, fmt.Errorf("asset not found: %s", assetPath)
 	}
 

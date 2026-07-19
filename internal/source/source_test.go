@@ -426,3 +426,57 @@ func TestLoaderCommandSource(t *testing.T) {
 		}
 	})
 }
+
+func TestLoaderExcludeHidesAssets(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupAsset("personas", "keeper.md", "# Keeper")
+	env.SetupAsset("personas", "draft.md", "# Draft")
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "legacy-thing")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# Legacy"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	loader := NewLoader(env.ConfigRepo)
+	ls, err := loader.Load(config.Source{
+		Name: "local", Type: "local", Path: "./assets",
+		Exclude: []string{"personas/draft.md", "skills/legacy-*"},
+	})
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	// Excluded assets must not appear in discovery.
+	personas := ls.Assets["personas"]
+	if len(personas) != 1 || personas[0] != "keeper.md" {
+		t.Errorf("personas = %v, want [keeper.md]", personas)
+	}
+	if len(ls.Assets["skills"]) != 0 {
+		t.Errorf("skills = %v, want none", ls.Assets["skills"])
+	}
+
+	// ...nor be reachable by naming them directly. They are still on disk, so
+	// this only holds because GetAsset checks exclusions explicitly.
+	if _, ok := ls.GetAsset("personas/draft.md"); ok {
+		t.Error("GetAsset returned an excluded asset")
+	}
+	if _, ok := ls.GetAsset("skills/legacy-thing"); ok {
+		t.Error("GetAsset returned an asset under an excluded directory")
+	}
+	if _, ok := ls.GetAsset("personas/keeper.md"); !ok {
+		t.Error("GetAsset must still return non-excluded assets")
+	}
+
+	// The error has to point at the exclude list, not at the source.
+	_, err = ls.ResolveAsset("personas/draft.md", "persona")
+	if err == nil {
+		t.Fatal("expected an error resolving an excluded asset")
+	}
+	if !strings.Contains(err.Error(), "excluded by source") {
+		t.Errorf("error = %q, want it to name the exclusion", err)
+	}
+}

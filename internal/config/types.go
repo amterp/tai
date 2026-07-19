@@ -4,6 +4,9 @@ package config
 import (
 	"fmt"
 	"io/fs"
+	"path"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -32,6 +35,46 @@ type Source struct {
 	// Timeout for the command, parsed via time.ParseDuration. Defaults to
 	// DefaultCommandTimeout when unset. Command sources only.
 	Timeout string `yaml:"timeout"`
+
+	// Patches is a config-repo-relative directory of patch files applied to
+	// this source's content. Declared here rather than by convention so the
+	// source and its local delta are visible in one place.
+	Patches string `yaml:"patches"`
+
+	// Exclude lists glob patterns for files this source does not carry at all.
+	// Deliberately independent of Patches: a patch says "tell me when upstream
+	// touches these lines", an exclusion says "upstream can do what it likes
+	// with this, I'm not taking it" - and filtering an import is useful on its
+	// own. Patterns are source-relative and matched with doublestar semantics
+	// (`**` spans directory separators).
+	Exclude []string `yaml:"exclude"`
+}
+
+// HasPatches reports whether this source declares a patch directory.
+func (s *Source) HasPatches() bool {
+	return s.Patches != ""
+}
+
+// IsExcluded reports whether a source-relative path is excluded.
+//
+// A pattern matches the path itself or any of its parent directories, so
+// `skills/legacy-*` excludes that directory and everything beneath it - the
+// behavior people expect from excluding a directory, without needing `**`. A
+// trailing `/**` is accepted and stripped for familiarity.
+func (s *Source) IsExcluded(rel string) bool {
+	if len(s.Exclude) == 0 {
+		return false
+	}
+	rel = path.Clean(filepath.ToSlash(rel))
+	for _, pattern := range s.Exclude {
+		pattern = strings.TrimSuffix(path.Clean(filepath.ToSlash(pattern)), "/**")
+		for candidate := rel; candidate != "." && candidate != "/"; candidate = path.Dir(candidate) {
+			if ok, err := path.Match(pattern, candidate); err == nil && ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // SourceTypeCommand is the source type whose assets are materialized by
