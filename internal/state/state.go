@@ -16,6 +16,7 @@ import (
 	"github.com/amterp/tai/internal/bundle"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/install"
+	"github.com/amterp/tai/internal/patch"
 	"github.com/amterp/tai/internal/pathutil"
 	"github.com/amterp/tai/internal/profile"
 	"github.com/amterp/tai/internal/source"
@@ -273,6 +274,47 @@ func (s *State) RefreshCommandSources(name string, onRefresh func(name string)) 
 	}
 
 	return s.LoadConfigRepo(s.GlobalConfig.ActiveConfig)
+}
+
+// LoadPatches loads the patch set a source declares, or an empty set when it
+// declares none.
+func (s *State) LoadPatches(src *source.LoadedSource) (*patch.Set, error) {
+	if !src.HasPatches() {
+		return patch.NewSet(src.Name, nil), nil
+	}
+	dir := filepath.Join(s.GlobalConfig.ActiveConfig, filepath.FromSlash(src.Patches))
+	return patch.LoadDir(dir, src.Name)
+}
+
+// BuildPatchedViews materializes a patched view for every source that declares
+// patches, and points those sources at their views.
+//
+// Called once per command invocation before installing, rather than during
+// config load: loading happens on every CLI invocation, so building there would
+// make `tai list` pay for materialization and let a broken patch fail a
+// read-only command. Building once here also means a multi-target reinstall
+// builds each view a single time and shares it across targets.
+func (s *State) BuildPatchedViews() error {
+	if err := s.RequireActiveConfig(); err != nil {
+		return err
+	}
+
+	loader := source.NewLoader(s.GlobalConfig.ActiveConfig)
+	loader.SetCacheDir(s.Paths.CacheDir)
+
+	for _, src := range s.Sources {
+		if !src.HasPatches() {
+			continue
+		}
+		patches, err := s.LoadPatches(src)
+		if err != nil {
+			return err
+		}
+		if err := loader.BuildView(src, patches); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SetActiveConfig sets the active config repo path and saves it.

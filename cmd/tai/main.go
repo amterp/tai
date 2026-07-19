@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,6 +16,7 @@ import (
 	"github.com/amterp/tai/internal/install"
 	"github.com/amterp/tai/internal/output"
 	"github.com/amterp/tai/internal/profile"
+	"github.com/amterp/tai/internal/source"
 	"github.com/amterp/tai/internal/state"
 	"github.com/amterp/tai/internal/template"
 )
@@ -534,7 +536,21 @@ func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr s
 	s := loadState()
 	requireActiveConfig(s)
 	refreshSourcesForInstall(s, dryRun)
+	buildPatchedViews(s)
 	if err := doInstall(s, profileName, dryRun, force, skipConflicts, varsStr, showDiff); err != nil {
+		os.Exit(1)
+	}
+}
+
+// buildPatchedViews materializes patched copies of any sources that declare
+// patches, before anything resolves assets out of them.
+//
+// Runs in dry-run too. A preview that resolved unpatched content would be
+// previewing something tai will never install, and it is also how --dry-run
+// surfaces a broken patch without touching the target.
+func buildPatchedViews(s *state.State) {
+	if err := s.BuildPatchedViews(); err != nil {
+		reportPatchFailure(err)
 		os.Exit(1)
 	}
 }
@@ -627,6 +643,7 @@ func runReinstall(target string, dryRun, force, skipConflicts bool, varsStr stri
 	}
 
 	refreshSourcesForInstall(s, dryRun)
+	buildPatchedViews(s)
 
 	failed := false
 	for i, rt := range toReinstall {
@@ -775,6 +792,61 @@ func runPostInstallHook(s *state.State, resolved *profile.ResolvedProfile, dryRu
 		return err
 	}
 	return nil
+}
+
+// reportPatchFailure renders a patch that could not be applied, with the steps
+// to resolve it. A patch failure is a routine part of tracking upstream, not an
+// internal error - if it surfaces as an opaque message people will stop using
+// patches rather than fix them, so it names the file to edit, the content it
+// failed against, and the workspace left on disk to repair it in.
+func reportPatchFailure(err error) {
+	var viewErr *source.ViewError
+	if !errors.As(err, &viewErr) {
+		fatal("%v", err)
+		return
+	}
+
+	p := viewErr.Patch
+	out.Error(fmt.Sprintf("patch '%s' could not be applied - install aborted, nothing was changed:", p.Name))
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n  patch:  %s\n", p.PatchPath)
+	fmt.Fprintf(&b, "  file:   %s\n", p.FileRef())
+
+	if ae := viewErr.ApplyErr; ae != nil {
+		if ae.Matches == 0 {
+			fmt.Fprintf(&b, "  edit #%d: find text not found - upstream has likely changed since this patch was written\n", ae.EditIndex+1)
+		} else {
+			fmt.Fprintf(&b, "  edit #%d: ambiguous - matched %d locations (lines %s)\n", ae.EditIndex+1, ae.Matches, joinInts(ae.Lines))
+		}
+		for _, line := range strings.Split(strings.TrimSuffix(ae.Find, "\n"), "\n") {
+			fmt.Fprintf(&b, "    | %s\n", line)
+		}
+		if ae.Hint != "" {
+			fmt.Fprintf(&b, "  Hint: %s\n", ae.Hint)
+		}
+	} else {
+		fmt.Fprintf(&b, "  %s\n", viewErr.Reason)
+	}
+
+	b.WriteString("\n  To fix:\n")
+	fmt.Fprintf(&b, "    1. See what changed upstream:   tai patch diff %s\n", p.Name)
+	if viewErr.Workspace != "" {
+		fmt.Fprintf(&b, "    2. Inspect or repair it in:     %s\n", viewErr.Workspace)
+	}
+	fmt.Fprintf(&b, "    3. Update the edits in:         %s\n", p.PatchPath)
+	fmt.Fprintf(&b, "    4. Accept the new upstream:     tai patch bless %s\n", p.Name)
+	b.WriteString("    5. Re-run the install\n")
+
+	out.Raw(b.String())
+}
+
+func joinInts(ns []int) string {
+	parts := make([]string, len(ns))
+	for i, n := range ns {
+		parts[i] = strconv.Itoa(n)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // outputLogger wraps Output to implement the logger interface expected by ProfileResolver.

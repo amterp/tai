@@ -25,6 +25,33 @@ type LoadedSource struct {
 	// that (the config repo must remain loadable before the first fetch),
 	// and asset resolution surfaces the actionable error instead.
 	Materialized bool
+
+	// ViewPath is the materialized patched copy of this source, set by
+	// BuildView. Empty until a view is built, which only happens for sources
+	// that declare patches and only during commands that install.
+	//
+	// ResolvedPath deliberately stays pristine: read-only commands never build
+	// a view, so they neither pay for it nor can fail on a broken patch, and
+	// `tai locate` keeps pointing at the checkout the user can actually edit
+	// rather than at a cache directory the next install replaces.
+	ViewPath string
+}
+
+// ContentPath is where this source's content should be read from: the patched
+// view when one has been built, otherwise the pristine source. Routing every
+// content lookup through here is what keeps the rest of tai unaware that
+// patches exist.
+func (ls *LoadedSource) ContentPath() string {
+	if ls.ViewPath != "" {
+		return ls.ViewPath
+	}
+	return ls.ResolvedPath
+}
+
+// PristinePath is the unpatched source location. Used by the patch commands,
+// which must compare against upstream rather than against tai's own output.
+func (ls *LoadedSource) PristinePath() string {
+	return ls.ResolvedPath
 }
 
 // RequireMaterialized returns an error when the source's content is not on
@@ -262,10 +289,11 @@ func (ls *LoadedSource) GetAsset(assetPath string) (string, bool) {
 	}
 
 	// assetPath is like "personas/senior-swe.md" or "skills/my-skill"
-	fullPath := filepath.Join(ls.ResolvedPath, assetPath)
+	base := ls.ContentPath()
+	fullPath := filepath.Join(base, assetPath)
 
 	// Verify the result is still within the source directory
-	if !pathutil.IsContainedIn(fullPath, ls.ResolvedPath) {
+	if !pathutil.IsContainedIn(fullPath, base) {
 		return "", false // Path traversal attempt
 	}
 

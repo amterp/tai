@@ -86,10 +86,14 @@ func (r *IncludeResolver) resolveSourceInclude(inc config.Include, targetSkillPa
 		return fmt.Errorf("source %q not found", inc.From)
 	}
 
-	srcPath := filepath.Join(src.ResolvedPath, inc.Path)
+	// ContentPath, not ResolvedPath: an include must pull the same patched
+	// bytes the rest of the install sees, or one source file would appear two
+	// different ways in a single install.
+	srcRoot := src.ContentPath()
+	srcPath := filepath.Join(srcRoot, inc.Path)
 
 	// Security: Validate source path doesn't escape source directory (path traversal protection)
-	if !pathutil.IsContainedIn(srcPath, src.ResolvedPath) {
+	if !pathutil.IsContainedIn(srcPath, srcRoot) {
 		return fmt.Errorf("path %q escapes source directory (path traversal not allowed)", inc.Path)
 	}
 
