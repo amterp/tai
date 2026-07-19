@@ -27,6 +27,7 @@ Additional terms:
 - **Bundle**: A named collection of assets. Acts as a "shopping list" for composing related assets.
 - **Profile**: A bundle bound to a specific target. Profiles are what you actually install and run.
 - **Source**: A location providing assets—a local directory, another tai config repo, or (future) a git remote.
+- **Patch**: A set of search/replace edits applied to a file from a source you don't control, letting you keep a local delta without forking the source or shadowing the asset wholesale.
 - **Config Repo**: A repository defining sources, bundles, and profiles. The entry point for tai.
 - **Adapter**: Target-specific logic that knows how to build, install, and run a particular AI target.
 
@@ -125,6 +126,7 @@ tai/
 │   │   └── shared.go     # Shared adapter helpers
 │   ├── bundle/           # Bundle resolution
 │   ├── profile/          # Profile management
+│   ├── patch/            # Search/replace patches for imported content
 │   └── install/          # Installation logic
 ├── go.mod
 ├── go.sum
@@ -160,6 +162,10 @@ my-tai-config/
 ├── bundles/
 │   ├── core.yaml
 │   └── work-extras.yaml
+├── patches/              # Local deltas on sources you don't own
+│   └── shared-skills/    # One dir per source, named by its 'patches:' field
+│       ├── add-tooling.yaml
+│       └── add-tooling.blessed
 └── profiles/
     ├── personal.yaml
     └── work.yaml
@@ -699,6 +705,13 @@ tai run opencode [args...]      # Run opencode with tai config applied
 # Command Source Management
 tai refresh                     # Fetch all command sources into the cache
 tai refresh <source-name>       # Fetch a specific command source
+
+# Patches (local deltas on sources you don't own)
+tai patch list                  # List patches and whether they still apply
+tai patch diff <name>           # Show what changed upstream since blessing
+tai patch bless <name>|--all    # Record current upstream content as reviewed
+tai patch workspace <source>    # Editable copy for authoring or repairing
+tai patch regenerate <name>     # Rewrite a patch from your workspace edits
 
 # Build (Future)
 tai build <profile>             # Build/compile assets without installing
@@ -1495,6 +1508,239 @@ For special files like docs that may need merging rather than replacing:
 - **Overwrite**: (Default) Replace entire file
 - **Append/Prepend**: Add content to existing file
 - **Template**: Inject content at marked locations
+
+Editing *imported* content is a separate concern, solved by
+[Patching Imported Assets](#patching-imported-assets): merge strategies combine
+tai's content with what already exists at the target, while patches are about
+disagreeing with what a source gave you.
+
+## Patching Imported Assets
+
+When you import assets from a source you don't control - a shared skills repo
+maintained by another team, or a `command` source fetched into
+`~/.cache/tai/sources/` - you'll sometimes need a small local delta. Editing the
+checkout in place drifts silently and dies on the next pull; forking the source
+loses upstream updates. Patches are the third option: keep tracking upstream,
+declare a small delta on top, and be told loudly when upstream moves underneath
+it.
+
+### Declaring Patches and Exclusions
+
+Both are declared on the source itself:
+
+```yaml
+sources:
+  - name: shared-skills
+    path: ~/src/shared-skills
+    patches: patches/shared-skills/   # dir of *.yaml in this config repo
+    exclude:                          # files this source does not carry at all
+      - "skills/legacy-*"
+```
+
+Declaring the delta where the source is declared is deliberate. The alternative
+- a separate materialization step referenced by convention - means every machine
+must be told the same convention, so one change touches every config repo.
+
+`exclude:` is independent of `patches:` and works without it. The two express
+different couplings:
+
+| | Meaning | Coupling to upstream |
+|---|---|---|
+| **Patch** | "Change these lines, and tell me when upstream touches them" | Tight - breaks loudly when upstream moves |
+| **Exclusion** | "I don't carry this file; upstream can do what it likes" | None |
+
+A pattern matches a path or any of its parent directories, so excluding a
+directory excludes its whole subtree. A trailing `/**` is accepted and stripped.
+Excluded files are unreachable, not merely hidden from listings: naming one in a
+bundle fails with an error that points at the exclusion rather than claiming the
+asset does not exist.
+
+### Patch Files
+
+One patch file targets one file. The patch's **name** is its path within the
+patch directory, minus the extension; subdirectories are walked, so patches can
+be organized freely.
+
+```yaml
+# patches/shared-skills/add-tooling-section.yaml
+version: 1
+file: skills/rad/SKILL.md          # source-relative - the dir is bound to a source
+description: Add my personal tooling section
+edits:
+  - find: |-
+      ## Reference
+    replace: |-
+      ## My Tooling
+
+      Uses `tm` and `rad`.
+
+      ## Reference
+  - find: "Telemetry is enabled by default.\n"
+    replace: ""                     # empty replace deletes the text
+```
+
+Validation at config load: `version` must be 1, `file` must be present and
+relative with no `..`, there must be at least one edit, and every `find` must be
+non-empty.
+
+### Exact-Once Matching
+
+**Every `find` must match exactly once.** Zero matches fails with "find text not
+found"; two or more fails with "ambiguous - matched N locations (lines ...)".
+
+This is the core safety property. A patch is reapplied automatically on every
+install, potentially for years, against content that changes underneath it. If
+tai silently skipped a `find` that no longer matched, you would quietly get
+upstream behavior you had explicitly rejected. If it replaced the first of
+several matches, you would quietly get an edit in the wrong place.
+
+Edits within a patch apply in order, each seeing the previous one's result. When
+several patches target the same file, they apply in name order.
+
+Occurrence counting is non-overlapping, so `find: "aa"` against `"aaa"` counts
+once and applies.
+
+### How Patches Are Applied
+
+A source that declares patches gets a **materialized patched view** built into
+`~/.cache/tai/views/<repoKey>/<source>/`, and all asset resolution reads from
+it. The rest of tai never learns patches exist.
+
+This is an invariant rather than a set of call sites: there is exactly one path
+where source bytes enter the pipeline, and it is already patched. Applying
+patches at each point content is read instead would mean every present and
+future read of an asset's source path has to remember to do so, and the failure
+mode when one forgets is silent wrong content.
+
+Consequences worth knowing:
+
+- Dependency resolution, statusline parsing, templating, frontmatter parsing and
+  adapter transforms all see patched content automatically.
+- `{% include_asset %}` and skill `include:` see patched content, so one source
+  file never appears two different ways in a single install.
+- A skill's own `tai.yaml` manifest can be patched, since includes are resolved
+  from the view.
+- Installed checksums cover patched bytes, so reinstalling patched content
+  correctly reports "unchanged".
+
+**The pristine source is never written to.** Views are built from it and swapped
+into place atomically; a failed build leaves the previous view intact. Keeping
+upstream an honest mirror is what lets blessed snapshots detect real upstream
+drift rather than tai's own edits, and it means `tai locate` still points at the
+checkout you can edit.
+
+Views are built once per command invocation, only by commands that install.
+Read-only commands (`tai list`, `tai locate`, `tai status`) never build one, so
+they neither pay for materialization nor can fail on a broken patch. `--dry-run`
+does build a view: a preview that resolved unpatched content would be previewing
+something tai will never install.
+
+Rebuilds are unconditional - `.git` is skipped implicitly, so a build is
+typically tens of milliseconds. There is no fingerprint cache, because a view
+that should have rebuilt but didn't would silently install stale content, which
+is the exact failure patches exist to prevent.
+
+### Blessing and Drift
+
+A patch failing to apply answers *"does my edit still fit"*. It cannot answer
+*"is my edit still right"*. Upstream can change something a patch has an opinion
+about, in a place the patch does not touch:
+
+> Your patch removes a `--force` flag from one line. Six months later upstream
+> adds a section documenting a legitimate `--force` use case 200 lines away.
+> Your patch still applies. Your installed content now contradicts itself, and
+> nothing has told you.
+
+`tai patch bless <name>` records the upstream content the patch was reviewed
+against, as `patches/<dir>/<name>.blessed`. Commit it: it lives in the config
+repo so drift detection travels with the repo, rather than in the cache, which
+is keyed by the config repo's path and therefore machine-specific.
+
+| Situation | Behavior |
+|---|---|
+| Patch applies; upstream matches the snapshot | Silent |
+| Patch applies; upstream differs from the snapshot | **Warning**, install proceeds with patched content |
+| Patch applies; no snapshot | One-line notice suggesting `tai patch bless` |
+| Patch does not apply | **Install fails**, nothing is written |
+
+Snapshots are per patched file, not per source: a shared repo changes constantly,
+and warning about files nobody patched would train people to ignore the warning.
+They store content rather than a hash so `tai patch diff` can show what moved.
+
+Blessing refuses a patch that does not apply, whose source is not fetched, or
+whose target is gone. A snapshot means "I looked at this and the patch is right
+for it"; recording one for content the patch cannot apply to would bake in a
+broken state and silence the warning that would prompt a fix.
+
+Snapshots are written only by an explicit `tai patch bless`. Installs never
+write into your config repo.
+
+### Authoring and Repairing
+
+Hand-writing search/replace is the weak point of the format, and an append is
+the worst case: with nothing to anchor to, the text before the insertion has to
+be repeated verbatim in both `find` and `replace`. The workspace removes that.
+
+```bash
+tai patch workspace shared-skills   # editable copy, patches already applied
+# edit files normally
+tai patch regenerate add-tooling-section
+tai patch bless add-tooling-section
+```
+
+`tai patch regenerate` diffs your edits and derives the `find`/`replace` pairs,
+widening each change with surrounding context until it anchors uniquely. The
+generated edits are applied back and compared against your edited file before
+being written, so a patch that regenerates is known to reproduce the edit.
+
+The workspace is a stable path per source. A failed install promotes its
+half-built tree there, so authoring and repairing are the same place and the
+same commands. Patches that could not be applied are named, since those are the
+changes to re-make by hand.
+
+**Regeneration measures against pristine plus every other patch on the same
+file.** This is why tai derives the edits rather than asking you to run a diff
+yourself: with two patches on one file, a whole-workspace diff carries both
+changes, so writing it into one of them absorbs the other and the pair corrupts
+on the next run. tai knows which patch owns which file, so it can exclude only
+the one being regenerated.
+
+### Failure Behavior
+
+A failed patch aborts the install before anything is written, and reports where
+to fix it:
+
+```
+patch 'rad-skill' could not be applied - install aborted, nothing was changed:
+
+  patch:  patches/shared-skills/rad-skill.yaml
+  file:   shared-skills:skills/rad/SKILL.md
+  edit #1: find text not found - upstream has likely changed since this patch was written
+    | Always install with npm.
+
+  To fix:
+    1. See what changed upstream:   tai patch diff rad-skill
+    2. Inspect or repair it in:     ~/.cache/tai/workspaces/<repoKey>/shared-skills
+    3. Update the edits in:         patches/shared-skills/rad-skill.yaml
+    4. Accept the new upstream:     tai patch bless rad-skill
+    5. Re-run the install
+```
+
+Two mistakes account for most failed finds, and both leave text that looks
+byte-identical to the eye, so tai diagnoses them explicitly:
+
+- **YAML block scalars append a newline.** `find: |` adds a trailing `\n`; use
+  `find: |-` if you don't want one.
+- **Line endings.** A CRLF file and an LF patch won't match.
+
+### Non-Goals
+
+- Regex or fuzzy matching, and unified-diff patch files. Search/replace with
+  exact-once matching is deliberately the least surprising thing that works, and
+  `tai patch regenerate` removes the ergonomic reason to prefer diffs.
+- Pulling sources. tai does not `git pull` a local path source; you own that.
+  Reporting that a source is behind its remote is a separate concern.
+- Patch status in `tai status`; use `tai patch list`.
 
 ## Example Workflows
 

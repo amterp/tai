@@ -43,6 +43,7 @@ golangci-lint run ./...          # Runs errcheck, govet, staticcheck, unused, in
 | **Bundle** | Named collection of assets | Shopping list of related assets |
 | **Profile** | Bundle(s) + target | What you actually install |
 | **Source** | Asset provider | Local dir, tai repo, command (fetched into cache) |
+| **Patch** | Local delta on a source you don't own | - (tai concept) |
 
 **Asset shapes:** File assets (personas, delegates, skills, files) are copied to target paths. Config assets (statuslines, mcps, hooks) are merged into target JSON config files.
 
@@ -61,8 +62,9 @@ Sources → Assets → Bundles → Profiles → Install Pipeline → Target Conf
 - **cmd/tai/main.go** - CLI entry point, command routing & handlers
 - **internal/state/** - Global state management; loads config repo, creates resolvers
 - **internal/config/** - Core types (TaiConfig, Source, Bundle, Profile, Asset, Manifest) and YAML parsing
-- **internal/source/** - Discovers and loads assets from filesystem sources; materializes command sources into `~/.cache/tai/sources/`
+- **internal/source/** - Discovers and loads assets from filesystem sources; materializes command sources into `~/.cache/tai/sources/` and patched views into `~/.cache/tai/views/` (`view.go`)
 - **internal/cmdexec/** - Shared runner for user-declared commands (skill includes, command sources, post-install hooks): staging dir + TAI_* env, timeouts with process-group cleanup, capped output, atomic swap
+- **internal/patch/** - Search/replace patches: parse, validate, apply exactly-once, and derive edits from a diff. Pure; no install/source deps
 - **internal/bundle/** - Recursive bundle composition with cycle detection
 - **internal/profile/** - Composes bundles into profiles, handles asset deduplication
 - **internal/install/** - Installation logic with manifest tracking, conflict detection, backup/restore
@@ -77,6 +79,9 @@ Sources → Assets → Bundles → Profiles → Install Pipeline → Target Conf
 3. **Fail-fast**: Missing files, circular refs cause immediate failure, not partial install
 4. **Diamond deduplication**: Later sources/bundles override earlier ones on conflict (logged as info)
 5. **All paths injected**: No hardcoded paths—enables thorough testing with temp directories
+6. **Patched sources are materialized, not patched at read time**: a source declaring `patches:` gets a patched view built in the cache, and `LoadedSource.ContentPath()` redirects all content lookups to it. The install pipeline is unaware patches exist. Patching at each read site instead would make correctness depend on every present and future `os.ReadFile(asset.SourcePath)` remembering to patch—and the failure mode is silent wrong content (this bit us twice: dependency resolution and statusline parsing).
+7. **The pristine source is never written to**: views are built from it and swapped in atomically. That is what lets `.blessed` snapshots detect real upstream drift rather than tai's own edits, and keeps `tai locate` pointing at an editable checkout.
+8. **Patches fail loudly**: each `find` must match exactly once; 0 or 2+ aborts before anything is written. A patch that silently stops applying would reintroduce content the user explicitly rejected.
 
 ### Adapter Interface
 
@@ -140,6 +145,7 @@ my-tai-config/
 │   ├── mcps/           # Config assets (v0.2)
 │   └── hooks/
 ├── bundles/            # Bundle definitions (YAML)
+├── patches/            # Local deltas, one dir per patched source
 └── profiles/           # Profile definitions (YAML)
 ```
 
@@ -162,6 +168,13 @@ tai install <profile> [--dry-run] [--force] [--skip-conflicts]
 tai uninstall <target>
 tai status [target]
 tai refresh [source]               # Fetch command sources without installing
+
+# Patches
+tai patch list                     # Status of every patch
+tai patch diff <name>              # Blessed snapshot vs current upstream
+tai patch bless <name>|--all       # Record current upstream as reviewed
+tai patch workspace <source>       # Editable copy for authoring/repairing
+tai patch regenerate <name>        # Rewrite a patch from workspace edits
 
 # Convenience
 tai run <target> [args...]         # Run target with tai config applied

@@ -37,6 +37,7 @@ go install github.com/amterp/tai/cmd/tai@latest
 | **Bundle**      | Named collection of assets                   | -                          |
 | **Profile**     | Bundle(s) bound to a target                  | -                          |
 | **Source**      | Location providing assets                    | -                          |
+| **Patch**       | Local delta on a source you don't own        | -                          |
 | **Target**      | AI tool to install to                        | Claude Code, Codex, Gemini CLI, OpenCode |
 | **Config Repo** | Repository containing your Tai configuration | -                          |
 
@@ -65,6 +66,7 @@ my-tai-config/
 │   ├── skills/           # Procedural capabilities (directories)
 │   └── docs/             # Reference documentation
 ├── bundles/              # Bundle definitions (YAML)
+├── patches/              # Local deltas on sources you don't own
 └── profiles/             # Profile definitions (YAML)
 ```
 
@@ -212,6 +214,17 @@ tai status [target]                # Show what's installed
 tai refresh [source]               # Fetch command sources without installing
 ```
 
+### Patches
+
+```bash
+tai patch list                # List patches and whether they still apply
+tai patch diff <name>         # Show what changed upstream since blessing
+tai patch bless <name>        # Record current upstream content as reviewed
+tai patch bless --all         # Bless every patch that applies cleanly
+tai patch workspace <source>  # Editable copy for authoring or repairing
+tai patch regenerate <name>   # Rewrite a patch from your workspace edits
+```
+
 ### Running
 
 ```bash
@@ -289,6 +302,103 @@ Inject the current contents of a target file -- useful for wrapping existing con
 ```
 
 When using `{{existing}}`, Tai backs up the original file and restores it on uninstall.
+
+## Patching Imported Assets
+
+When you import from a source you don't own -- a shared team repo, say -- you'll
+sometimes need a small local change. Editing the checkout drifts silently and
+dies on the next pull; forking loses upstream updates. Patches let you keep
+tracking upstream and declare a delta on top.
+
+Declare it on the source:
+
+```yaml
+sources:
+  - name: shared-skills
+    path: ~/src/shared-skills
+    patches: patches/shared-skills/   # dir of patch files in your config repo
+    exclude:                          # files you don't carry at all
+      - "skills/legacy-*"
+```
+
+Then write a patch file:
+
+```yaml
+# patches/shared-skills/use-pnpm.yaml
+version: 1
+file: skills/rad/SKILL.md
+description: Prefer pnpm over npm
+edits:
+  - find: |-
+      Always install with npm.
+    replace: |-
+      Always install with pnpm.
+```
+
+The next `tai install` applies it. Your checkout is never modified -- Tai builds
+a patched copy in its cache and installs from that.
+
+`exclude:` is separate and works on its own. A patch means "change this, and
+tell me when upstream touches it"; an exclusion means "I don't carry this file
+at all, upstream can do what it likes".
+
+### Patches Fail Loudly
+
+Every `find` must match **exactly once**. If upstream changes so the text no
+longer matches -- or now matches twice -- the install stops rather than quietly
+installing content you'd rejected:
+
+```
+patch 'use-pnpm' could not be applied - install aborted, nothing was changed:
+
+  patch:  patches/shared-skills/use-pnpm.yaml
+  file:   shared-skills:skills/rad/SKILL.md
+  edit #1: find text not found - upstream has likely changed since this patch was written
+    | Always install with npm.
+
+  To fix:
+    1. See what changed upstream:   tai patch diff use-pnpm
+    2. Inspect or repair it in:     ~/.cache/tai/workspaces/.../shared-skills
+    3. Update the edits in:         patches/shared-skills/use-pnpm.yaml
+    4. Accept the new upstream:     tai patch bless use-pnpm
+    5. Re-run the install
+```
+
+> **Tip:** YAML's `find: |` appends a trailing newline; use `find: |-` if you
+> don't want one. Tai detects this (and CRLF/LF mismatches) and says so.
+
+### Don't Write Patches By Hand
+
+Editing a file is easier than describing an edit, so let Tai do the describing:
+
+```bash
+tai patch workspace shared-skills     # editable copy, patches already applied
+# ...edit files normally...
+tai patch regenerate use-pnpm         # Tai works out the find/replace pairs
+```
+
+This is also the repair path -- a failed install leaves its workspace at the
+same location, ready to fix.
+
+### Blessing
+
+A patch that still applies isn't necessarily still *right*. Upstream might
+change something your patch has an opinion about, somewhere your patch doesn't
+touch.
+
+`tai patch bless <name>` records the upstream content you reviewed, as a
+`.blessed` file next to the patch. Commit it. Afterwards, Tai warns when that
+file changes even though the patch still applies:
+
+```
+Warning: upstream file for patch 'use-pnpm' changed since it was blessed
+  file: shared-skills:skills/rad/SKILL.md
+  The patch still applies cleanly; installing the patched content.
+  Review what changed:  tai patch diff shared-skills:use-pnpm
+  Accept it:            tai patch bless shared-skills:use-pnpm
+```
+
+Run `tai patch list` to see where every patch stands.
 
 ## Example Workflows
 
