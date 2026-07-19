@@ -168,6 +168,44 @@ func applyPatchesInDir(dir, sourceName string, patches *patch.Set) error {
 	return nil
 }
 
+// InspectPatches evaluates every patch in the set against this source's
+// pristine content, in set order. Used by the patch commands and by install to
+// warn about drift before building the view.
+func (ls *LoadedSource) InspectPatches(patches *patch.Set) ([]*patch.Inspection, error) {
+	out := make([]*patch.Inspection, 0, patches.Len())
+	for _, p := range patches.All() {
+		if !ls.Materialized {
+			out = append(out, patch.MissingInspection(p, patch.StatusSourceUnfetched))
+			continue
+		}
+		content, err := ls.PristineContent(p.File)
+		if err != nil {
+			out = append(out, patch.MissingInspection(p, patch.StatusFileMissing))
+			continue
+		}
+		insp, err := patch.Inspect(content, p)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, insp)
+	}
+	return out, nil
+}
+
+// PristineContent reads a source-relative file from the unpatched source.
+// Patch inspection and blessing must both work from upstream, never from a
+// view tai produced.
+func (ls *LoadedSource) PristineContent(rel string) ([]byte, error) {
+	if err := ls.RequireMaterialized(); err != nil {
+		return nil, err
+	}
+	full := filepath.Join(ls.PristinePath(), filepath.FromSlash(rel))
+	if !pathutil.IsContainedIn(full, ls.PristinePath()) {
+		return nil, fmt.Errorf("path %q escapes source %q", rel, ls.Name)
+	}
+	return os.ReadFile(full)
+}
+
 // viewCachePath is where a source's patched view is materialized. It sits
 // beside the fetched content of command sources rather than inside it, so a
 // command source with patches keeps its pristine fetch and its view separate.

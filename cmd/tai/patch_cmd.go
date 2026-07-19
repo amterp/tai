@@ -1,0 +1,227 @@
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+
+	"github.com/amterp/tai/internal/install"
+	"github.com/amterp/tai/internal/output"
+	"github.com/amterp/tai/internal/patch"
+	"github.com/amterp/tai/internal/source"
+	"github.com/amterp/tai/internal/state"
+)
+
+// patchRef pairs an inspection with the source it came from, since patch names
+// are only unique within a source.
+type patchRef struct {
+	source *source.LoadedSource
+	insp   *patch.Inspection
+}
+
+func (r patchRef) qualifiedName() string {
+	return r.source.Name + ":" + r.insp.Patch.Name
+}
+
+// inspectAllPatches gathers every declared patch across all sources, in source
+// order then set order.
+func inspectAllPatches(s *state.State) []patchRef {
+	var names []string
+	for name, src := range s.Sources {
+		if src.HasPatches() {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+
+	var refs []patchRef
+	for _, name := range names {
+		src := s.Sources[name]
+		patches, err := s.LoadPatches(src)
+		if err != nil {
+			fatal("%v", err)
+		}
+		inspections, err := src.InspectPatches(patches)
+		if err != nil {
+			fatal("inspecting patches for source %q: %v", name, err)
+		}
+		for _, insp := range inspections {
+			refs = append(refs, patchRef{source: src, insp: insp})
+		}
+	}
+	return refs
+}
+
+// findPatch resolves a user-supplied name. A bare name is accepted when it is
+// unambiguous; `source:name` always is.
+func findPatch(s *state.State, name string) patchRef {
+	refs := inspectAllPatches(s)
+
+	var matches []patchRef
+	for _, r := range refs {
+		if r.qualifiedName() == name || r.insp.Patch.Name == name {
+			matches = append(matches, r)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		fatal("unknown patch %q (see 'tai patch list')", name)
+	case 1:
+		return matches[0]
+	}
+
+	var qualified []string
+	for _, m := range matches {
+		qualified = append(qualified, m.qualifiedName())
+	}
+	fatal("patch %q is ambiguous - it exists in several sources: %s", name, strings.Join(qualified, ", "))
+	return patchRef{}
+}
+
+func runPatchList() {
+	s := loadState()
+	requireActiveConfig(s)
+
+	refs := inspectAllPatches(s)
+	if len(refs) == 0 {
+		out.Info("No patches defined. Declare one with a source's 'patches:' field.")
+		return
+	}
+
+	items := make([]output.ListItem, 0, len(refs))
+	for _, r := range refs {
+		status := r.insp.Status.String()
+		if r.insp.Status == patch.StatusBroken && r.insp.ApplyErr != nil {
+			status = "BROKEN: " + r.insp.ApplyErr.Error()
+		}
+
+		desc := r.insp.Patch.FileRef()
+		if d := r.insp.Patch.Description; d != "" {
+			desc = d + " (" + desc + ")"
+		}
+		items = append(items, output.ListItem{Name: r.qualifiedName(), Description: desc, Extra: status})
+	}
+	out.List("Patches:", items)
+}
+
+func runPatchDiff(name string) {
+	s := loadState()
+	requireActiveConfig(s)
+
+	r := findPatch(s, name)
+	p := r.insp.Patch
+
+	if r.insp.Status == patch.StatusSourceUnfetched {
+		fatal("source %q has not been fetched yet; run 'tai refresh' first", p.SourceName)
+	}
+	if r.insp.Status == patch.StatusFileMissing {
+		fatal("patch %q targets %s, which the source does not carry", p.Name, p.FileRef())
+	}
+	if !r.insp.HasBlessed {
+		fatal("patch %q has no blessed snapshot to compare against - run 'tai patch bless %s' first", p.Name, name)
+	}
+	if bytes.Equal(r.insp.Blessed, r.insp.Pristine) {
+		out.Info(fmt.Sprintf("No upstream changes since '%s' was blessed.", p.Name))
+		return
+	}
+
+	// Reuse the conflict differ: the question has the same shape - what changed
+	// under me since I last looked.
+	out.Raw(install.GenerateDiff(install.ConflictDetail{
+		Path:            p.FileRef(),
+		ExistingContent: r.insp.Blessed,
+		ResolvedContent: r.insp.Pristine,
+	}))
+}
+
+func runPatchBless(name string, all bool) {
+	s := loadState()
+	requireActiveConfig(s)
+
+	if all == (name != "") {
+		fatal("specify either a patch name or --all")
+	}
+
+	targets := inspectAllPatches(s)
+	if !all {
+		targets = []patchRef{findPatch(s, name)}
+	}
+	if len(targets) == 0 {
+		out.Info("No patches defined.")
+		return
+	}
+
+	blessed := 0
+	for _, r := range targets {
+		p := r.insp.Patch
+
+		// Blessing means "I reviewed this upstream and the patch is right for
+		// it". Recording a snapshot the patch cannot even apply to would bake
+		// in a broken state and silence the drift warning that would prompt a
+		// fix.
+		if reason := blessBlocker(r.insp); reason != "" {
+			if all {
+				out.Warning(fmt.Sprintf("skipping %s: %s", r.qualifiedName(), reason))
+				continue
+			}
+			fatal("cannot bless %s: %s", r.qualifiedName(), reason)
+		}
+
+		if r.insp.HasBlessed && bytes.Equal(r.insp.Blessed, r.insp.Pristine) {
+			if !all {
+				out.Info(fmt.Sprintf("Patch '%s' is already blessed against current upstream.", p.Name))
+			}
+			continue
+		}
+
+		if err := os.WriteFile(p.BlessedPath, r.insp.Pristine, 0644); err != nil {
+			fatal("writing snapshot for %q: %v", p.Name, err)
+		}
+		out.Success(fmt.Sprintf("Blessed '%s' against current %s", r.qualifiedName(), p.FileRef()))
+		blessed++
+	}
+
+	if blessed > 0 {
+		out.Info("Commit the .blessed file(s) so drift detection travels with your config repo.")
+	}
+}
+
+// blessBlocker returns why a patch cannot be blessed, or "" when it can.
+func blessBlocker(insp *patch.Inspection) string {
+	switch insp.Status {
+	case patch.StatusBroken:
+		return "it does not apply to current upstream - fix the patch first (" + insp.ApplyErr.Error() + ")"
+	case patch.StatusSourceUnfetched:
+		return "its source has not been fetched - run 'tai refresh' first"
+	case patch.StatusFileMissing:
+		return "it targets " + insp.Patch.FileRef() + ", which the source does not carry"
+	}
+	return ""
+}
+
+// warnAboutPatchDrift reports patches that still apply but whose upstream has
+// moved since it was reviewed. The patch working is not the same as it still
+// being right: upstream may have changed something the patch has an opinion
+// about, somewhere the patch does not touch.
+func warnAboutPatchDrift(s *state.State) {
+	for _, r := range inspectAllPatches(s) {
+		p := r.insp.Patch
+		switch r.insp.Status {
+		case patch.StatusDrifted:
+			out.Warning(fmt.Sprintf(
+				"upstream file for patch '%s' changed since it was blessed\n"+
+					"  file: %s\n"+
+					"  The patch still applies cleanly; installing the patched content.\n"+
+					"  Review what changed:  tai patch diff %s\n"+
+					"  Accept it:            tai patch bless %s",
+				p.Name, p.FileRef(), r.qualifiedName(), r.qualifiedName()))
+		case patch.StatusUnblessed:
+			out.Info(fmt.Sprintf(
+				"Patch '%s' is not blessed - tai cannot tell you when %s changes upstream. Run 'tai patch bless %s'.",
+				p.Name, p.FileRef(), r.qualifiedName()))
+		}
+	}
+}

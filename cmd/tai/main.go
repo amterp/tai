@@ -101,6 +101,35 @@ func main() {
 
 	showUsed, _ := root.RegisterCmd(showCmd)
 
+	// Patch subcommands
+	patchCmd := ra.NewCmd("patch")
+	patchCmd.SetDescription("Inspect and bless patches applied to imported sources")
+
+	patchListCmd := ra.NewCmd("list")
+	patchListCmd.SetDescription("List patches and whether they still apply")
+	patchListUsed, _ := patchCmd.RegisterCmd(patchListCmd)
+
+	patchDiffCmd := ra.NewCmd("diff")
+	patchDiffCmd.SetDescription("Show what changed upstream since a patch was blessed")
+	patchDiffName, _ := ra.NewString("name").
+		SetUsage("Patch name (or source:name)").
+		Register(patchDiffCmd)
+	patchDiffUsed, _ := patchCmd.RegisterCmd(patchDiffCmd)
+
+	patchBlessCmd := ra.NewCmd("bless")
+	patchBlessCmd.SetDescription("Record current upstream content as reviewed")
+	patchBlessName, _ := ra.NewString("name").
+		SetOptional(true).
+		SetUsage("Patch name (or source:name)").
+		Register(patchBlessCmd)
+	patchBlessAll, _ := ra.NewBool("all").
+		SetDefault(false).
+		SetUsage("Bless every patch that applies cleanly").
+		Register(patchBlessCmd)
+	patchBlessUsed, _ := patchCmd.RegisterCmd(patchBlessCmd)
+
+	patchUsed, _ := root.RegisterCmd(patchCmd)
+
 	// Install command
 	installCmd := ra.NewCmd("install")
 	installCmd.SetDescription("Install a profile to its target")
@@ -254,6 +283,18 @@ func main() {
 			runShowBundle(*showBundleName)
 		default:
 			out.Error("Usage: tai show <profile|bundle> <name>")
+			os.Exit(1)
+		}
+	case *patchUsed:
+		switch {
+		case *patchListUsed:
+			runPatchList()
+		case *patchDiffUsed:
+			runPatchDiff(*patchDiffName)
+		case *patchBlessUsed:
+			runPatchBless(*patchBlessName, *patchBlessAll)
+		default:
+			out.Error("Usage: tai patch <list|diff|bless>")
 			os.Exit(1)
 		}
 	case *installUsed:
@@ -549,6 +590,7 @@ func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr s
 // previewing something tai will never install, and it is also how --dry-run
 // surfaces a broken patch without touching the target.
 func buildPatchedViews(s *state.State) {
+	warnAboutPatchDrift(s)
 	if err := s.BuildPatchedViews(); err != nil {
 		reportPatchFailure(err)
 		os.Exit(1)
