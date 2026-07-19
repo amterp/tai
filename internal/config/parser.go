@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"strings"
 
@@ -114,9 +115,33 @@ func validateTaiConfig(config *TaiConfig) error {
 			if err := validateRelPath(pattern, "exclude pattern"); err != nil {
 				return fmt.Errorf("source %q: %w", s.Name, err)
 			}
+			if err := validateExcludePattern(pattern); err != nil {
+				return fmt.Errorf("source %q: exclude[%d]: %w", s.Name, j, err)
+			}
 		}
 	}
 
+	return nil
+}
+
+// validateExcludePattern rejects patterns that can never match anything.
+//
+// Both failures here are silent by nature: path.Match gives `**` no special
+// meaning and reports a malformed pattern as an error IsExcluded cannot act on,
+// so either one leaves the file quietly included - the opposite of what was
+// asked for, with nothing to notice. Catching them at parse time turns a file
+// that shouldn't have shipped into a config error.
+func validateExcludePattern(pattern string) error {
+	// A trailing `/**` is sugar IsExcluded strips; anything further in is a
+	// cross-segment wildcard that path.Match will not honor.
+	if strings.Contains(strings.TrimSuffix(pathpkg.Clean(filepath.ToSlash(pattern)), "/**"), "**") {
+		return fmt.Errorf("`**` only spans directories at the end of a pattern: %q. "+
+			"Wildcards do not cross `/`, but excluding a directory already excludes everything under it - "+
+			"use `a/b` to drop that whole subtree", pattern)
+	}
+	if _, err := pathpkg.Match(pattern, "probe"); err != nil {
+		return fmt.Errorf("malformed pattern %q: %w", pattern, err)
+	}
 	return nil
 }
 

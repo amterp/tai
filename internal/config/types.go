@@ -45,8 +45,8 @@ type Source struct {
 	// Deliberately independent of Patches: a patch says "tell me when upstream
 	// touches these lines", an exclusion says "upstream can do what it likes
 	// with this, I'm not taking it" - and filtering an import is useful on its
-	// own. Patterns are source-relative and matched with doublestar semantics
-	// (`**` spans directory separators).
+	// own. Patterns are source-relative and matched per path segment; see
+	// IsExcluded for what a pattern can express.
 	Exclude []string `yaml:"exclude"`
 }
 
@@ -61,6 +61,12 @@ func (s *Source) HasPatches() bool {
 // `skills/legacy-*` excludes that directory and everything beneath it - the
 // behavior people expect from excluding a directory, without needing `**`. A
 // trailing `/**` is accepted and stripped for familiarity.
+//
+// Wildcards are `path.Match`, so they do not span separators: `skills/*` matches
+// `skills/rad` but not `skills/a/b`. Subtree exclusion comes from the
+// parent-directory walk above, not from a wildcard. An interior `**` cannot
+// match anything and is rejected when the config is parsed, rather than being
+// accepted and silently carrying the file it was meant to drop.
 func (s *Source) IsExcluded(rel string) bool {
 	if len(s.Exclude) == 0 {
 		return false

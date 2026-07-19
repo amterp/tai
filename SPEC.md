@@ -1551,6 +1551,9 @@ different couplings:
 
 A pattern matches a path or any of its parent directories, so excluding a
 directory excludes its whole subtree. A trailing `/**` is accepted and stripped.
+Wildcards do not span `/` - subtree exclusion comes from that parent match, not
+from a wildcard - so an interior `**` could never match and is rejected when the
+config is parsed rather than silently carrying the file it was meant to drop.
 Excluded files are unreachable, not merely hidden from listings: naming one in a
 bundle fails with an error that points at the exclusion rather than claiming the
 asset does not exist.

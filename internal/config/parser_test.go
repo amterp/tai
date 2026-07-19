@@ -666,6 +666,52 @@ func TestValidateDestPath(t *testing.T) {
 	}
 }
 
+// A wildcard does not cross `/`, so a pattern relying on that would silently
+// carry the file it was meant to drop. Locked in here and rejected at parse.
+func TestSourceIsExcludedDoesNotSpanSeparators(t *testing.T) {
+	src := Source{Exclude: []string{"skills/*"}}
+
+	if !src.IsExcluded("skills/rad") {
+		t.Error("IsExcluded(skills/rad) = false, want true")
+	}
+	if !src.IsExcluded("skills/rad/SKILL.md") {
+		t.Error("subtree exclusion comes from the parent walk, not the wildcard")
+	}
+	// Two segments deep is only excluded via its parent `skills/a`, never by
+	// the wildcard itself - which is why an interior `**` is a parse error.
+	if src.IsExcluded("other/a/b.md") {
+		t.Error("IsExcluded(other/a/b.md) = true, want false")
+	}
+}
+
+func TestValidateExcludePattern(t *testing.T) {
+	tests := []struct {
+		name    string
+		pattern string
+		wantErr bool
+	}{
+		{"plain path", "personas/draft.md", false},
+		{"single-segment wildcard", "skills/legacy-*", false},
+		{"trailing doublestar", "docs/**", false},
+		{"character class", "skills/[ab]-thing", false},
+		{"interior doublestar", "skills/**/legacy.md", true},
+		{"leading doublestar", "**/legacy.md", true},
+		{"unclosed character class", "skills/[ab", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateExcludePattern(tt.pattern)
+			if tt.wantErr && err == nil {
+				t.Errorf("validateExcludePattern(%q) = nil, want an error", tt.pattern)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("validateExcludePattern(%q) = %v, want nil", tt.pattern, err)
+			}
+		})
+	}
+}
+
 func TestSourceIsExcluded(t *testing.T) {
 	src := Source{Exclude: []string{"skills/legacy-*", "personas/draft.md", "docs/**"}}
 
