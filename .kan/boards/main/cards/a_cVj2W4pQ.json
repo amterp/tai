@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_cVj2W4pQ",
   "alias": "tai-yaml-variables",
   "alias_explicit": false,
-  "column": "done",
-  "created_at_millis": 1772916220725,
-  "creator": "Alexander Terp",
-  "id": "a_cVj2W4pQ",
-  "position": "2!",
   "title": "tai yaml variables",
-  "updated_at_millis": 1772916220725
+  "creator": "Alexander Terp",
+  "created_at_millis": 1772916220725,
+  "updated_at_millis": 1772916220725,
+  "column": "done",
+  "position": "2!",
+  "history": [
+    {"field":"column","value":"done","at":1772916220725}
+  ]
 }

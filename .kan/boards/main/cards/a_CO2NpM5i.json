@@ -1,13 +1,16 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_CO2NpM5i",
   "alias": "skill-for-managing-tai-skill-2",
   "alias_explicit": false,
-  "column": "done",
-  "created_at_millis": 1769056050696,
-  "creator": "Alexander Terp",
-  "description": "- also for creating skills?",
-  "id": "a_CO2NpM5i",
-  "position": "f!",
   "title": "skill for managing tai skill repos",
-  "updated_at_millis": 1769056199573
+  "description": "- also for creating skills?",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769056050696,
+  "updated_at_millis": 1769056199573,
+  "column": "done",
+  "position": "f!",
+  "history": [
+    {"field":"column","value":"done","at":1769056050696}
+  ]
 }

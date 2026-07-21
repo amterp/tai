@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_CPqB0dZy",
   "alias": "implement-proper-go-vet-lint",
   "alias_explicit": false,
-  "column": "done",
-  "created_at_millis": 1769060348033,
-  "creator": "Alexander Terp",
-  "id": "a_CPqB0dZy",
-  "position": "T!",
   "title": "implement proper go vet + lint",
-  "updated_at_millis": 1769060348033
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769060348033,
+  "updated_at_millis": 1769060348033,
+  "column": "done",
+  "position": "T!",
+  "history": [
+    {"field":"column","value":"done","at":1769060348033}
+  ]
 }

@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_CxqYj93b",
   "alias": "tai-asset-improver",
   "alias_explicit": false,
-  "column": "done",
-  "created_at_millis": 1769141394258,
-  "creator": "Alexander Terp",
-  "id": "a_CxqYj93b",
-  "position": "Z!",
   "title": "tai-asset-improver",
-  "updated_at_millis": 1769141394258
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769141394258,
+  "updated_at_millis": 1769141394258,
+  "column": "done",
+  "position": "Z!",
+  "history": [
+    {"field":"column","value":"done","at":1769141394258}
+  ]
 }

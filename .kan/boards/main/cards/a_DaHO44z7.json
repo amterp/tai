@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_DaHO44z7",
   "alias": "plan-how-to-keep-up-with",
   "alias_explicit": false,
-  "column": "backlog-hi",
-  "created_at_millis": 1769232990172,
-  "creator": "Alexander Terp",
-  "id": "a_DaHO44z7",
-  "position": "k8",
   "title": "plan how to keep up with target changes e.g. claude updates",
-  "updated_at_millis": 1769232990172
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769232990172,
+  "updated_at_millis": 1769232990172,
+  "column": "backlog-hi",
+  "position": "k8",
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1769232990172}
+  ]
 }

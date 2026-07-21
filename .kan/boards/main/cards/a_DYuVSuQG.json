@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_DYuVSuQG",
   "alias": "new-asset-global-agents-md",
   "alias_explicit": false,
-  "column": "done",
-  "created_at_millis": 1769229727349,
-  "creator": "Alexander Terp",
-  "id": "a_DYuVSuQG",
-  "position": "8!",
   "title": "new asset: global AGENTS.md",
-  "updated_at_millis": 1769229727349
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769229727349,
+  "updated_at_millis": 1769229727349,
+  "column": "done",
+  "position": "8!",
+  "history": [
+    {"field":"column","value":"done","at":1769229727349}
+  ]
 }

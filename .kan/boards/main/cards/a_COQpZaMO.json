@@ -1,13 +1,16 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_COQpZaMO",
   "alias": "config-assets-scope-handling",
   "alias_explicit": false,
-  "column": "backlog-lo",
-  "created_at_millis": 1769056990453,
-  "creator": "Alexander Terp",
-  "description": "Add scope option to profiles (project/user/local) that controls where config assets are installed. Update adapter interface with ConfigFilePath(assetType, scope).",
-  "id": "a_COQpZaMO",
-  "position": "Q!",
   "title": "Config assets: Scope handling",
-  "updated_at_millis": 1769056990453
+  "description": "Add scope option to profiles (project/user/local) that controls where config assets are installed. Update adapter interface with ConfigFilePath(assetType, scope).",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769056990453,
+  "updated_at_millis": 1769056990453,
+  "column": "backlog-lo",
+  "position": "Q!",
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1769056990453}
+  ]
 }

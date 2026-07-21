@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_CPz13ekg",
   "alias": "add-kan-skill-to-tai-personal",
   "alias_explicit": false,
-  "column": "done",
-  "created_at_millis": 1769060687825,
-  "creator": "Alexander Terp",
-  "id": "a_CPz13ekg",
-  "position": "5!",
   "title": "add kan skill to tai personal",
-  "updated_at_millis": 1769060687825
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769060687825,
+  "updated_at_millis": 1769060687825,
+  "column": "done",
+  "position": "5!",
+  "history": [
+    {"field":"column","value":"done","at":1769060687825}
+  ]
 }

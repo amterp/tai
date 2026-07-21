@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_kr0abe6C",
   "alias": "can-we-support",
   "alias_explicit": false,
-  "column": "next",
-  "created_at_millis": 1774149051121,
-  "creator": "Alexander Terp",
-  "id": "a_kr0abe6C",
-  "position": "UU",
   "title": "can we support claude cowork?",
-  "updated_at_millis": 1774149051121
+  "creator": "Alexander Terp",
+  "created_at_millis": 1774149051121,
+  "updated_at_millis": 1774149051121,
+  "column": "next",
+  "position": "UU",
+  "history": [
+    {"field":"column","value":"next","at":1774149051121}
+  ]
 }

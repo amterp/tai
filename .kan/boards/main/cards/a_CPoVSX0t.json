@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_CPoVSX0t",
   "alias": "show-unchanged-installs-2",
   "alias_explicit": false,
-  "column": "done",
-  "created_at_millis": 1769060283836,
-  "creator": "Alexander Terp",
-  "id": "a_CPoVSX0t",
-  "position": "c!",
   "title": "show unchanged installs",
-  "updated_at_millis": 1769060286498
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769060283836,
+  "updated_at_millis": 1769060286498,
+  "column": "done",
+  "position": "c!",
+  "history": [
+    {"field":"column","value":"done","at":1769060283836}
+  ]
 }

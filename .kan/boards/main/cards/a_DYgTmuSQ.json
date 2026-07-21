@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_DYgTmuSQ",
   "alias": "new-asset-bin-file-allow",
   "alias_explicit": false,
-  "column": "backlog-hi",
-  "created_at_millis": 1769229188157,
-  "creator": "Alexander Terp",
-  "id": "a_DYgTmuSQ",
-  "position": "eu",
   "title": "new asset: bin file! allow using tai to place/install asset bin files into an arbitrary spot, that you then put on your path. allows leveraging the tai dependency model but for path scripts",
-  "updated_at_millis": 1769229188157
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769229188157,
+  "updated_at_millis": 1769229188157,
+  "column": "backlog-hi",
+  "position": "eu",
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1769229188157}
+  ]
 }

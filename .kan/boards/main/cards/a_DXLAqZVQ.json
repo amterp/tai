@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_DXLAqZVQ",
   "alias": "fix-persona-frontmatter",
   "alias_explicit": false,
-  "column": "done",
-  "created_at_millis": 1769225985893,
-  "creator": "Alexander Terp",
-  "id": "a_DXLAqZVQ",
-  "position": "Q!",
   "title": "fix persona frontmatter",
-  "updated_at_millis": 1769225985893
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769225985893,
+  "updated_at_millis": 1769225985893,
+  "column": "done",
+  "position": "Q!",
+  "history": [
+    {"field":"column","value":"done","at":1769225985893}
+  ]
 }

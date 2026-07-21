@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_CxxO64vd",
   "alias": "better-understand-how-we-d",
   "alias_explicit": false,
-  "column": "backlog-hi",
-  "created_at_millis": 1769141656756,
-  "creator": "Alexander Terp",
-  "id": "a_CxxO64vd",
-  "position": "Zf",
   "title": "better understand how we'd *theoretically* install into other targets e.g. codex",
-  "updated_at_millis": 1769141656756
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769141656756,
+  "updated_at_millis": 1769141656756,
+  "column": "backlog-hi",
+  "position": "Zf",
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1769141656756}
+  ]
 }

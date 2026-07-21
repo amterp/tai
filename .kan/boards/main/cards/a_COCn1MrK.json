@@ -1,13 +1,16 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_COCn1MrK",
   "alias": "consider-variety-of-asset",
   "alias_explicit": false,
-  "column": "done",
-  "created_at_millis": 1769056450718,
-  "creator": "Alexander Terp",
-  "description": "Specced in SPEC.md - added MCP and hook support as config-based assets for v0.2",
-  "id": "a_COCn1MrK",
-  "position": "x!",
   "title": "consider variety of asset types",
-  "updated_at_millis": 1769056976971
+  "description": "Specced in SPEC.md - added MCP and hook support as config-based assets for v0.2",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769056450718,
+  "updated_at_millis": 1769056976971,
+  "column": "done",
+  "position": "x!",
+  "history": [
+    {"field":"column","value":"done","at":1769056450718}
+  ]
 }

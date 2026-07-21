@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_CPYmLOjS",
   "alias": "tai-reinstall-easily-pick-up",
   "alias_explicit": false,
-  "column": "done",
-  "created_at_millis": 1769059679262,
-  "creator": "Alexander Terp",
-  "id": "a_CPYmLOjS",
-  "position": "E!",
   "title": "tai reinstall - easily pick up all changes",
-  "updated_at_millis": 1769059679262
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769059679262,
+  "updated_at_millis": 1769059679262,
+  "column": "done",
+  "position": "E!",
+  "history": [
+    {"field":"column","value":"done","at":1769059679262}
+  ]
 }

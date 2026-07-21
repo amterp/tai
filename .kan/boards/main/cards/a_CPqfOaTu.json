@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_CPqfOaTu",
   "alias": "assess-what-else-we-deferred",
   "alias_explicit": false,
-  "column": "backlog-hi",
-  "created_at_millis": 1769060366868,
-  "creator": "Alexander Terp",
-  "id": "a_CPqfOaTu",
-  "position": "Ei",
   "title": "assess what else we deferred in the spec",
-  "updated_at_millis": 1769060366868
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769060366868,
+  "updated_at_millis": 1769060366868,
+  "column": "backlog-hi",
+  "position": "Ei",
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1769060366868}
+  ]
 }

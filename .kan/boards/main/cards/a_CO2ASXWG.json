@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_CO2ASXWG",
   "alias": "verify-internal-gitlab-support",
   "alias_explicit": false,
-  "column": "backlog-hi",
-  "created_at_millis": 1769056042409,
-  "creator": "Alexander Terp",
-  "id": "a_CO2ASXWG",
-  "position": "4E",
   "title": "verify authenticated command includes",
-  "updated_at_millis": 1769398298780
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769056042409,
+  "updated_at_millis": 1769398298780,
+  "column": "backlog-hi",
+  "position": "4E",
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1769056042409}
+  ]
 }

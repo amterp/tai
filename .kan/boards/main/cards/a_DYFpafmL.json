@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_DYFpafmL",
   "alias": "fix-type-source-path-confusion",
   "alias_explicit": false,
-  "column": "done",
-  "created_at_millis": 1769228163788,
-  "creator": "Alexander Terp",
-  "id": "a_DYFpafmL",
-  "position": "N!",
   "title": "fix type:source:path confusion",
-  "updated_at_millis": 1769228163788
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769228163788,
+  "updated_at_millis": 1769228163788,
+  "column": "done",
+  "position": "N!",
+  "history": [
+    {"field":"column","value":"done","at":1769228163788}
+  ]
 }

@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_CxqTFO1o",
   "alias": "reinstall",
   "alias_explicit": false,
-  "column": "done",
-  "created_at_millis": 1769141390856,
-  "creator": "Alexander Terp",
-  "id": "a_CxqTFO1o",
-  "position": "W!",
   "title": "reinstall",
-  "updated_at_millis": 1769141390856
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769141390856,
+  "updated_at_millis": 1769141390856,
+  "column": "done",
+  "position": "W!",
+  "history": [
+    {"field":"column","value":"done","at":1769141390856}
+  ]
 }

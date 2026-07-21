@@ -1,13 +1,16 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_CxrT98mW",
   "alias": "post-and-or-pre-custom-2",
   "alias_explicit": false,
-  "column": "uncomitted",
-  "created_at_millis": 1769141429246,
-  "creator": "Alexander Terp",
-  "description": "maximum flexibility, but maybe not the kind we want?",
-  "id": "a_CxrT98mW",
-  "position": "f!",
   "title": "post (and/or pre) custom install steps?",
-  "updated_at_millis": 1769141440773
+  "description": "maximum flexibility, but maybe not the kind we want?",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769141429246,
+  "updated_at_millis": 1769141440773,
+  "column": "uncomitted",
+  "position": "f!",
+  "history": [
+    {"field":"column","value":"uncomitted","at":1769141429246}
+  ]
 }

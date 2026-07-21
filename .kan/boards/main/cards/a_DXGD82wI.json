@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_DXGD82wI",
   "alias": "verify-that-all-our-assets",
   "alias_explicit": false,
-  "column": "done",
-  "created_at_millis": 1769225795109,
-  "creator": "Alexander Terp",
-  "id": "a_DXGD82wI",
-  "position": "K!",
   "title": "verify that all our assets have schema versioning (via frontmatter?)",
-  "updated_at_millis": 1769225795109
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769225795109,
+  "updated_at_millis": 1769225795109,
+  "column": "done",
+  "position": "K!",
+  "history": [
+    {"field":"column","value":"done","at":1769225795109}
+  ]
 }

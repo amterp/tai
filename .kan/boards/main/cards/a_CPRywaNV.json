@@ -1,13 +1,16 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_CPRywaNV",
   "alias": "ability-to-customize-install-2",
   "alias_explicit": false,
-  "column": "uncomitted",
-  "created_at_millis": 1769059417996,
-  "creator": "Alexander Terp",
-  "description": "can imagine wanting to install into somewhere other than just ~/.claude, e.g. other repos instead.",
-  "id": "a_CPRywaNV",
-  "position": "K!",
   "title": "ability to customize install locations/layout?",
-  "updated_at_millis": 1769059483783
+  "description": "can imagine wanting to install into somewhere other than just ~/.claude, e.g. other repos instead.",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769059417996,
+  "updated_at_millis": 1769059483783,
+  "column": "uncomitted",
+  "position": "K!",
+  "history": [
+    {"field":"column","value":"uncomitted","at":1769059417996}
+  ]
 }

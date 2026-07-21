@@ -1,13 +1,16 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_COQrE34p",
   "alias": "config-assets-manifest",
   "alias_explicit": false,
-  "column": "backlog-lo",
-  "created_at_millis": 1769056991482,
-  "creator": "Alexander Terp",
-  "description": "Extend manifest to track config_entries separately from files. Track type, name, target_file, scope, and checksum for surgical uninstall.",
-  "id": "a_COQrE34p",
-  "position": "Z!",
   "title": "Config assets: Manifest tracking",
-  "updated_at_millis": 1769056991482
+  "description": "Extend manifest to track config_entries separately from files. Track type, name, target_file, scope, and checksum for surgical uninstall.",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769056991482,
+  "updated_at_millis": 1769056991482,
+  "column": "backlog-lo",
+  "position": "Z!",
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1769056991482}
+  ]
 }

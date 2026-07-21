@@ -1,12 +1,15 @@
 {
-  "_v": 2,
+  "_v": 3,
+  "id": "a_DvO9sewy",
   "alias": "asset-dependencies",
   "alias_explicit": false,
-  "column": "backlog-hi",
-  "created_at_millis": 1769283299343,
-  "creator": "Alexander Terp",
-  "id": "a_DvO9sewy",
-  "position": "pN",
   "title": "asset dependencies",
-  "updated_at_millis": 1769283299343
+  "creator": "Alexander Terp",
+  "created_at_millis": 1769283299343,
+  "updated_at_millis": 1769283299343,
+  "column": "backlog-hi",
+  "position": "pN",
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1769283299343}
+  ]
 }
