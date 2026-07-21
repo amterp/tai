@@ -2030,3 +2030,105 @@ post_install:
 		t.Errorf("manifest must survive a failing hook (m=%v, err=%v)", m, err)
 	}
 }
+
+// TestE2EPostInstallHookModifiesManagedFile covers the reason post_install
+// exists for many people: a hook that post-processes a file tai renders (memri
+// appends an @import line to CLAUDE.md). Without a rebaseline the hook's own
+// edit makes that file conflict on every later install, forever.
+func TestE2EPostInstallHookModifiesManagedFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("post_install e2e requires POSIX sh")
+	}
+
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+	env.SetupAsset("files", "CLAUDE.md", "# Rendered by tai\n")
+	env.SetupBundle("core", `name: core
+assets:
+  - type: file
+    path: files/CLAUDE.md
+    dest: ""
+`)
+	// The hook locates the file via TAI_TARGET_DIR, the way a real tool would.
+	env.SetupProfile("hooked", `name: hooked
+target: claude
+bundles:
+  - core
+post_install:
+  - sh
+  - -c
+  - printf '@import ~/.memri/nudge.md\n' >> "$TAI_TARGET_DIR/CLAUDE.md"
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, err := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources, err := loader.LoadAll(taiConfig.Sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundles, err := config.LoadBundlesFromDir(filepath.Join(env.ConfigRepo, "bundles"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profiles, err := config.LoadProfilesFromDir(filepath.Join(env.ConfigRepo, "profiles"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := profile.NewResolver(profiles, bundles, sources).Resolve("hooked")
+	if err != nil {
+		t.Fatalf("resolving profile: %v", err)
+	}
+
+	manifestDir := filepath.Join(env.ConfigDir, "manifests")
+	installer := install.NewInstaller(install.NewManifestStore(manifestDir), env.ConfigRepo, sources)
+	adap := claude.New(env.TargetDir)
+
+	// Mirrors doInstall: install, run the hook, then rebaseline on success.
+	installOnce := func(run int) {
+		t.Helper()
+		result, err := installer.Install(adap, "hooked", resolved.Assets, install.InstallOptions{})
+		if err != nil {
+			t.Fatalf("install run %d: %v", run, err)
+		}
+		if err := cmdexec.Run(cmdexec.Spec{
+			Argv:    resolved.PostInstall,
+			Timeout: resolved.PostInstallTimeout,
+			Env: map[string]string{
+				"TAI_TARGET":       resolved.Target,
+				"TAI_TARGET_DIR":   adap.TargetDir(),
+				"TAI_PROFILE":      resolved.Name,
+				"TAI_MANIFEST_DIR": manifestDir,
+				"TAI_VERSION":      "test-version",
+			},
+		}); err != nil {
+			t.Fatalf("post_install hook on run %d: %v", run, err)
+		}
+		changed, err := installer.Rebaseline(adap, result)
+		if err != nil {
+			t.Fatalf("rebaseline on run %d: %v", run, err)
+		}
+		if run == 1 && (len(changed) != 1 || changed[0] != "CLAUDE.md") {
+			t.Fatalf("changed = %v, want [CLAUDE.md]", changed)
+		}
+	}
+
+	installOnce(1)
+	installOnce(2)
+	installOnce(3)
+
+	// Every run re-renders from source and the hook re-applies its line, so the
+	// file must not accumulate duplicates or drift.
+	want := "# Rendered by tai\n@import ~/.memri/nudge.md\n"
+	if got := env.ReadTargetFile("CLAUDE.md"); got != want {
+		t.Errorf("CLAUDE.md = %q, want %q", got, want)
+	}
+}

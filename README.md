@@ -149,10 +149,16 @@ assets:
     path: personas/brainstormer.md
 
 # Optional: run a command after a successful install (notifications,
-# follow-up scripts). Failure doesn't undo the install, but tai exits nonzero.
+# follow-up scripts, post-processing installed files). Failure doesn't undo
+# the install, but tai exits nonzero.
 post_install:
   - ./scripts/after-install.sh
 ```
+
+Hooks get `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`,
+and `TAI_VERSION` in their env. They may modify files tai installed - after a
+successful hook, tai re-baselines its checksums so the hook's own edits don't
+show up as conflicts on the next install. See SPEC.md for the full contract.
 
 ### Asset File Formats
 

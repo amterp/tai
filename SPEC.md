@@ -339,7 +339,8 @@ options:
 scope: project  # or "user" or "local"
 
 # Optional: argv list run after this profile installs successfully.
-# For side effects: notifications, restarting tools, chaining scripts.
+# For notifications, restarting tools, chaining scripts, or post-processing
+# installed files.
 post_install:
   - sh
   - -c
@@ -351,8 +352,10 @@ post_install_timeout: 1m  # optional, default 30s
 
 `post_install` runs only after the install completes (never on dry-run, never
 when the install itself failed). The command sees the inherited user env plus
-`TAI_TARGET`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, and `TAI_VERSION` - all
-always set, so `set -u` scripts are safe.
+`TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, and
+`TAI_VERSION` - all always set, so `set -u` scripts are safe.
+`TAI_TARGET_DIR` is where the target's files were installed (e.g.
+`~/.claude`), so hooks can find what they need to post-process.
 
 A failing hook does **not** roll the install back: files and manifest are
 already in place, and side effects can't be un-run (the same model as dpkg,
@@ -360,6 +363,39 @@ Homebrew, and npm post-install scripts). tai reports the install as
 succeeded, prints the hook failure with a tail of its stderr, and exits
 nonzero so scripts and CI notice. `tai reinstall` continues across remaining
 targets and aggregates hook failures into its final exit code.
+
+##### Hooks May Modify Managed Files
+
+Hooks are allowed to post-process files tai installed - reformatting them, or
+injecting machine-local config a source asset can't carry. Conflict detection
+compares each file against the checksum recorded when tai wrote it, so left
+alone a hook's own edit would make that file conflict on *every* subsequent
+install, forever.
+
+So after a hook **succeeds**, tai re-hashes the files that install wrote and
+records the new checksums as the baseline. It reports which managed files the
+hook changed:
+
+```
+post_install hook modified 1 managed file(s) (manifest baseline updated):
+    ~ CLAUDE.md
+```
+
+Note what this trades away: tai no longer flags hook-caused edits to managed
+files, so a buggy hook's changes are accepted rather than reported as
+conflicts. That report line is the signal you get. The damage stays transient -
+every install re-renders the file from source before the hook runs again.
+
+Two deliberate carve-outs:
+
+- **A failed hook does not rebaseline.** A hook that edited a file and then
+  failed leaves a partial edit, and that conflict is worth surfacing.
+- **Files skipped via `--skip-conflicts` are never rebaselined.** They keep
+  their stale checksum so they keep conflicting until you resolve them;
+  baselining them would silently discard a decision you made.
+
+Hooks that edit managed files should be idempotent: tai overwrites the file
+from source on every install, so the hook re-applies its change each run.
 
 ### File Asset Formats
 

@@ -733,7 +733,7 @@ func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts 
 		fatal("resolving profile: %v", err)
 	}
 
-	adapter, err := s.GetAdapter(resolved.Target)
+	adap, err := s.GetAdapter(resolved.Target)
 	if err != nil {
 		fatal("%v", err)
 	}
@@ -769,7 +769,7 @@ func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts 
 		out.Info("Installing profile '" + profileName + "' for " + resolved.Target + "...")
 	}
 
-	result, err := s.Installer.Install(adapter, profileName, assets, opts)
+	result, err := s.Installer.Install(adap, profileName, assets, opts)
 	if err != nil {
 		// Check if this is a conflicts error - display nicely instead of generic fatal
 		if conflictsErr, ok := err.(*install.ConflictsError); ok {
@@ -821,14 +821,23 @@ func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts 
 		out.Warning(w)
 	}
 
-	return runPostInstallHook(s, resolved, dryRun)
+	return runPostInstallHook(s, adap, resolved, result, dryRun)
 }
 
 // runPostInstallHook runs the profile's post_install command, if any. It runs
 // only after a successful install; a failure is reported (the install itself
 // stands - files and manifest are already in place, and side effects can't be
 // rolled back) and returned so callers exit nonzero.
-func runPostInstallHook(s *state.State, resolved *profile.ResolvedProfile, dryRun bool) error {
+//
+// Hooks may post-process managed files, so on success the manifest baseline is
+// refreshed to match disk - see Installer.Rebaseline.
+func runPostInstallHook(
+	s *state.State,
+	adap adapter.Adapter,
+	resolved *profile.ResolvedProfile,
+	result *install.InstallResult,
+	dryRun bool,
+) error {
 	if len(resolved.PostInstall) == 0 {
 		return nil
 	}
@@ -842,16 +851,43 @@ func runPostInstallHook(s *state.State, resolved *profile.ResolvedProfile, dryRu
 		Timeout: resolved.PostInstallTimeout,
 		Env: map[string]string{
 			"TAI_TARGET":       resolved.Target,
+			"TAI_TARGET_DIR":   adap.TargetDir(),
 			"TAI_PROFILE":      resolved.Name,
 			"TAI_MANIFEST_DIR": s.Paths.ManifestDir,
 			"TAI_VERSION":      s.Version,
 		},
 	})
 	if err != nil {
+		// Deliberately no rebaseline here: a hook that edited a managed file and
+		// then failed leaves a partial edit, and that conflict is worth surfacing.
 		out.Error(fmt.Sprintf("post_install hook failed (install succeeded): %v", err))
 		return err
 	}
+
+	reportHookRebaseline(s, adap, result)
 	return nil
+}
+
+// reportHookRebaseline refreshes the manifest baseline after a successful hook
+// and tells the user which managed files the hook changed. Reporting is the
+// point: rebaselining means tai will no longer flag these edits, so this is the
+// one moment the user gets to see what the hook did.
+func reportHookRebaseline(s *state.State, adap adapter.Adapter, result *install.InstallResult) {
+	changed, err := s.Installer.Rebaseline(adap, result)
+	if err != nil {
+		out.Warning(fmt.Sprintf("could not update the manifest baseline after the post_install hook: %v. "+
+			"Files the hook modified will be reported as conflicts on the next install; "+
+			"rerun the install, or pass --force once to accept them.", err))
+		return
+	}
+	if len(changed) == 0 {
+		return
+	}
+
+	out.Info(fmt.Sprintf("post_install hook modified %d managed file(s) (manifest baseline updated):", len(changed)))
+	for _, path := range changed {
+		out.Raw("    ~ " + path)
+	}
 }
 
 // reportPatchFailure renders a patch that could not be applied, with the steps

@@ -1400,3 +1400,76 @@ func copyDirExcluding(src, dst string, excludes ...string) error {
 func (i *Installer) Status(target string) (*Manifest, error) {
 	return i.manifestStore.Load(target)
 }
+
+// Rebaseline re-hashes the files this install wrote and rewrites the manifest
+// so the recorded checksums describe what is actually on disk. It returns the
+// target-relative paths whose content changed.
+//
+// This exists for post_install hooks that post-process managed files - a
+// formatter, or a tool injecting machine-local config. Conflict detection
+// compares disk against the checksum recorded at write time, so without a
+// rebaseline the hook's own edit makes that file conflict on every subsequent
+// install, forever. Hook edits are as intentional as the asset content (tai
+// invoked the hook, from the user's own profile), so they belong in the
+// baseline; conflict detection is there to protect hand edits.
+//
+// Only files this run wrote are re-hashed. An entry skipped via
+// --skip-conflicts deliberately keeps its stale checksum so it keeps
+// conflicting until the user resolves it - baselining that would silently
+// discard a decision the user made.
+//
+// Callers must only invoke this after the hook *succeeded*. A hook that
+// mutated a file and then failed leaves a partial edit, which is a conflict
+// worth surfacing.
+func (i *Installer) Rebaseline(adap adapter.Adapter, result *InstallResult) ([]string, error) {
+	if result == nil || result.Manifest == nil {
+		return nil, nil
+	}
+
+	written := make(map[string]bool)
+	for _, group := range [][]string{result.Added, result.Updated, result.Unchanged} {
+		for _, path := range group {
+			written[path] = true
+		}
+	}
+
+	targetDir := adap.TargetDir()
+	var changed []string
+	for idx := range result.Manifest.Files {
+		entry := &result.Manifest.Files[idx]
+		if !written[entry.Path] {
+			continue
+		}
+
+		fullPath := filepath.Join(targetDir, entry.Path)
+		var checksum string
+		var err error
+		if entry.IsDir {
+			checksum, err = ComputeDirChecksum(fullPath)
+		} else {
+			checksum, err = ComputeFileChecksum(fullPath)
+		}
+		if err != nil {
+			// A file the hook removed is not a conflict - checkConflict treats a
+			// missing path as "install it again" - so keep the recorded checksum
+			// and carry on rather than failing the rebaseline for the others.
+			i.logger.Printf("Could not re-checksum %s after post_install hook (%v); "+
+				"keeping the recorded checksum - the next install will reinstall it", entry.Path, err)
+			continue
+		}
+
+		if checksum != entry.Checksum {
+			entry.Checksum = checksum
+			changed = append(changed, entry.Path)
+		}
+	}
+
+	if len(changed) == 0 {
+		return nil, nil
+	}
+
+	if err := i.manifestStore.Save(result.Manifest); err != nil {
+		return changed, fmt.Errorf("saving rebaselined manifest: %w", err)
+	}
+	return changed, nil
+}

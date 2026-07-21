@@ -200,14 +200,26 @@ assets:
   - type: persona
     path: personas/brainstormer.md
 
-# Optional: argv run after a successful install (side effects only:
-# notifications, follow-up scripts). Env: TAI_TARGET, TAI_PROFILE,
-# TAI_MANIFEST_DIR, TAI_VERSION. Failure does NOT undo the install;
-# tai reports install success, prints the hook error, and exits nonzero.
+# Optional: argv run after a successful install - notifications, follow-up
+# scripts, or post-processing installed files. Env: TAI_TARGET,
+# TAI_TARGET_DIR, TAI_PROFILE, TAI_MANIFEST_DIR, TAI_VERSION. Failure does
+# NOT undo the install; tai reports install success, prints the hook error,
+# and exits nonzero.
 post_install:
   - ./scripts/after-install.sh
 post_install_timeout: 1m  # Optional, default 30s; requires post_install
 ```
+
+A hook may modify files tai installed (use `TAI_TARGET_DIR` to find them).
+After a successful hook, tai re-hashes what it wrote and updates the manifest
+baseline, so the hook's own edits aren't reported as conflicts on the next
+install - it prints which managed files changed. Two exceptions: a *failed*
+hook doesn't rebaseline (a partial edit is a conflict worth seeing), and files
+skipped via `--skip-conflicts` keep their stale checksum so they keep
+conflicting until resolved.
+
+Make such hooks idempotent - tai overwrites the file from source on every
+install, so the hook re-applies its change each run.
 
 ## Templating
 
