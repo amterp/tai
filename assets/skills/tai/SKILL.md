@@ -365,7 +365,7 @@ You are a senior software engineer...
 
 Unknown fields are silently ignored. Schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file.
 
-**Note:** The `file` type has no frontmatter requirements—content is copied exactly as-is.
+**Note:** The `file` type has no frontmatter requirements - nothing is parsed or stripped from the top of the file.
 
 ### Asset Dependencies
 
@@ -415,7 +415,7 @@ The `>-` indicator means "folded block scalar, strip trailing newlines" — the 
 
 ## Files Format
 
-Files are copied exactly as-is—no frontmatter parsing, no transformation. The `dest` field is required and specifies where the file lands:
+Files get no frontmatter handling - nothing is parsed or stripped, so a leading `---` block passes straight through. Templating still applies, exactly as for other asset types - see **Templating** above. The `dest` field is required and specifies where the file lands:
 
 ```yaml
 # In a bundle or profile
@@ -432,7 +432,7 @@ assets:
 **Key points:**
 - `dest` is required for file type
 - Empty `dest` (`""`) means target root directory
-- Content is preserved byte-for-byte
+- Content passes through unchanged except for template rendering
 
 ---
 
@@ -821,7 +821,7 @@ For each asset string in `assets:`:
 
 The `doc` type has been replaced with `file`. The key difference:
 - `file` requires explicit `dest` field (where the file lands)
-- Content is copied exactly as-is (no frontmatter processing)
+- Content gets no frontmatter processing (templating still applies)
 
 ### Before
 ```yaml
