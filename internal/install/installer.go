@@ -411,7 +411,13 @@ func (i *Installer) executeInstall(
 		if err != nil {
 			return nil, nil, err
 		}
-		if skip {
+		// A conflict skipped via --skip-conflicts stays managed: it keeps its
+		// existing manifest entry (stale checksum and all, so it keeps
+		// conflicting until resolved) and must come out of the stale set.
+		// Dropping it instead made removeStaleFiles treat it as no longer in the
+		// profile and delete the very file the user asked to leave alone.
+		// Skipped assets tai never managed have no entry to keep.
+		if skip && !ra.wasManaged {
 			continue
 		}
 

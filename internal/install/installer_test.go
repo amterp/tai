@@ -488,6 +488,63 @@ func TestInstallerInstallConflictSkip(t *testing.T) {
 	}
 }
 
+// Skipping a conflict on a file tai already manages used to delete it: the
+// entry was dropped from the manifest and left in the stale set, so
+// removeStaleFiles treated it as no longer in the profile. --skip-conflicts
+// must leave the file exactly as it is and keep tracking it.
+func TestInstallerInstallConflictSkipKeepsManagedFile(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Test Persona")
+	assets := []*config.Asset{
+		{Type: "persona", Name: "test.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
+	}
+
+	first, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+	originalChecksum := first.Manifest.Files[0].Checksum
+
+	targetPath := filepath.Join(env.TargetDir, "output-styles", "test.md")
+	handEdited := "# Hand edited\n"
+	if err := os.WriteFile(targetPath, []byte(handEdited), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{SkipConflicts: true})
+	if err != nil {
+		t.Fatalf("Install with skip-conflicts failed: %v", err)
+	}
+
+	if !env.TargetFileExists("output-styles/test.md") {
+		t.Fatal("--skip-conflicts deleted the file it was asked to leave alone")
+	}
+	if got := env.ReadTargetFile("output-styles/test.md"); got != handEdited {
+		t.Errorf("content = %q, want the hand edit %q", got, handEdited)
+	}
+	if len(result.Removed) != 0 {
+		t.Errorf("Removed = %v, want none - the file is still in the profile", result.Removed)
+	}
+	if len(result.Skipped) != 1 {
+		t.Errorf("Skipped = %v, want the conflicting file", result.Skipped)
+	}
+
+	// It stays managed with its pre-edit checksum, so it keeps conflicting
+	// until resolved - and uninstall still knows about it.
+	if len(result.Manifest.Files) != 1 {
+		t.Fatalf("len(Manifest.Files) = %d, want 1 - a skipped file must stay tracked", len(result.Manifest.Files))
+	}
+	if result.Manifest.Files[0].Checksum != originalChecksum {
+		t.Error("skipped entry should keep its pre-edit checksum so it keeps conflicting")
+	}
+
+	if _, err := installer.Install(adapter, "test-profile", assets, InstallOptions{}); err == nil {
+		t.Error("hand-edited file should still be reported as a conflict")
+	}
+}
+
 func TestInstallerUninstall(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 
