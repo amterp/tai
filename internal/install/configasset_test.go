@@ -174,6 +174,71 @@ func TestLegacyConfigEntryWithoutEditsIsRemoved(t *testing.T) {
 	}
 }
 
+// The upgrade path every existing install takes: a manifest written before edit
+// tracking, reinstalled by the new code. The legacy entry must be replaced, not
+// duplicated or stranded.
+func TestInstallOverLegacyConfigEntry(t *testing.T) {
+	env, installer, adap := setupStatusLineTest(t)
+
+	settingsPath := filepath.Join(env.TargetDir, "settings.json")
+	if err := os.MkdirAll(env.TargetDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(settingsPath, []byte(`{"statusLine":{"style":"minimal"},"keep":true}`), 0644); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+
+	manifestStore := NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	legacy := &Manifest{
+		Version: ManifestVersion,
+		Target:  adap.Name(),
+		Profile: "test-profile",
+		ConfigEntries: []ConfigEntry{{
+			Type:         config.AssetTypeStatusLine,
+			Name:         "starship.yaml", // old code kept the extension
+			SourceName:   "local",
+			SettingsFile: settingsPath,
+			Checksum:     "stale",
+		}},
+	}
+	if err := manifestStore.Save(legacy); err != nil {
+		t.Fatalf("saving legacy manifest: %v", err)
+	}
+
+	env.SetupAsset("statuslines", "starship.yaml", "level: detailed\n")
+	assets := []*config.Asset{statusLineAsset(env, "starship.yaml")}
+
+	result, err := installer.Install(adap, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	// A singleton keys on its type, so the legacy entry is recognized as the
+	// same asset rather than left behind as an orphan to remove.
+	if len(result.Removed) != 0 {
+		t.Errorf("Removed = %v, want nothing orphaned", result.Removed)
+	}
+	if len(result.Manifest.ConfigEntries) != 1 {
+		t.Fatalf("manifest has %d config entries, want 1", len(result.Manifest.ConfigEntries))
+	}
+	entry := result.Manifest.ConfigEntries[0]
+	if len(entry.Edits) == 0 {
+		t.Error("the re-installed entry should now carry tracked edits")
+	}
+
+	settings, err := readJSONFile(settingsPath)
+	if err != nil {
+		t.Fatalf("reading settings.json: %v", err)
+	}
+	statusLine := settings["statusLine"].(map[string]any)
+	if statusLine["style"] != "detailed" {
+		t.Errorf("statusLine.style = %v, want the newly installed value", statusLine["style"])
+	}
+	if settings["keep"] != true {
+		t.Error("unrelated settings key was lost during the upgrade")
+	}
+}
+
 // Reinstalling an unchanged config asset must not accumulate entries or churn
 // the file.
 func TestConfigAssetReinstallIsIdempotent(t *testing.T) {

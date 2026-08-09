@@ -936,9 +936,10 @@ tai patch bless <name>
 `assets/mcps/`. Config assets now honour a `scope` field on profiles and on
 individual asset entries (defaulting to `user`).
 
-Config assets are also templated now, like every other asset - a `{{ var }}` in
-a statusline or hook is substituted rather than installed literally. If a config
-asset contains literal `{{` or `{%` that is not meant as a template, escape it.
+{% verbatim %}Config assets are also templated now, like every other asset - a
+`{{ var }}` in a statusline or hook is substituted rather than installed
+literally. A config asset containing literal `{{` or `{%` that is not meant as
+a template needs a `{% verbatim %}` block around it.{% endverbatim %}
 
 ---
 
