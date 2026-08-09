@@ -87,11 +87,13 @@ Not all targets support all config asset types:
 |-------------|------------|-------|-----------|----------|
 | `statusline` | Merged into `settings.json` | Not supported (skipped) | Not supported (skipped) | Not supported (skipped) |
 | `hook` | Merged into `settings.json` | Merged into `hooks.json` | Merged into `settings.json` | Not supported (skipped) |
-| `mcp` | Planned | Planned | Planned | Planned |
+| `mcp` | Merged into `.mcp.json` or `~/.claude.json` | Not yet supported (skipped) | Merged into `settings.json` | Merged into `opencode.json` |
 
 Hooks are portable across Claude, Codex and Gemini: all three structure them the same way, though Gemini renames every event and expects timeouts in milliseconds rather than seconds. tai names events itself and each adapter translates, so one hook asset works on all three. OpenCode has no declarative hooks - only a JS plugin API - so hook assets are skipped there.
 
 An event a target does not have (Gemini has no subagent events, Codex no notification event) skips just that hook, with a warning.
+
+MCP servers install everywhere except Codex, which keeps them in `config.toml` alongside settings tai does not own; those are skipped with a warning for now.
 
 ## Detailed target pages
 

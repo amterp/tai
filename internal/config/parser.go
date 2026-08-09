@@ -399,6 +399,15 @@ func ParseHookConfig(data []byte) (*HookConfig, error) {
 	return &cfg, nil
 }
 
+// ParseMCPConfig parses MCP server asset YAML.
+func ParseMCPConfig(data []byte) (*MCPConfig, error) {
+	var cfg MCPConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parsing mcp config: %w", err)
+	}
+	return &cfg, nil
+}
+
 // LoadProfilesFromDir loads all profile files from a directory.
 func LoadProfilesFromDir(dir string) (map[string]*Profile, error) {
 	profiles := make(map[string]*Profile)

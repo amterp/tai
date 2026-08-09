@@ -18,6 +18,7 @@ import (
 const (
 	StatusLineSettingsKey = "statusLine"
 	HooksSettingsKey      = "hooks"
+	MCPSettingsKey        = "mcpServers"
 )
 
 // hookEvents maps canonical tai events to Claude's names. Claude has more
@@ -156,7 +157,66 @@ func (a *Adapter) Run(args []string) error {
 
 // SupportedConfigAssetTypes returns the config asset types Claude supports.
 func (a *Adapter) SupportedConfigAssetTypes() []string {
-	return []string{config.AssetTypeStatusLine, config.AssetTypeHook}
+	return []string{config.AssetTypeStatusLine, config.AssetTypeHook, config.AssetTypeMCP}
+}
+
+// TransformMCP renders an MCP server in Claude's shape.
+//
+// Claude interpolates ${VAR} itself when it reads the config, so environment
+// references are passed through untouched.
+func (a *Adapter) TransformMCP(_ string, cfg *config.MCPConfig) (map[string]any, []string, error) {
+	entry := map[string]any{}
+	var warnings []string
+
+	switch cfg.Transport {
+	case config.MCPTransportStdio:
+		entry["type"] = "stdio"
+		entry["command"] = cfg.Command
+		if len(cfg.Args) > 0 {
+			entry["args"] = toAnySlice(cfg.Args)
+		}
+		if len(cfg.Env) > 0 {
+			entry["env"] = toAnyMap(cfg.Env)
+		}
+		if cfg.Cwd != "" {
+			// Claude has no per-server working directory. Dropping it is
+			// better than failing, but saying so matters: a server relying on
+			// it will start in the wrong place.
+			warnings = append(warnings,
+				"Claude has no per-server 'cwd' for MCP servers - dropped; make the command's own path absolute instead")
+		}
+
+	case config.MCPTransportHTTP:
+		entry["type"] = "http"
+		entry["url"] = cfg.URL
+		if len(cfg.Headers) > 0 {
+			entry["headers"] = toAnyMap(cfg.Headers)
+		}
+	}
+
+	for key, value := range cfg.Native[a.Name()] {
+		entry[key] = value
+	}
+
+	return entry, warnings, nil
+}
+
+// toAnySlice converts a string slice for JSON serialization.
+func toAnySlice(in []string) []any {
+	out := make([]any, len(in))
+	for i, s := range in {
+		out[i] = s
+	}
+	return out
+}
+
+// toAnyMap converts a string map for JSON serialization.
+func toAnyMap(in map[string]string) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // HookEventName maps a canonical tai event to Claude's name for it.
@@ -191,8 +251,32 @@ func (a *Adapter) ConfigFilePath(assetType, scope string) string {
 	switch assetType {
 	case config.AssetTypeStatusLine, config.AssetTypeHook:
 		return a.settingsFilePath(scope)
+	case config.AssetTypeMCP:
+		return a.mcpFilePath(scope)
 	default:
 		return ""
+	}
+}
+
+// mcpFilePath locates the file Claude reads MCP servers from.
+//
+// MCP servers do not live in settings.json. At project scope they get
+// .mcp.json, a dedicated single-key file. At user scope they live in
+// ~/.claude.json alongside a session's entire mutable state - account
+// identity, per-project trust decisions, caches - which is why every write
+// merges into the parsed document rather than rendering the file.
+func (a *Adapter) mcpFilePath(scope string) string {
+	switch scope {
+	case config.ScopeProject:
+		return projectPath(".mcp.json")
+	case config.ScopeLocal:
+		return projectPath(".claude.json")
+	default: // user
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		return filepath.Join(home, ".claude.json")
 	}
 }
 
@@ -269,6 +353,8 @@ func (a *Adapter) SettingsKey(assetType string) string {
 		return StatusLineSettingsKey
 	case config.AssetTypeHook:
 		return HooksSettingsKey
+	case config.AssetTypeMCP:
+		return MCPSettingsKey
 	default:
 		return ""
 	}

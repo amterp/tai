@@ -340,10 +340,20 @@ func TestAdapterTransformFilePassthrough(t *testing.T) {
 
 func TestAdapterSupportedConfigAssetTypes(t *testing.T) {
 	a := New("")
-	types := a.SupportedConfigAssetTypes()
+	got := a.SupportedConfigAssetTypes()
 
-	if len(types) != 0 {
-		t.Errorf("len(SupportedConfigAssetTypes()) = %d, want 0", len(types))
+	want := []string{config.AssetTypeMCP}
+	if len(got) != len(want) {
+		t.Fatalf("SupportedConfigAssetTypes() = %v, want %v", got, want)
+	}
+	seen := map[string]bool{}
+	for _, g := range got {
+		seen[g] = true
+	}
+	for _, w := range want {
+		if !seen[w] {
+			t.Errorf("SupportedConfigAssetTypes() = %v, missing %q", got, w)
+		}
 	}
 }
 

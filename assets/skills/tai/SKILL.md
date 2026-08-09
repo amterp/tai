@@ -36,6 +36,7 @@ Tai uses target-agnostic terminology. Here's how asset types map to current targ
 | `file` | (per `dest`) | (per `dest`) | (per `dest`) | (per `dest`) | Loose files copied as-is |
 | `statusline` | `settings.json` | unsupported | unsupported | unsupported | Status bar configuration |
 | `hook` | `settings.json` | `hooks.json` | `settings.json` | unsupported | Command run on a target event |
+| `mcp` | `.mcp.json` / `~/.claude.json` | unsupported | `settings.json` | `opencode.json` | MCP server |
 
 The last two are **config assets**: they merge as entries into the target's config files instead of being written as files. See "Config Assets" below.
 
@@ -115,7 +116,8 @@ my-tai-config/
 │   ├── skills/           # Procedural capabilities (directories)
 │   ├── files/            # Loose files (copied as-is to dest)
 │   ├── statuslines/      # Config asset: status bar
-│   └── hooks/            # Config asset: commands run on target events
+│   ├── hooks/            # Config asset: commands run on target events
+│   └── mcps/             # Config asset: MCP servers
 ├── bundles/              # Bundle definitions (YAML)
 ├── patches/              # Local deltas, one dir per patched source
 └── profiles/             # Profile definitions (YAML)
@@ -206,6 +208,46 @@ milliseconds, and tai converts.
 **OpenCode has no hooks** (only a JS plugin API), so hook assets are skipped
 there. **Codex** will not run a hook until it is trusted, and every change
 re-arms that: run `/hooks` in Codex after installing.
+
+### MCP servers
+
+The filename with its extension stripped becomes the server name.
+
+```yaml
+# assets/mcps/github.yaml
+transport: stdio         # stdio | http - the two every target supports
+command: npx
+args: ["-y", "@modelcontextprotocol/server-github"]
+env:
+  GITHUB_TOKEN: "${GITHUB_TOKEN}"
+```
+
+```yaml
+# assets/mcps/internal.yaml
+transport: http
+url: https://api.internal.example.com/mcp
+headers:
+  Authorization: "Bearer ${API_KEY}"
+```
+
+Other fields: `cwd` (dropped with a warning on Claude, which has none),
+`enabled: false` (not installed at all), `description`, and `native` for
+per-target passthrough.
+
+Write env references as `${VAR}`; tai rewrites them per target (OpenCode wants
+`{env:VAR}`) and never reads the value, so secrets stay in the environment.
+
+Targets keep the same protocol in different shapes, and tai writes each: Claude
+and Gemini key servers under `mcpServers`, OpenCode uses `mcp` with the command
+as one argv array and env spelled `environment`.
+
+**Codex MCP is not supported yet** - it keeps servers in `config.toml` beside
+settings tai does not own.
+
+At `user` scope, Claude MCP servers go in `~/.claude.json`, which also holds
+account and session state. tai merges into it rather than rewriting it, but
+`scope: project` writes the dedicated `.mcp.json` if you would rather keep tai
+out of that file.
 
 ## Configuration Files
 
@@ -882,11 +924,11 @@ tai patch bless <name>
 - Test instructions before including them
 - Structure for scanning (tables, bullet points, code blocks)
 
-## Migration: Hooks and config-asset scope (2026-08-09)
+## Migration: Hooks, MCPs, and config-asset scope (2026-08-09)
 
-`hook` is a new config asset type in `assets/hooks/`, and config assets now
-honour a `scope` field on profiles and on individual asset entries (defaulting
-to `user`).
+`hook` and `mcp` are new config asset types, in `assets/hooks/` and
+`assets/mcps/`. Config assets now honour a `scope` field on profiles and on
+individual asset entries (defaulting to `user`).
 
 Config assets are also templated now, like every other asset - a `{{ var }}` in
 a statusline or hook is substituted rather than installed literally. If a config

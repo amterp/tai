@@ -38,8 +38,7 @@ assets:
 | `file` | Loose file copied as-is (requires `dest`) |
 | `statusline` | Status bar configuration |
 | `hook` | Command run when something happens in the target |
-
-The `mcp` type is planned.
+| `mcp` | Model Context Protocol server |
 
 ## Bundle composition
 

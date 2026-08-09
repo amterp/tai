@@ -28,6 +28,9 @@ type Adapter struct {
 // sit at the top level.
 const HooksSettingsKey = "hooks"
 
+// MCPSettingsKey is the top-level key Gemini reads MCP servers from.
+const MCPSettingsKey = "mcpServers"
+
 // hookEvents maps canonical tai events to Gemini's names.
 //
 // Gemini structures hooks exactly like Claude and Codex but renames every
@@ -149,7 +152,64 @@ func (a *Adapter) Run(args []string) error {
 // SupportedConfigAssetTypes returns the config asset types Gemini supports.
 // Status lines have no Gemini equivalent, so they are skipped with a warning.
 func (a *Adapter) SupportedConfigAssetTypes() []string {
-	return []string{config.AssetTypeHook}
+	return []string{config.AssetTypeHook, config.AssetTypeMCP}
+}
+
+// TransformMCP renders an MCP server in Gemini's shape.
+//
+// Gemini resolves both $VAR and ${VAR} anywhere in settings.json, so
+// environment references pass through untouched.
+func (a *Adapter) TransformMCP(_ string, cfg *config.MCPConfig) (map[string]any, []string, error) {
+	entry := map[string]any{}
+
+	switch cfg.Transport {
+	case config.MCPTransportStdio:
+		entry["command"] = cfg.Command
+		if len(cfg.Args) > 0 {
+			entry["args"] = toAnySlice(cfg.Args)
+		}
+		if len(cfg.Env) > 0 {
+			entry["env"] = toAnyMap(cfg.Env)
+		}
+		if cfg.Cwd != "" {
+			entry["cwd"] = cfg.Cwd
+		}
+
+	case config.MCPTransportHTTP:
+		entry["type"] = "http"
+		entry["url"] = cfg.URL
+		if len(cfg.Headers) > 0 {
+			entry["headers"] = toAnyMap(cfg.Headers)
+		}
+	}
+
+	if cfg.Description != "" {
+		entry["description"] = cfg.Description
+	}
+
+	for key, value := range cfg.Native[a.Name()] {
+		entry[key] = value
+	}
+
+	return entry, nil, nil
+}
+
+// toAnySlice converts a string slice for JSON serialization.
+func toAnySlice(in []string) []any {
+	out := make([]any, len(in))
+	for i, s := range in {
+		out[i] = s
+	}
+	return out
+}
+
+// toAnyMap converts a string map for JSON serialization.
+func toAnyMap(in map[string]string) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // UnsupportedFileAssetTypes returns file asset types Gemini doesn't support.
@@ -173,7 +233,8 @@ func (a *Adapter) InstallWarnings(asset *config.Asset) []string {
 
 // ConfigFilePath returns the Gemini config file for an asset type and scope.
 func (a *Adapter) ConfigFilePath(assetType, scope string) string {
-	if assetType != config.AssetTypeHook {
+	// Hooks and MCP servers share settings.json.
+	if assetType != config.AssetTypeHook && assetType != config.AssetTypeMCP {
 		return ""
 	}
 
@@ -214,10 +275,14 @@ func (a *Adapter) HookTimeoutUnit() configasset.TimeoutUnit {
 
 // SettingsKey returns the JSON key name for a config asset type.
 func (a *Adapter) SettingsKey(assetType string) string {
-	if assetType == config.AssetTypeHook {
+	switch assetType {
+	case config.AssetTypeHook:
 		return HooksSettingsKey
+	case config.AssetTypeMCP:
+		return MCPSettingsKey
+	default:
+		return ""
 	}
-	return ""
 }
 
 // MainFileName returns the main file name for a directory asset type.

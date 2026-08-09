@@ -3,8 +3,6 @@ title: Claude Code
 description: How tai's Claude Code adapter maps assets, transforms content, and installs configuration
 ---
 
-import { Aside } from '@astrojs/starlight/components';
-
 Claude Code is tai's primary target. The Claude adapter translates tai's vocabulary into Claude Code's native formats and installs everything to the Claude configuration directory.
 
 ## Target directory
@@ -98,19 +96,21 @@ tai appends its entries alongside any hooks you or other tools have written unde
 
 See [Config Assets](/tai/reference/config-assets/#hooks) for the event vocabulary and full field reference.
 
-<Aside type="caution" title="Planned">
+## MCP servers
 
-### MCPs
-
-MCP (Model Context Protocol) server entries will be managed as config assets. The target file depends on scope:
+MCP server assets merge into the `mcpServers` key of whichever file matches their scope:
 
 | Scope | Target file |
 |-------|-------------|
-| `project` | `.mcp.json` |
 | `user` | `~/.claude.json` |
+| `project` | `.mcp.json` |
 | `local` | `.claude.json` |
 
-</Aside>
+`~/.claude.json` also holds your account identity, per-project trust decisions, and a good deal of session state. tai merges into the parsed document rather than rendering the file, touches only the `mcpServers` key, and preserves numbers exactly as it found them - but if you would rather keep tai out of that file entirely, use `project` scope, which writes the dedicated `.mcp.json`.
+
+Claude has no per-server `cwd`; an asset that sets one installs without it and tai warns.
+
+See [Config Assets](/tai/reference/config-assets/#mcp-servers) for the full field reference.
 
 ## Installation behavior
 

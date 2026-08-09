@@ -258,6 +258,7 @@ const (
 	AssetTypeFile       = "file"
 	AssetTypeStatusLine = "statusline"
 	AssetTypeHook       = "hook"
+	AssetTypeMCP        = "mcp"
 )
 
 // MainFileName constants for directory assets.
@@ -273,7 +274,7 @@ const (
 // entries in target settings files (rather than as standalone files).
 func IsConfigAssetType(t string) bool {
 	switch t {
-	case AssetTypeStatusLine, AssetTypeHook:
+	case AssetTypeStatusLine, AssetTypeHook, AssetTypeMCP:
 		return true
 	default:
 		return false
@@ -284,7 +285,7 @@ func IsConfigAssetType(t string) bool {
 func ValidAssetTypes() []string {
 	return []string{
 		AssetTypePersona, AssetTypeDelegate, AssetTypeSkill, AssetTypeFile,
-		AssetTypeStatusLine, AssetTypeHook,
+		AssetTypeStatusLine, AssetTypeHook, AssetTypeMCP,
 	}
 }
 
@@ -313,6 +314,8 @@ func AssetTypeDirName(t string) string {
 		return "statuslines"
 	case AssetTypeHook:
 		return "hooks"
+	case AssetTypeMCP:
+		return "mcps"
 	default:
 		return t
 	}
@@ -333,6 +336,8 @@ func AssetTypeFromDirName(d string) string {
 		return AssetTypeStatusLine
 	case "hooks":
 		return AssetTypeHook
+	case "mcps":
+		return AssetTypeMCP
 	default:
 		return d
 	}
@@ -503,4 +508,63 @@ func (h *HookConfig) ResolvedTimeout() (time.Duration, bool) {
 		return 0, false
 	}
 	return d, true
+}
+
+// MCP transports tai abstracts. stdio and streamable HTTP are the only two
+// every target supports; SSE and WebSocket exist on some and not others, so a
+// config asking for them is rejected for the targets that lack them rather
+// than silently downgraded.
+const (
+	MCPTransportStdio = "stdio"
+	MCPTransportHTTP  = "http"
+)
+
+// ValidMCPTransports returns the transports tai can install.
+func ValidMCPTransports() []string {
+	return []string{MCPTransportStdio, MCPTransportHTTP}
+}
+
+// MCPConfig represents a parsed MCP server asset.
+//
+// The fields here are the genuine common core across Claude, Codex, Gemini and
+// OpenCode. Everything past it - OAuth specifics, trust flags, approval modes -
+// is four-way incompatible and belongs in Native rather than in a lossy
+// abstraction that has to be escaped anyway.
+type MCPConfig struct {
+	// Description is for humans reading the config repo. Only some targets
+	// have somewhere to put it, so it is not installed anywhere.
+	Description string `yaml:"description,omitempty"`
+
+	// Transport is "stdio" (a local command) or "http" (a remote server).
+	// Required.
+	Transport string `yaml:"transport"`
+
+	// Command and Args launch a stdio server.
+	Command string   `yaml:"command,omitempty"`
+	Args    []string `yaml:"args,omitempty"`
+
+	// Env sets environment variables for a stdio server. Values may reference
+	// the environment as ${VAR}; see the note on Env references below.
+	Env map[string]string `yaml:"env,omitempty"`
+
+	// Cwd is the working directory for a stdio server. Claude has no
+	// equivalent, so it is dropped there with a warning.
+	Cwd string `yaml:"cwd,omitempty"`
+
+	// URL and Headers address an http server.
+	URL     string            `yaml:"url,omitempty"`
+	Headers map[string]string `yaml:"headers,omitempty"`
+
+	// Enabled turns a server off without removing it. Defaults to on. Targets
+	// with no per-server toggle get the server omitted entirely instead.
+	Enabled *bool `yaml:"enabled,omitempty"`
+
+	// Native holds target-specific fields merged verbatim over the generated
+	// entry, keyed by target name.
+	Native map[string]map[string]any `yaml:"native,omitempty"`
+}
+
+// IsEnabled reports whether the server should be installed at all.
+func (m *MCPConfig) IsEnabled() bool {
+	return m.Enabled == nil || *m.Enabled
 }

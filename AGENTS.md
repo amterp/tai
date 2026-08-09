@@ -37,7 +37,7 @@ golangci-lint run ./...          # Runs errcheck, govet, staticcheck, unused, in
 | **Skill** | Procedural capability | skills |
 | **File** | Loose file copied as-is | CLAUDE.md, AGENTS.md |
 | **StatusLine** | Status bar configuration | statusLine in settings.json |
-| **MCP** | Model Context Protocol server | MCP server entry (planned) |
+| **MCP** | Model Context Protocol server | `mcpServers` entry |
 | **Hook** | Event-triggered command | Hook entry in settings |
 | **Asset** | Atomic configuration unit | Single persona/delegate/skill/file/statusline/mcp/hook |
 | **Bundle** | Named collection of assets | Shopping list of related assets |
@@ -45,7 +45,7 @@ golangci-lint run ./...          # Runs errcheck, govet, staticcheck, unused, in
 | **Source** | Asset provider | Local dir, tai repo, command (fetched into cache) |
 | **Patch** | Local delta on a source you don't own | - (tai concept) |
 
-**Asset shapes:** File assets (personas, delegates, skills, files) are copied to target paths. Config assets (statuslines, hooks, and eventually mcps) are merged into the target's config files - as *entries*, never as whole keys; see design decision 9.
+**Asset shapes:** File assets (personas, delegates, skills, files) are copied to target paths. Config assets (statuslines, hooks, mcps) are merged into the target's config files - as *entries*, never as whole keys; see design decision 9.
 
 ### Data Flow
 
@@ -68,7 +68,7 @@ Sources → Assets → Bundles → Profiles → Install Pipeline → Target Conf
 - **internal/bundle/** - Recursive bundle composition with cycle detection
 - **internal/profile/** - Composes bundles into profiles, handles asset deduplication
 - **internal/install/** - Installation logic with manifest tracking, conflict detection, backup/restore. `configfile.go` holds the config-file merge engine: batched read/modify/write, plus `applyEdit`/`removeEdit`
-- **internal/configasset/** - Config asset types (statusline, hook, and later mcp): a `Handler` per type that parses and validates its YAML and returns declarative `Edit`s. Knows nothing about manifests or files
+- **internal/configasset/** - Config asset types (statusline, hook, mcp): a `Handler` per type that parses and validates its YAML and returns declarative `Edit`s. Knows nothing about manifests or files
 - **internal/adapter/** - Target-specific implementations (Claude, Codex, and OpenCode)
 - **internal/frontmatter/** - YAML frontmatter parsing/rendering (target-agnostic)
 - **internal/template/** - Jinja2-style template processing (pongo2): variables, conditionals, `{% include_asset %}`
@@ -105,7 +105,7 @@ The Claude adapter maps:
 - `files/` → location specified by `dest` field (content copied as-is, no transformation)
 - `statuslines/` → `statusLine` key in `settings.json` (tai format → Claude format)
 - `hooks/` → entries under `hooks.<Event>` in `settings.json`
-- `mcps/` → entries in `.mcp.json` or `~/.claude.json` (planned)
+- `mcps/` → entries under `mcpServers` in `.mcp.json` (project) or `~/.claude.json` (user)
 
 Claude's `ProvideVariables()` returns: `target_name: "claude"`, `target_name_display: "Claude"`, `target_agents_file: "CLAUDE.md"`
 
@@ -116,6 +116,7 @@ The Codex adapter maps:
 - `files/` → location specified by `dest` field (content copied as-is, no transformation)
 - `statuslines/` → unsupported (skipped with warning)
 - `hooks/` → entries under `hooks.<Event>` in `~/.codex/hooks.json` (a dedicated JSON file, so tai never rewrites `config.toml`)
+- `mcps/` → unsupported for now: Codex keeps servers in `config.toml` beside model settings and project trust levels, and tai has no TOML writer
 
 Codex `ProvideVariables()` returns: `target_name: "codex"`, `target_name_display: "Codex"`, `target_agents_file: "AGENTS.md"`
 
@@ -137,6 +138,7 @@ The Gemini adapter maps:
 - `files/` → location specified by `dest` field (content copied as-is, no transformation)
 - `statuslines/` → unsupported (skipped with warning)
 - `hooks/` → entries under `hooks.<Event>` in `settings.json`, with every event renamed (`pre_tool_use` → `BeforeTool`, `stop` → `AfterAgent`) and timeouts in milliseconds
+- `mcps/` → entries under `mcpServers` in `settings.json`
 
 Gemini `ProvideVariables()` returns: `target_name: "gemini"`, `target_name_display: "Gemini"`, `target_agents_file: "GEMINI.md"`
 
@@ -152,7 +154,7 @@ my-tai-config/
 │   ├── files/          # Loose files (copied as-is to dest)
 │   ├── statuslines/    # Config assets (settings.json)
 │   ├── hooks/          # Config assets (commands run on target events)
-│   ├── mcps/           # Config assets (planned)
+│   ├── mcps/           # Config assets (MCP servers)
 │   └── hooks/
 ├── bundles/            # Bundle definitions (YAML)
 ├── patches/            # Local deltas, one dir per patched source

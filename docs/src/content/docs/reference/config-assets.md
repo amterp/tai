@@ -3,7 +3,7 @@ title: Config Assets
 description: Reference for config assets - status lines and hooks - that merge into a target's config files
 ---
 
-Config assets are entries merged into a target's configuration files, rather than written as standalone files. StatusLines and hooks are implemented; MCP servers are planned.
+Config assets are entries merged into a target's configuration files, rather than written as standalone files. Status lines, hooks, and MCP servers are all config assets.
 
 ## StatusLines
 
@@ -260,6 +260,79 @@ Entries land under the `hooks` key, alongside any hooks you or other tools have 
 }
 ```
 
+## MCP servers
+
+MCP (Model Context Protocol) server definitions are YAML files in `assets/mcps/`. The filename with its extension stripped becomes the server name.
+
+```yaml
+# assets/mcps/github.yaml
+description: GitHub MCP server
+transport: stdio
+command: npx
+args:
+  - "-y"
+  - "@modelcontextprotocol/server-github"
+env:
+  GITHUB_TOKEN: "${GITHUB_TOKEN}"
+```
+
+```yaml
+# assets/mcps/internal-api.yaml
+transport: http
+url: https://api.internal.example.com/mcp
+headers:
+  Authorization: "Bearer ${API_KEY}"
+```
+
+### MCP fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `transport` | string | yes | `stdio` (a local command) or `http` (a remote server) |
+| `command` | string | stdio | Executable to run |
+| `args` | list | no | Arguments to the command |
+| `env` | map | no | Environment variables for the server |
+| `cwd` | string | no | Working directory. Claude has no equivalent - dropped there with a warning. |
+| `url` | string | http | Server endpoint |
+| `headers` | map | no | HTTP headers |
+| `enabled` | bool | no | Defaults to true. A disabled server is not installed at all. |
+| `description` | string | no | For humans; installed only where the target has somewhere to put it |
+| `native` | map | no | Per-target fields merged verbatim over the generated entry |
+
+Only `stdio` and `http` are offered, because they are the two every target supports. SSE and WebSocket exist on some and not others, so tai does not pretend to abstract them - use `native` if you need one on a target that has it.
+
+### Environment references
+
+Write environment references as `${VAR}`. tai rewrites them into whatever syntax the target uses - OpenCode, for instance, wants `{env:VAR}`.
+
+tai does not read the variable itself, so the secret stays in your environment rather than being baked into an installed file.
+
+### Per-target shapes
+
+The MCP protocol is shared, but the config shapes are not:
+
+| tai | Claude | Gemini | OpenCode |
+|-----|--------|--------|----------|
+| key | `mcpServers` | `mcpServers` | `mcp` |
+| `command` + `args` | separate fields | separate fields | one `command` array |
+| `env` | `env` | `env` | `environment` |
+| `transport` | `type: stdio\|http` | `type` (http only) | `type: local\|remote`, required |
+| `cwd` | not supported | `cwd` | `cwd` |
+
+tai writes each target's own shape; you write the tai one.
+
+### Where MCP servers are installed
+
+| Target | `user` | `project` | `local` |
+|--------|--------|-----------|---------|
+| Claude | `~/.claude.json` | `.mcp.json` | `.claude.json` |
+| Gemini | `~/.gemini/settings.json` | `.gemini/settings.json` | - |
+| OpenCode | `~/.config/opencode/opencode.json` | `opencode.json` | `opencode.json` |
+
+:::note
+At `user` scope Claude reads MCP servers from `~/.claude.json`, which also holds your account identity, per-project trust decisions, and a good deal of session state. tai merges into the parsed document and touches only the `mcpServers` key, and leaves numbers exactly as it found them - but it is worth knowing what else lives there. `project` scope writes `.mcp.json`, a dedicated single-key file, if you would rather keep tai away from it.
+:::
+
 ## Installation scope
 
 Scope comes from the profile's `scope` field, or from an individual asset's own `scope`, which overrides it. It defaults to `user`. See [Profile Format](/tai/reference/profile-format/#scope).
@@ -286,70 +359,5 @@ Two consequences worth knowing:
 ## Planned config assets
 
 :::caution
-MCP server support is not yet implemented. The design below is provisional and may change.
+MCP servers are not yet supported on Codex. Codex has no dedicated MCP config file - servers live in `~/.codex/config.toml` alongside your model settings and project trust decisions - so installing them means rewriting TOML that tai does not own. MCP assets targeting Codex are currently skipped with a warning.
 :::
-
-### MCPs (planned)
-
-MCP (Model Context Protocol) server definitions will be defined as YAML files in `assets/mcps/`. The filename (without extension) becomes the server name unless overridden with a `name` field.
-
-#### Planned MCP format
-
-```yaml
-# assets/mcps/github.yaml
-type: stdio
-command: npx
-args:
-  - "-y"
-  - "@modelcontextprotocol/server-github"
-env:
-  GITHUB_TOKEN: "${GITHUB_TOKEN}"
-```
-
-```yaml
-# assets/mcps/internal-api.yaml
-type: http
-url: https://api.internal.company.com/mcp
-headers:
-  Authorization: "Bearer ${API_KEY}"
-```
-
-#### Planned MCP fields
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | no | Override filename as server name |
-| `type` | string | yes | `stdio` or `http` |
-| `command` | string | stdio only | Executable path or command |
-| `args` | list of strings | no | Command arguments |
-| `env` | map | no | Environment variables (supports `${VAR}` expansion) |
-| `url` | string | http only | Server endpoint URL |
-| `headers` | map | http only | HTTP request headers |
-
-#### Planned Claude MCP installation
-
-MCPs would be installed to different files depending on scope:
-
-| Scope | Target file |
-|-------|-------------|
-| `project` | `.mcp.json` (project root) |
-| `user` | `~/.claude.json` |
-| `local` | `.claude.json` (project root) |
-
-Installed as entries under the `mcpServers` key:
-
-```json
-{
-  "mcpServers": {
-    "github": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": {
-        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
-      }
-    }
-  }
-}
-```
-

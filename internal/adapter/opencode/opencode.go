@@ -7,6 +7,7 @@ import (
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/configasset"
 	fm "github.com/amterp/tai/internal/frontmatter"
 	"github.com/amterp/tai/internal/template"
 )
@@ -162,7 +163,7 @@ func (a *Adapter) Run(args []string) error {
 
 // SupportedConfigAssetTypes returns the config asset types OpenCode supports.
 func (a *Adapter) SupportedConfigAssetTypes() []string {
-	return []string{}
+	return []string{config.AssetTypeMCP}
 }
 
 // InstallWarnings returns OpenCode-specific advisory install warnings.
@@ -171,14 +172,96 @@ func (a *Adapter) InstallWarnings(_ *config.Asset) []string {
 	return nil
 }
 
-// ConfigFilePath returns no config file: OpenCode supports no config asset
-// types yet, so nothing has a home here.
-func (a *Adapter) ConfigFilePath(string, string) string {
-	return ""
+// MCPSettingsKey is the top-level key OpenCode reads MCP servers from. Note
+// it is "mcp", not the "mcpServers" the other targets use.
+const MCPSettingsKey = "mcp"
+
+// ConfigFilePath returns the OpenCode config file for an asset type and scope.
+func (a *Adapter) ConfigFilePath(assetType, scope string) string {
+	if assetType != config.AssetTypeMCP {
+		return ""
+	}
+
+	switch scope {
+	case config.ScopeProject, config.ScopeLocal:
+		rel := "opencode.json"
+		abs, err := filepath.Abs(rel)
+		if err != nil {
+			return rel
+		}
+		return abs
+	default: // user
+		return filepath.Join(a.targetDir, "opencode.json")
+	}
+}
+
+// TransformMCP renders an MCP server in OpenCode's shape.
+//
+// OpenCode diverges structurally from the other targets: the command and its
+// arguments are a single argv array, the environment is spelled "environment",
+// and "type" is required rather than inferred. Its config schema also rejects
+// unknown keys outright, so a field in the wrong place is a hard failure there
+// rather than something quietly ignored.
+func (a *Adapter) TransformMCP(_ string, cfg *config.MCPConfig) (map[string]any, []string, error) {
+	entry := map[string]any{}
+	var warnings []string
+
+	switch cfg.Transport {
+	case config.MCPTransportStdio:
+		entry["type"] = "local"
+		command := make([]any, 0, len(cfg.Args)+1)
+		command = append(command, cfg.Command)
+		for _, arg := range cfg.Args {
+			command = append(command, arg)
+		}
+		entry["command"] = command
+
+		if len(cfg.Env) > 0 {
+			env := make(map[string]any, len(cfg.Env))
+			for k, v := range cfg.Env {
+				env[k] = configasset.RewriteEnvRefs(v, func(name string) string {
+					return "{env:" + name + "}"
+				})
+			}
+			entry["environment"] = env
+		}
+		if cfg.Cwd != "" {
+			entry["cwd"] = cfg.Cwd
+		}
+
+	case config.MCPTransportHTTP:
+		entry["type"] = "remote"
+		entry["url"] = cfg.URL
+		if len(cfg.Headers) > 0 {
+			headers := make(map[string]any, len(cfg.Headers))
+			for k, v := range cfg.Headers {
+				headers[k] = configasset.RewriteEnvRefs(v, func(name string) string {
+					return "{env:" + name + "}"
+				})
+			}
+			entry["headers"] = headers
+		}
+	}
+
+	if cfg.Description != "" {
+		// OpenCode validates additionalProperties: false, so an unrecognized
+		// key would make the whole config invalid rather than be ignored.
+		warnings = append(warnings,
+			"OpenCode MCP entries have no 'description' field - dropped")
+	}
+
+	for key, value := range cfg.Native[a.Name()] {
+		entry[key] = value
+	}
+
+	return entry, warnings, nil
 }
 
 // SettingsKey returns the JSON key name for a config asset type.
-func (a *Adapter) SettingsKey(string) string {
+func (a *Adapter) SettingsKey(assetType string) string {
+	if assetType == config.AssetTypeMCP {
+		return MCPSettingsKey
+	}
 	return ""
 }
 

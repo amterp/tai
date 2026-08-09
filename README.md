@@ -35,6 +35,7 @@ go install github.com/amterp/tai/cmd/tai@latest
 | **Doc**         | Reference material                           | CLAUDE.md, supporting docs |
 | **StatusLine**  | Status bar configuration                     | `statusLine` in settings   |
 | **Hook**        | Command run when something happens           | hook entry in settings     |
+| **MCP**         | Model Context Protocol server                | `mcpServers` entry         |
 | **Asset**       | Any one of the above                         | -                          |
 | **Bundle**      | Named collection of assets                   | -                          |
 | **Profile**     | Bundle(s) bound to a target                  | -                          |
@@ -68,7 +69,8 @@ my-tai-config/
 │   ├── skills/           # Procedural capabilities (directories)
 │   ├── docs/             # Reference documentation
 │   ├── statuslines/      # Status bar configuration
-│   └── hooks/            # Commands run on target events
+│   ├── hooks/            # Commands run on target events
+│   └── mcps/             # MCP servers
 ├── bundles/              # Bundle definitions (YAML)
 ├── patches/              # Local deltas on sources you don't own
 └── profiles/             # Profile definitions (YAML)

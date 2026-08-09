@@ -126,15 +126,19 @@ func TestAdapterMapAssetPathUnknownType(t *testing.T) {
 
 func TestAdapterSupportedConfigAssetTypes(t *testing.T) {
 	a := New("")
-	types := a.SupportedConfigAssetTypes()
+	got := a.SupportedConfigAssetTypes()
 
-	want := map[string]bool{config.AssetTypeStatusLine: true, config.AssetTypeHook: true}
-	if len(types) != len(want) {
-		t.Errorf("SupportedConfigAssetTypes() = %v, want %d types", types, len(want))
+	want := []string{config.AssetTypeStatusLine, config.AssetTypeHook, config.AssetTypeMCP}
+	if len(got) != len(want) {
+		t.Fatalf("SupportedConfigAssetTypes() = %v, want %v", got, want)
 	}
-	for _, got := range types {
-		if !want[got] {
-			t.Errorf("SupportedConfigAssetTypes() included unexpected %q", got)
+	seen := map[string]bool{}
+	for _, g := range got {
+		seen[g] = true
+	}
+	for _, w := range want {
+		if !seen[w] {
+			t.Errorf("SupportedConfigAssetTypes() = %v, missing %q", got, w)
 		}
 	}
 }

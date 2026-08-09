@@ -613,8 +613,8 @@ showModel: true
 # my-tai-config/assets/mcps/github.yaml
 # The filename (minus extension) becomes the server name
 
-type: stdio                    # Required: "stdio" or "http"
-command: npx                   # Required for stdio: executable path
+transport: stdio               # Required: "stdio" or "http"
+command: npx                   # Required for stdio: executable to run
 args:                          # Optional: command arguments
   - "-y"
   - "@modelcontextprotocol/server-github"
@@ -626,7 +626,7 @@ env:                           # Optional: environment variables
 # my-tai-config/assets/mcps/internal-api.yaml
 # HTTP-based MCP server
 
-type: http
+transport: http
 url: https://api.internal.company.com/mcp
 headers:
   Authorization: "Bearer ${API_KEY}"
@@ -636,13 +636,59 @@ headers:
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `name` | string | No | Override filename as server name |
-| `type` | string | Yes | `stdio` or `http` |
-| `command` | string | stdio only | Executable path |
-| `args` | list | No | Command arguments |
-| `env` | map | No | Environment variables (supports `${VAR}` expansion) |
-| `url` | string | http only | Server endpoint |
-| `headers` | map | http only | HTTP headers |
+| `transport` | string | Yes | `stdio` (local command) or `http` (remote server) |
+| `command` | string | stdio | Executable to run |
+| `args` | list | No | Arguments to the command |
+| `env` | map | No | Environment variables; `${VAR}` references are rewritten per target |
+| `cwd` | string | No | Working directory; dropped with a warning on Claude, which has none |
+| `url` | string | http | Server endpoint |
+| `headers` | map | No | HTTP headers |
+| `enabled` | bool | No | Defaults to true; a disabled server is not installed at all |
+| `description` | string | No | For humans; installed only where the target has a field for it |
+| `native` | map | No | Per-target fields merged verbatim over the generated entry |
+
+The server's name is its filename with the extension stripped.
+
+Only `stdio` and `http` are abstracted: they are the two transports every
+target supports. SSE and WebSocket exist on some and not others, so rather than
+a portable-looking option that silently fails on half the targets, they are left
+to `native`.
+
+**Environment references** are written `${VAR}` and rewritten per target -
+OpenCode wants `{env:VAR}`. tai never reads the variable, so the secret stays in
+the environment instead of being baked into an installed file.
+
+**The shapes differ even though the protocol does not.** Claude and Gemini key
+servers under `mcpServers`; OpenCode uses `mcp`, folds the command and its
+arguments into one argv array, spells the environment `environment`, and
+requires an explicit `local`/`remote` type. Each adapter renders its own shape.
+
+| tai | Claude | Gemini | OpenCode |
+|-----|--------|--------|----------|
+| key | `mcpServers` | `mcpServers` | `mcp` |
+| command + args | separate | separate | one array |
+| env | `env` | `env` | `environment` |
+| cwd | unsupported | `cwd` | `cwd` |
+
+**Scope** picks the file:
+
+| Target | `user` | `project` | `local` |
+|--------|--------|-----------|---------|
+| Claude | `~/.claude.json` | `.mcp.json` | `.claude.json` |
+| Gemini | `~/.gemini/settings.json` | `.gemini/settings.json` | - |
+| OpenCode | `~/.config/opencode/opencode.json` | `opencode.json` | `opencode.json` |
+
+At user scope Claude reads MCP servers from `~/.claude.json`, which also holds
+account identity, per-project trust decisions, and a good deal of session
+state. tai merges into the parsed document, touches only the `mcpServers` key,
+and preserves numbers as literals so nothing it does not manage is reformatted.
+Project scope writes `.mcp.json`, a dedicated single-key file, for anyone who
+would rather keep tai out of that file entirely.
+
+**Codex is not yet supported.** It has no dedicated MCP config file - servers
+live in `~/.codex/config.toml` beside model settings and project trust levels -
+so installing there means rewriting TOML tai does not own. MCP assets targeting
+Codex are skipped with a warning.
 
 #### Hook Definition
 
@@ -1997,10 +2043,10 @@ bundles:
 
 ### Deferred to Future Versions
 
-- [ ] **Config assets (MCPs)** - remaining v0.2 work
-  - [x] StatusLine definitions (`assets/statuslines/`) - implemented in v0.1
+- [x] **Config assets**
+  - [x] StatusLine definitions (`assets/statuslines/`)
   - [x] Hook definitions (`assets/hooks/`)
-  - [ ] MCP server definitions (`assets/mcps/`)
+  - [x] MCP server definitions (`assets/mcps/`) - Codex still pending
   - [x] Entry-level merge and surgical removal
   - [x] Scope handling (user/project/local)
   - [x] Config entry manifest tracking
