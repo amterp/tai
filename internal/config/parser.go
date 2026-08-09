@@ -386,6 +386,19 @@ func ParseStatusLineConfig(data []byte) (*StatusLineConfig, []byte, error) {
 	return &cfg, nil, nil
 }
 
+// ParseHookConfig parses hook asset YAML.
+//
+// Like ParseStatusLineConfig it takes bytes, not a path: config assets are
+// templated before parsing, and reading the file here would skip templating
+// and bypass a source's patched view.
+func ParseHookConfig(data []byte) (*HookConfig, error) {
+	var cfg HookConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parsing hook config: %w", err)
+	}
+	return &cfg, nil
+}
+
 // LoadProfilesFromDir loads all profile files from a directory.
 func LoadProfilesFromDir(dir string) (map[string]*Profile, error) {
 	profiles := make(map[string]*Profile)

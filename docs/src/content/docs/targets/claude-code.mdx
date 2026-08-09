@@ -84,7 +84,21 @@ When `show` is specified, all four boolean flags are set explicitly - elements l
 
 You can also use native format to bypass transformation entirely - see [Config Assets](/tai/reference/config-assets/) for details.
 
-<Aside type="caution" title="Planned (v0.2)">
+## Hooks
+
+Hook assets are commands Claude runs when something happens - a tool is about to run, a turn ends, a session starts. They merge into the `hooks` key of a settings file:
+
+| Scope | Target file |
+|-------|-------------|
+| `user` | `~/.claude/settings.json` |
+| `project` | `.claude/settings.json` |
+| `local` | `.claude/settings.local.json` |
+
+tai appends its entries alongside any hooks you or other tools have written under the same event, and removes only its own on uninstall. Claude-specific handler options that tai does not abstract, such as `async`, go in the hook's `native.claude` block.
+
+See [Config Assets](/tai/reference/config-assets/#hooks) for the event vocabulary and full field reference.
+
+<Aside type="caution" title="Planned">
 
 ### MCPs
 
@@ -95,16 +109,6 @@ MCP (Model Context Protocol) server entries will be managed as config assets. Th
 | `project` | `.mcp.json` |
 | `user` | `~/.claude.json` |
 | `local` | `.claude.json` |
-
-### Hooks
-
-Hook assets will be event-triggered commands merged into settings files. The target file depends on scope:
-
-| Scope | Target file |
-|-------|-------------|
-| `project` | `.claude/settings.json` |
-| `user` | `~/.claude/settings.json` |
-| `local` | `.claude/settings.local.json` |
 
 </Aside>
 

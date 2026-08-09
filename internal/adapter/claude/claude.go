@@ -9,6 +9,7 @@ import (
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/configasset"
 	fm "github.com/amterp/tai/internal/frontmatter"
 	"github.com/amterp/tai/internal/template"
 )
@@ -16,7 +17,34 @@ import (
 // Settings key constants for Claude's settings.json
 const (
 	StatusLineSettingsKey = "statusLine"
+	HooksSettingsKey      = "hooks"
 )
+
+// hookEvents maps canonical tai events to Claude's names. Claude has more
+// events than tai abstracts; the ones here are those with an equivalent on at
+// least one other target, which is what makes them worth a portable name.
+var hookEvents = map[string]string{
+	config.HookEventSessionStart:      "SessionStart",
+	config.HookEventSessionEnd:        "SessionEnd",
+	config.HookEventUserPromptSubmit:  "UserPromptSubmit",
+	config.HookEventPreToolUse:        "PreToolUse",
+	config.HookEventPostToolUse:       "PostToolUse",
+	config.HookEventStop:              "Stop",
+	config.HookEventSubagentStart:     "SubagentStart",
+	config.HookEventSubagentStop:      "SubagentStop",
+	config.HookEventPreCompact:        "PreCompact",
+	config.HookEventPostCompact:       "PostCompact",
+	config.HookEventNotification:      "Notification",
+	config.HookEventPermissionRequest: "PermissionRequest",
+}
+
+// hookTools maps canonical tai tool names to Claude's.
+var hookTools = map[string]string{
+	config.HookToolRead:  "Read",
+	config.HookToolWrite: "Write",
+	config.HookToolEdit:  "Edit",
+	config.HookToolShell: "Bash",
+}
 
 func init() {
 	adapter.DefaultRegistry.Register(New(""))
@@ -128,7 +156,24 @@ func (a *Adapter) Run(args []string) error {
 
 // SupportedConfigAssetTypes returns the config asset types Claude supports.
 func (a *Adapter) SupportedConfigAssetTypes() []string {
-	return []string{config.AssetTypeStatusLine}
+	return []string{config.AssetTypeStatusLine, config.AssetTypeHook}
+}
+
+// HookEventName maps a canonical tai event to Claude's name for it.
+func (a *Adapter) HookEventName(canonical string) (string, bool) {
+	name, ok := hookEvents[canonical]
+	return name, ok
+}
+
+// HookToolName maps a canonical tai tool name to Claude's name for it.
+func (a *Adapter) HookToolName(canonical string) (string, bool) {
+	name, ok := hookTools[canonical]
+	return name, ok
+}
+
+// HookTimeoutUnit reports that Claude expects hook timeouts in seconds.
+func (a *Adapter) HookTimeoutUnit() configasset.TimeoutUnit {
+	return configasset.TimeoutSeconds
 }
 
 // InstallWarnings returns Claude-specific advisory install warnings.
@@ -144,7 +189,7 @@ func (a *Adapter) InstallWarnings(_ *config.Asset) []string {
 // absolute so nothing downstream has to guess the base.
 func (a *Adapter) ConfigFilePath(assetType, scope string) string {
 	switch assetType {
-	case config.AssetTypeStatusLine:
+	case config.AssetTypeStatusLine, config.AssetTypeHook:
 		return a.settingsFilePath(scope)
 	default:
 		return ""
@@ -222,6 +267,8 @@ func (a *Adapter) SettingsKey(assetType string) string {
 	switch assetType {
 	case config.AssetTypeStatusLine:
 		return StatusLineSettingsKey
+	case config.AssetTypeHook:
+		return HooksSettingsKey
 	default:
 		return ""
 	}

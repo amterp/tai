@@ -12,9 +12,9 @@ Assets come in two shapes based on how they are installed:
 | Shape | Asset types | How installed |
 |-------|-------------|---------------|
 | **File assets** | persona, delegate, skill, file | Copied to target paths |
-| **Config assets** | statusline | Merged into target JSON config files |
+| **Config assets** | statusline, hook | Merged into the target's config files |
 
-MCPs and hooks are planned as additional config asset types in v0.2.
+MCP servers are planned as an additional config asset type.
 
 ## File assets
 

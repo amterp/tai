@@ -252,8 +252,8 @@ func TestAdapterSupportedConfigAssetTypes(t *testing.T) {
 	a := New("")
 	types := a.SupportedConfigAssetTypes()
 
-	if len(types) != 0 {
-		t.Errorf("len(SupportedConfigAssetTypes()) = %d, want 0", len(types))
+	if len(types) != 1 || types[0] != config.AssetTypeHook {
+		t.Errorf("SupportedConfigAssetTypes() = %v, want [hook]", types)
 	}
 }
 

@@ -37,8 +37,9 @@ assets:
 | `skill` | Procedural capability (often a directory) |
 | `file` | Loose file copied as-is (requires `dest`) |
 | `statusline` | Status bar configuration |
+| `hook` | Command run when something happens in the target |
 
-`mcp` and `hook` types are planned for v0.2.
+The `mcp` type is planned.
 
 ## Bundle composition
 

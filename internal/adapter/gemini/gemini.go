@@ -9,6 +9,7 @@ import (
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/configasset"
 	fm "github.com/amterp/tai/internal/frontmatter"
 	"github.com/amterp/tai/internal/template"
 )
@@ -20,6 +21,40 @@ func init() {
 // Adapter implements the adapter.Adapter interface for Gemini CLI.
 type Adapter struct {
 	targetDir string // Override for testing
+}
+
+// HooksSettingsKey is the top-level key Gemini reads hooks from. Note that
+// most Gemini settings are deeply namespaced (ui.theme, model.name), but hooks
+// sit at the top level.
+const HooksSettingsKey = "hooks"
+
+// hookEvents maps canonical tai events to Gemini's names.
+//
+// Gemini structures hooks exactly like Claude and Codex but renames every
+// event, which is the clearest argument for tai naming events itself rather
+// than borrowing one target's vocabulary.
+//
+// Gemini has no subagent or post-compact events, and no separate permission
+// event; hooks using those are skipped with a warning. It also has events with
+// no equivalent anywhere else - BeforeModel, AfterModel, BeforeToolSelection,
+// which sit inside the model call - that tai does not abstract.
+var hookEvents = map[string]string{
+	config.HookEventSessionStart:     "SessionStart",
+	config.HookEventSessionEnd:       "SessionEnd",
+	config.HookEventUserPromptSubmit: "BeforeAgent",
+	config.HookEventPreToolUse:       "BeforeTool",
+	config.HookEventPostToolUse:      "AfterTool",
+	config.HookEventStop:             "AfterAgent",
+	config.HookEventPreCompact:       "PreCompress",
+	config.HookEventNotification:     "Notification",
+}
+
+// hookTools maps canonical tai tool names to Gemini's snake_case tools.
+var hookTools = map[string]string{
+	config.HookToolRead:  "read_file",
+	config.HookToolWrite: "write_file",
+	config.HookToolEdit:  "replace",
+	config.HookToolShell: "run_shell_command",
 }
 
 // New creates a new Gemini adapter.
@@ -112,9 +147,9 @@ func (a *Adapter) Run(args []string) error {
 }
 
 // SupportedConfigAssetTypes returns the config asset types Gemini supports.
-// No config assets are supported in the initial implementation.
+// Status lines have no Gemini equivalent, so they are skipped with a warning.
 func (a *Adapter) SupportedConfigAssetTypes() []string {
-	return []string{}
+	return []string{config.AssetTypeHook}
 }
 
 // UnsupportedFileAssetTypes returns file asset types Gemini doesn't support.
@@ -136,14 +171,52 @@ func (a *Adapter) InstallWarnings(asset *config.Asset) []string {
 	}
 }
 
-// ConfigFilePath returns no config file: Gemini CLI supports no config asset
-// types yet, so nothing has a home here.
-func (a *Adapter) ConfigFilePath(string, string) string {
-	return ""
+// ConfigFilePath returns the Gemini config file for an asset type and scope.
+func (a *Adapter) ConfigFilePath(assetType, scope string) string {
+	if assetType != config.AssetTypeHook {
+		return ""
+	}
+
+	switch scope {
+	case config.ScopeProject:
+		rel := filepath.Join(".gemini", "settings.json")
+		abs, err := filepath.Abs(rel)
+		if err != nil {
+			return rel
+		}
+		return abs
+	case config.ScopeUser:
+		return filepath.Join(a.targetDir, "settings.json")
+	default:
+		// Gemini settings are user, workspace, or system - there is no local
+		// scope to map onto.
+		return ""
+	}
+}
+
+// HookEventName maps a canonical tai event to Gemini's name for it.
+func (a *Adapter) HookEventName(canonical string) (string, bool) {
+	name, ok := hookEvents[canonical]
+	return name, ok
+}
+
+// HookToolName maps a canonical tai tool name to Gemini's name for it.
+func (a *Adapter) HookToolName(canonical string) (string, bool) {
+	name, ok := hookTools[canonical]
+	return name, ok
+}
+
+// HookTimeoutUnit reports that Gemini expects hook timeouts in milliseconds,
+// unlike Claude and Codex which take seconds.
+func (a *Adapter) HookTimeoutUnit() configasset.TimeoutUnit {
+	return configasset.TimeoutMilliseconds
 }
 
 // SettingsKey returns the JSON key name for a config asset type.
-func (a *Adapter) SettingsKey(string) string {
+func (a *Adapter) SettingsKey(assetType string) string {
+	if assetType == config.AssetTypeHook {
+		return HooksSettingsKey
+	}
 	return ""
 }
 

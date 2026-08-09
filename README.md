@@ -33,7 +33,9 @@ go install github.com/amterp/tai/cmd/tai@latest
 | **Delegate**    | Specialized helper agent                     | agents (sub-agents)        |
 | **Skill**       | Procedural capability                        | skills                     |
 | **Doc**         | Reference material                           | CLAUDE.md, supporting docs |
-| **Asset**       | Any single persona, delegate, skill, or doc  | -                          |
+| **StatusLine**  | Status bar configuration                     | `statusLine` in settings   |
+| **Hook**        | Command run when something happens           | hook entry in settings     |
+| **Asset**       | Any one of the above                         | -                          |
 | **Bundle**      | Named collection of assets                   | -                          |
 | **Profile**     | Bundle(s) bound to a target                  | -                          |
 | **Source**      | Location providing assets                    | -                          |
@@ -64,7 +66,9 @@ my-tai-config/
 │   ├── personas/         # Behavioral styles
 │   ├── delegates/        # Specialized helper agents
 │   ├── skills/           # Procedural capabilities (directories)
-│   └── docs/             # Reference documentation
+│   ├── docs/             # Reference documentation
+│   ├── statuslines/      # Status bar configuration
+│   └── hooks/            # Commands run on target events
 ├── bundles/              # Bundle definitions (YAML)
 ├── patches/              # Local deltas on sources you don't own
 └── profiles/             # Profile definitions (YAML)
@@ -155,10 +159,13 @@ post_install:
   - ./scripts/after-install.sh
 ```
 
-Hooks get `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`,
-and `TAI_VERSION` in their env. They may modify files tai installed - after a
-successful hook, tai re-baselines its checksums so the hook's own edits don't
-show up as conflicts on the next install. See SPEC.md for the full contract.
+`post_install` commands get `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`,
+`TAI_MANIFEST_DIR`, and `TAI_VERSION` in their env. They may modify files tai
+installed - afterwards tai re-baselines its checksums so their edits don't show
+up as conflicts on the next install. See SPEC.md for the full contract.
+
+Note these are tai's own install-time commands, and are unrelated to the `hook`
+asset type, which installs commands the *target* runs during a session.
 
 ### Asset File Formats
 

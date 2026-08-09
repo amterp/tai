@@ -9,6 +9,7 @@ import (
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/configasset"
 	fm "github.com/amterp/tai/internal/frontmatter"
 	"github.com/amterp/tai/internal/template"
 )
@@ -20,6 +21,40 @@ func init() {
 // Adapter implements the adapter.Adapter interface for Codex.
 type Adapter struct {
 	targetDir string // Override for testing
+}
+
+// HooksSettingsKey is the top-level key Codex reads hooks from.
+const HooksSettingsKey = "hooks"
+
+// hookEvents maps canonical tai events to Codex's names.
+//
+// Codex's hooks are modelled closely on Claude's, down to the field names, so
+// most events keep the same spelling. session_end is deliberately absent: it
+// appears in Codex's docs but not in the binary's event enum, and a hook wired
+// to an event the target does not dispatch fails silently. Leaving it out
+// means tai says so instead.
+var hookEvents = map[string]string{
+	config.HookEventSessionStart:      "SessionStart",
+	config.HookEventUserPromptSubmit:  "UserPromptSubmit",
+	config.HookEventPreToolUse:        "PreToolUse",
+	config.HookEventPostToolUse:       "PostToolUse",
+	config.HookEventStop:              "Stop",
+	config.HookEventSubagentStart:     "SubagentStart",
+	config.HookEventSubagentStop:      "SubagentStop",
+	config.HookEventPreCompact:        "PreCompact",
+	config.HookEventPostCompact:       "PostCompact",
+	config.HookEventPermissionRequest: "PermissionRequest",
+}
+
+// hookTools maps canonical tai tool names to Codex's.
+//
+// Only the tools whose Codex names are established are mapped. An unmapped
+// tool is an error pointing at the per-target `match` escape hatch, which is
+// the safe failure: a matcher silently missing a tool name would widen to
+// every tool, so a hook meant to guard edits would fire on everything.
+var hookTools = map[string]string{
+	config.HookToolShell: "Bash",
+	config.HookToolEdit:  "apply_patch",
 }
 
 // New creates a new Codex adapter.
@@ -133,7 +168,7 @@ func (a *Adapter) Run(args []string) error {
 
 // SupportedConfigAssetTypes returns the config asset types Codex supports.
 func (a *Adapter) SupportedConfigAssetTypes() []string {
-	return []string{}
+	return []string{config.AssetTypeHook}
 }
 
 // InstallWarnings returns Codex-specific advisory install warnings.
@@ -148,19 +183,67 @@ func (a *Adapter) InstallWarnings(asset *config.Asset) []string {
 		return []string{
 			fmt.Sprintf("Codex does not natively consume delegate assets - installed as passive reference file: delegates/%s", asset.Name),
 		}
+	case config.AssetTypeHook:
+		// Codex will not run a hook until it is trusted, and trust is keyed on
+		// a hash of the definition - so every reinstall re-arms the prompt.
+		// Writing the file is necessary but not sufficient, and staying quiet
+		// about it looks exactly like tai not working.
+		return []string{
+			"Codex requires hooks to be trusted before they run, and every change re-arms that - run /hooks in Codex to review them",
+		}
 	default:
 		return nil
 	}
 }
 
-// ConfigFilePath returns no config file: Codex supports no config asset types
-// yet, so nothing has a home here.
-func (a *Adapter) ConfigFilePath(string, string) string {
-	return ""
+// ConfigFilePath returns the Codex config file for an asset type and scope.
+//
+// Hooks get a dedicated hooks.json rather than going into config.toml. Codex
+// reads both, and the JSON file means tai never has to rewrite the TOML that
+// also holds the user's model settings and project trust decisions.
+func (a *Adapter) ConfigFilePath(assetType, scope string) string {
+	if assetType != config.AssetTypeHook {
+		return ""
+	}
+
+	switch scope {
+	case config.ScopeProject:
+		rel := filepath.Join(".codex", "hooks.json")
+		abs, err := filepath.Abs(rel)
+		if err != nil {
+			return rel
+		}
+		return abs
+	case config.ScopeUser:
+		return filepath.Join(a.targetDir, "hooks.json")
+	default:
+		// Codex has no local scope.
+		return ""
+	}
+}
+
+// HookEventName maps a canonical tai event to Codex's name for it.
+func (a *Adapter) HookEventName(canonical string) (string, bool) {
+	name, ok := hookEvents[canonical]
+	return name, ok
+}
+
+// HookToolName maps a canonical tai tool name to Codex's name for it.
+func (a *Adapter) HookToolName(canonical string) (string, bool) {
+	name, ok := hookTools[canonical]
+	return name, ok
+}
+
+// HookTimeoutUnit reports that Codex expects hook timeouts in seconds.
+func (a *Adapter) HookTimeoutUnit() configasset.TimeoutUnit {
+	return configasset.TimeoutSeconds
 }
 
 // SettingsKey returns the JSON key name for a config asset type.
-func (a *Adapter) SettingsKey(string) string {
+func (a *Adapter) SettingsKey(assetType string) string {
+	if assetType == config.AssetTypeHook {
+		return HooksSettingsKey
+	}
 	return ""
 }
 

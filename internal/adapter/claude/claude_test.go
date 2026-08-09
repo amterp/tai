@@ -128,11 +128,14 @@ func TestAdapterSupportedConfigAssetTypes(t *testing.T) {
 	a := New("")
 	types := a.SupportedConfigAssetTypes()
 
-	if len(types) != 1 {
-		t.Errorf("len(SupportedConfigAssetTypes()) = %d, want 1", len(types))
+	want := map[string]bool{config.AssetTypeStatusLine: true, config.AssetTypeHook: true}
+	if len(types) != len(want) {
+		t.Errorf("SupportedConfigAssetTypes() = %v, want %d types", types, len(want))
 	}
-	if types[0] != "statusline" {
-		t.Errorf("SupportedConfigAssetTypes()[0] = %q, want 'statusline'", types[0])
+	for _, got := range types {
+		if !want[got] {
+			t.Errorf("SupportedConfigAssetTypes() included unexpected %q", got)
+		}
 	}
 }
 

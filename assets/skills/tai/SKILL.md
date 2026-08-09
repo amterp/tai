@@ -34,6 +34,10 @@ Tai uses target-agnostic terminology. Here's how asset types map to current targ
 | `delegate` | `agents/` | `delegates/` (passive) | unsupported | `agents/` | Specialized helper agents |
 | `skill` | `skills/` | `skills/` | `skills/` | `skills/` | Procedural capabilities |
 | `file` | (per `dest`) | (per `dest`) | (per `dest`) | (per `dest`) | Loose files copied as-is |
+| `statusline` | `settings.json` | unsupported | unsupported | unsupported | Status bar configuration |
+| `hook` | `settings.json` | `hooks.json` | `settings.json` | unsupported | Command run on a target event |
+
+The last two are **config assets**: they merge as entries into the target's config files instead of being written as files. See "Config Assets" below.
 
 Target-specific notes:
 - **Codex**: Personas are mapped to skills since Codex has no persona concept (single-file personas wrap as `skills/<name>/SKILL.md`). Delegates are installed as passive reference files (warns per asset).
@@ -109,11 +113,99 @@ my-tai-config/
 │   ├── personas/         # Behavioral styles (→ output-styles)
 │   ├── delegates/        # Specialized helpers (→ agents)
 │   ├── skills/           # Procedural capabilities (directories)
-│   └── files/            # Loose files (copied as-is to dest)
+│   ├── files/            # Loose files (copied as-is to dest)
+│   ├── statuslines/      # Config asset: status bar
+│   └── hooks/            # Config asset: commands run on target events
 ├── bundles/              # Bundle definitions (YAML)
 ├── patches/              # Local deltas, one dir per patched source
 └── profiles/             # Profile definitions (YAML)
 ```
+
+## Config Assets
+
+Config assets merge as entries into a target's config files rather than being
+written as files. tai owns the *entries* it wrote, not the whole key, so its
+hooks sit alongside yours and other tools' under the same event, and uninstall
+removes only tai's.
+
+Editing an installed entry by hand takes ownership of it: tai sees it no longer
+matches what it wrote and leaves it alone.
+
+### Scope
+
+Config assets install at a scope, defaulting to `user`. Set it per profile, or
+per asset to override:
+
+```yaml
+# profiles/default.yaml
+scope: user
+assets:
+  - type: hook
+    path: hooks/format.yaml
+  - type: hook
+    path: hooks/repo-lint.yaml
+    scope: project    # this one goes in ./.claude/settings.json
+```
+
+`user` is the target's home config, `project` and `local` resolve against the
+working directory. Not every target has all three - Codex and Gemini have no
+`local` scope.
+
+### Statuslines
+
+One per profile; a second overrides the first. A `level` field means tai format
+(translated per target); without one the YAML is passed through natively.
+
+```yaml
+# assets/statuslines/bar.yaml
+level: detailed        # minimal | standard | detailed | hidden | custom
+show: [cost, model]
+```
+
+### Hooks
+
+A hook runs a command when something happens in the target. The filename with
+its extension stripped is the hook's name.
+
+```yaml
+# assets/hooks/format-on-save.yaml
+description: Format files after they are edited   # optional
+on: post_tool_use      # required, canonical tai event
+tools: [edit, write]   # optional; empty matches every tool
+run: prettier --write "$FILE"
+timeout: 30s           # optional duration, converted per target
+```
+
+**Events** are named by tai and translated per target, because the targets
+disagree - Claude's `PreToolUse` is Gemini's `BeforeTool`:
+
+`session_start`, `session_end`, `user_prompt_submit`, `stop`, `pre_tool_use`,
+`post_tool_use`, `permission_request`, `subagent_start`, `subagent_stop`,
+`pre_compact`, `post_compact`, `notification`
+
+A target lacking an event skips that hook with a warning. Gemini has no
+subagent, post-compact, or permission events; Codex has no notification or
+session-end event.
+
+**Tools** are `read`, `write`, `edit`, `shell`. A tool a target has no name for
+is an error, not a silent drop - dropping it would widen the matcher to every
+tool. Use `match` instead.
+
+**Escape hatches**, both keyed by target name:
+
+```yaml
+match:
+  claude: "mcp__memory__.*"   # raw matcher; overrides `tools` for that target
+native:
+  claude: { async: true }     # merged verbatim into the handler object
+```
+
+Write `timeout` as a duration - Claude and Codex take seconds, Gemini takes
+milliseconds, and tai converts.
+
+**OpenCode has no hooks** (only a JS plugin API), so hook assets are skipped
+there. **Codex** will not run a hook until it is trusted, and every change
+re-arms that: run `/hooks` in Codex after installing.
 
 ## Configuration Files
 
@@ -789,6 +881,18 @@ tai patch bless <name>
 - Omit obvious information the agent already knows
 - Test instructions before including them
 - Structure for scanning (tables, bullet points, code blocks)
+
+## Migration: Hooks and config-asset scope (2026-08-09)
+
+`hook` is a new config asset type in `assets/hooks/`, and config assets now
+honour a `scope` field on profiles and on individual asset entries (defaulting
+to `user`).
+
+Config assets are also templated now, like every other asset - a `{{ var }}` in
+a statusline or hook is substituted rather than installed literally. If a config
+asset contains literal `{{` or `{%` that is not meant as a template, escape it.
+
+---
 
 ## Migration: Per-file tai-schema-version Removed (2026-01-24)
 

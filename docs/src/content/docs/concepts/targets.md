@@ -83,11 +83,15 @@ The adapter determines what frontmatter appears in installed files:
 
 Not all targets support all config asset types:
 
-| Config asset | Claude Code | Codex | OpenCode |
-|-------------|------------|-------|----------|
-| `statusline` | Supported (merged into `settings.json`) | Not supported (skipped) | Not supported (skipped) |
-| `mcp` | Planned (v0.2) | - | - |
-| `hook` | Planned (v0.2) | - | - |
+| Config asset | Claude Code | Codex | Gemini CLI | OpenCode |
+|-------------|------------|-------|-----------|----------|
+| `statusline` | Merged into `settings.json` | Not supported (skipped) | Not supported (skipped) | Not supported (skipped) |
+| `hook` | Merged into `settings.json` | Merged into `hooks.json` | Merged into `settings.json` | Not supported (skipped) |
+| `mcp` | Planned | Planned | Planned | Planned |
+
+Hooks are portable across Claude, Codex and Gemini: all three structure them the same way, though Gemini renames every event and expects timeouts in milliseconds rather than seconds. tai names events itself and each adapter translates, so one hook asset works on all three. OpenCode has no declarative hooks - only a JS plugin API - so hook assets are skipped there.
+
+An event a target does not have (Gemini has no subagent events, Codex no notification event) skips just that hook, with a warning.
 
 ## Detailed target pages
 

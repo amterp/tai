@@ -201,6 +201,11 @@ func (i *Installer) Install(
 		return nil, err
 	}
 
+	// Identical warnings carry no extra information the second time, and some
+	// are emitted per asset - a target-wide caveat repeated once per hook
+	// would bury everything else.
+	result.Warnings = dedupeStrings(result.Warnings)
+
 	// Build and save new manifest
 	result.Manifest = BuildManifest(adap.Name(), profile, i.configRepo, newEntries, newConfigEntries)
 	if !opts.DryRun {
@@ -526,6 +531,23 @@ func (i *Installer) executeInstall(
 	return newEntries, newConfigEntries, nil
 }
 
+// dedupeStrings drops repeated entries, keeping first-seen order.
+func dedupeStrings(in []string) []string {
+	if len(in) < 2 {
+		return in
+	}
+	seen := make(map[string]bool, len(in))
+	out := in[:0:0]
+	for _, s := range in {
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
+}
+
 // sortedKeys returns a map's keys in a deterministic order.
 func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
@@ -771,6 +793,14 @@ func (i *Installer) installConfigAsset(
 		}
 	}
 
+	// A plan can legitimately produce nothing - a hook whose event this target
+	// does not have, for instance. Record no manifest entry for it: an entry
+	// with no edits is indistinguishable from one written before tai tracked
+	// edits, and would be removed by deleting a whole settings key.
+	if len(plan.Edits) == 0 {
+		return nil, nil
+	}
+
 	applied := make([]configasset.AppliedEdit, 0, len(plan.Edits))
 	for _, edit := range plan.Edits {
 		doc, err := ctx.configFiles.load(edit.File)
@@ -806,7 +836,15 @@ func (i *Installer) revertConfigEdits(ctx *installContext, entry ConfigEntry) er
 	// Entries recorded before tai tracked edits carry no Edits. They were
 	// installed by replacing a whole settings key, so that is how they come
 	// back out.
+	//
+	// Restricted to singleton types on purpose. Collection types postdate edit
+	// tracking, so an empty Edits list can only mean something else - and
+	// deleting their settings key would take out every other tool's entries
+	// along with tai's.
 	if len(entry.Edits) == 0 {
+		if configasset.IsCollection(entry.Type) {
+			return nil
+		}
 		return i.revertLegacyConfigEntry(ctx, entry)
 	}
 

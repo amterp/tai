@@ -646,43 +646,98 @@ headers:
 
 #### Hook Definition
 
+A hook runs a command when something happens in the target.
+
 ```yaml
 # my-tai-config/assets/hooks/format-on-save.yaml
 
-event: PostToolUse             # Required: which event triggers this hook
-matcher: Edit|Write            # Optional: tool pattern (empty = all tools)
-command: prettier --write "$FILE"  # Required: shell command to run
+description: Format files after they are edited   # Optional, for humans
+on: post_tool_use          # Required: canonical tai event
+tools: [edit, write]       # Optional: narrows a tool event; empty matches all
+run: prettier --write "$FILE"   # Required: the command
+timeout: 30s               # Optional: duration; converted per target
 ```
 
 ```yaml
 # my-tai-config/assets/hooks/security-check.yaml
 
-event: PreToolUse
-matcher: Bash
-command: ~/scripts/check-dangerous-commands.sh
+on: pre_tool_use
+tools: [shell]
+run: ~/scripts/check-dangerous-commands.sh
 ```
 
 **Hook fields:**
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `name` | string | No | Override filename as hook identifier |
-| `event` | string | Yes | Event that triggers the hook |
-| `matcher` | string | No | Tool pattern (`Tool1\|Tool2`), empty matches all |
-| `command` | string | Yes | Shell command to execute |
+| `description` | string | No | For humans reading the config repo; targets never see it |
+| `on` | string | Yes | Canonical tai event that triggers the hook |
+| `tools` | list | No | Canonical tool names; empty matches every tool |
+| `run` | string | Yes | Command to execute |
+| `timeout` | string | No | Duration (`30s`, `2m`); the target's own default when unset |
+| `match` | map | No | Raw per-target matcher, keyed by target name |
+| `native` | map | No | Per-target fields merged verbatim over the generated handler |
 
-**Available hook events (Claude Code):**
+The hook's identity is its filename with the extension stripped, so
+`assets/hooks/format-on-save.yaml` installs a hook named `format-on-save`.
 
-| Event | When it fires |
-|-------|---------------|
-| `PreToolUse` | Before any tool executes |
-| `PostToolUse` | After tool executes |
-| `UserPromptSubmit` | When user submits a prompt |
-| `Notification` | When Claude sends a notification |
-| `Stop` | When Claude finishes responding |
-| `SubagentStop` | When a subagent completes |
-| `SessionStart` | When a session begins |
-| `SessionEnd` | When a session ends |
+**Canonical hook events.** tai names events itself rather than borrowing a
+target's vocabulary, because the targets disagree: Claude and Codex call an
+event `PreToolUse` where Gemini calls it `BeforeTool`, and Gemini renames every
+other event too.
+
+| tai event | When it fires | Claude | Codex | Gemini |
+|-----------|---------------|--------|-------|--------|
+| `session_start` | A session begins | SessionStart | SessionStart | SessionStart |
+| `session_end` | A session ends | SessionEnd | - | SessionEnd |
+| `user_prompt_submit` | A prompt is submitted | UserPromptSubmit | UserPromptSubmit | BeforeAgent |
+| `stop` | The agent finishes responding | Stop | Stop | AfterAgent |
+| `pre_tool_use` | Before a tool runs | PreToolUse | PreToolUse | BeforeTool |
+| `post_tool_use` | After a tool runs | PostToolUse | PostToolUse | AfterTool |
+| `permission_request` | A permission is requested | PermissionRequest | PermissionRequest | - |
+| `subagent_start` | A subagent starts | SubagentStart | SubagentStart | - |
+| `subagent_stop` | A subagent finishes | SubagentStop | SubagentStop | - |
+| `pre_compact` | Before context is compacted | PreCompact | PreCompact | PreCompress |
+| `post_compact` | After context is compacted | PostCompact | PostCompact | - |
+| `notification` | The target sends a notification | Notification | - | Notification |
+
+A `-` means the target has no equivalent. A hook using such an event is skipped
+on that target with a warning, so one asset can be shared by a profile that
+installs to several targets.
+
+**Canonical tool names.** `read`, `write`, `edit`, and `shell`, translated per
+target - Claude's `Edit` is Gemini's `replace`, Claude's `Bash` is Gemini's
+`run_shell_command`. A tool a target has no name for is an error rather than a
+silent drop: dropping it would widen the matcher to every tool, so a hook meant
+to guard edits would start firing on reads.
+
+**Escape hatches.** Anything outside the canonical vocabulary - MCP tool
+patterns, target-specific handler options - goes in `match` or `native`, keyed
+by target name:
+
+```yaml
+on: pre_tool_use
+run: guard.sh
+match:
+  claude: "mcp__memory__.*"     # overrides `tools` for Claude
+native:
+  claude: { async: true }       # merged into Claude's handler object
+```
+
+**Timeouts** are written as durations and converted per target, because Claude
+and Codex expect seconds while Gemini expects milliseconds. Getting that wrong
+by hand fails silently - a 30-second timeout becomes 30 milliseconds.
+
+**Target notes.**
+
+- **OpenCode** has no declarative hooks. Its plugin API is JS modules that
+  block by throwing, with no matcher layer and no I/O contract, so hook assets
+  are skipped with a warning rather than partially emulated.
+- **Codex** will not run a hook until it is trusted, and trust is keyed on a
+  hash of the definition, so every change re-arms the prompt. tai says so after
+  installing; run `/hooks` in Codex to review them.
+- **Codex hooks** go to a dedicated `hooks.json`, never `config.toml`, so tai
+  never rewrites the file holding model settings and project trust decisions.
 
 ## CLI Interface
 
@@ -1942,12 +1997,12 @@ bundles:
 
 ### Deferred to Future Versions
 
-- [ ] **Config assets (MCPs, hooks)** - v0.2 target
+- [ ] **Config assets (MCPs)** - remaining v0.2 work
   - [x] StatusLine definitions (`assets/statuslines/`) - implemented in v0.1
+  - [x] Hook definitions (`assets/hooks/`)
   - [ ] MCP server definitions (`assets/mcps/`)
-  - [ ] Hook definitions (`assets/hooks/`)
-  - [x] JSON merge installation logic (for statusline)
-  - [ ] Scope handling (project/user/local) - partial (statusline supports user scope)
+  - [x] Entry-level merge and surgical removal
+  - [x] Scope handling (user/project/local)
   - [x] Config entry manifest tracking
 - [ ] Git remote sources
 - [ ] `--add-dir` runtime injection (vs. installing to ~/.claude)

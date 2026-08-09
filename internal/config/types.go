@@ -257,6 +257,7 @@ const (
 	AssetTypeSkill      = "skill"
 	AssetTypeFile       = "file"
 	AssetTypeStatusLine = "statusline"
+	AssetTypeHook       = "hook"
 )
 
 // MainFileName constants for directory assets.
@@ -272,7 +273,7 @@ const (
 // entries in target settings files (rather than as standalone files).
 func IsConfigAssetType(t string) bool {
 	switch t {
-	case AssetTypeStatusLine:
+	case AssetTypeStatusLine, AssetTypeHook:
 		return true
 	default:
 		return false
@@ -281,7 +282,10 @@ func IsConfigAssetType(t string) bool {
 
 // ValidAssetTypes returns all valid asset type names (singular).
 func ValidAssetTypes() []string {
-	return []string{AssetTypePersona, AssetTypeDelegate, AssetTypeSkill, AssetTypeFile, AssetTypeStatusLine}
+	return []string{
+		AssetTypePersona, AssetTypeDelegate, AssetTypeSkill, AssetTypeFile,
+		AssetTypeStatusLine, AssetTypeHook,
+	}
 }
 
 // IsValidAssetType checks if the given type is valid.
@@ -307,6 +311,8 @@ func AssetTypeDirName(t string) string {
 		return "files"
 	case AssetTypeStatusLine:
 		return "statuslines"
+	case AssetTypeHook:
+		return "hooks"
 	default:
 		return t
 	}
@@ -325,6 +331,8 @@ func AssetTypeFromDirName(d string) string {
 		return AssetTypeFile
 	case "statuslines":
 		return AssetTypeStatusLine
+	case "hooks":
+		return AssetTypeHook
 	default:
 		return d
 	}
@@ -386,3 +394,113 @@ const (
 
 // Valid status line show elements.
 var ValidStatusLineShowElements = []string{"cost", "model", "tokens", "latency", "context"}
+
+// Canonical tai hook events. Adapters translate these to whatever the target
+// calls them: Claude and Codex mostly use these names in PascalCase, while
+// Gemini renames them wholesale (BeforeTool, BeforeAgent, AfterAgent).
+//
+// A target that has no equivalent for an event skips that hook with a warning
+// rather than failing the install, so one hook asset can be shared by a
+// profile that installs to several targets.
+const (
+	HookEventSessionStart      = "session_start"
+	HookEventSessionEnd        = "session_end"
+	HookEventUserPromptSubmit  = "user_prompt_submit"
+	HookEventPreToolUse        = "pre_tool_use"
+	HookEventPostToolUse       = "post_tool_use"
+	HookEventStop              = "stop"
+	HookEventSubagentStart     = "subagent_start"
+	HookEventSubagentStop      = "subagent_stop"
+	HookEventPreCompact        = "pre_compact"
+	HookEventPostCompact       = "post_compact"
+	HookEventNotification      = "notification"
+	HookEventPermissionRequest = "permission_request"
+)
+
+// ValidHookEvents returns every canonical hook event, in rough lifecycle order.
+func ValidHookEvents() []string {
+	return []string{
+		HookEventSessionStart, HookEventSessionEnd,
+		HookEventUserPromptSubmit, HookEventStop,
+		HookEventPreToolUse, HookEventPostToolUse,
+		HookEventPermissionRequest,
+		HookEventSubagentStart, HookEventSubagentStop,
+		HookEventPreCompact, HookEventPostCompact,
+		HookEventNotification,
+	}
+}
+
+// IsValidHookEvent reports whether e names a canonical hook event.
+func IsValidHookEvent(e string) bool {
+	for _, valid := range ValidHookEvents() {
+		if e == valid {
+			return true
+		}
+	}
+	return false
+}
+
+// Canonical tai tool names, for matching tool events across targets whose tool
+// vocabularies differ - Claude's Edit is Gemini's replace, Claude's Bash is
+// Gemini's run_shell_command.
+//
+// This covers the common tools only. Anything outside it (MCP tools, custom
+// tools) is inherently target-specific and belongs in a hook's per-target
+// `match` escape hatch.
+const (
+	HookToolRead  = "read"
+	HookToolWrite = "write"
+	HookToolEdit  = "edit"
+	HookToolShell = "shell"
+)
+
+// ValidHookTools returns every canonical tool name.
+func ValidHookTools() []string {
+	return []string{HookToolRead, HookToolWrite, HookToolEdit, HookToolShell}
+}
+
+// HookConfig represents a parsed hook asset: a command the target runs when
+// something happens.
+type HookConfig struct {
+	// Description is for humans reading the config repo; targets never see it.
+	Description string `yaml:"description,omitempty"`
+
+	// On is the canonical tai event that triggers this hook. Required.
+	On string `yaml:"on"`
+
+	// Tools narrows a tool event to specific tools, named in tai's canonical
+	// vocabulary. Empty matches every tool.
+	Tools []string `yaml:"tools,omitempty"`
+
+	// Run is the shell command to execute. Required.
+	Run string `yaml:"run"`
+
+	// Timeout bounds the command, parsed via time.ParseDuration. Targets
+	// disagree on the unit they want it in, so it is expressed as a duration
+	// here and converted per target. Empty means the target's own default.
+	Timeout string `yaml:"timeout,omitempty"`
+
+	// Match supplies a raw, target-specific matcher keyed by target name, for
+	// patterns the canonical Tools vocabulary cannot express - an MCP tool
+	// pattern, say. It overrides Tools for the targets it names.
+	Match map[string]string `yaml:"match,omitempty"`
+
+	// Native holds target-specific fields merged verbatim over the generated
+	// handler, keyed by target name. The escape hatch for options tai does not
+	// abstract, such as Claude's `async`.
+	Native map[string]map[string]any `yaml:"native,omitempty"`
+}
+
+// ResolvedTimeout returns the hook's timeout and whether one was set. Unlike
+// the command timeouts elsewhere in tai there is no tai-side default: an unset
+// timeout means "say nothing", leaving the target to apply its own.
+func (h *HookConfig) ResolvedTimeout() (time.Duration, bool) {
+	if h.Timeout == "" {
+		return 0, false
+	}
+	d, err := time.ParseDuration(h.Timeout)
+	if err != nil {
+		return 0, false
+	}
+	return d, true
+}
