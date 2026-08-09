@@ -153,14 +153,10 @@ func (a *Adapter) InstallWarnings(asset *config.Asset) []string {
 	}
 }
 
-// SettingsFilePath returns the settings file path for Codex.
-func (a *Adapter) SettingsFilePath(string) string {
+// ConfigFilePath returns no config file: Codex supports no config asset types
+// yet, so nothing has a home here.
+func (a *Adapter) ConfigFilePath(string, string) string {
 	return ""
-}
-
-// TransformStatusLine is unsupported for Codex.
-func (a *Adapter) TransformStatusLine(*config.StatusLineConfig, []byte) (map[string]any, error) {
-	return nil, fmt.Errorf("statusline is not supported by target codex")
 }
 
 // SettingsKey returns the JSON key name for a config asset type.

@@ -817,7 +817,8 @@ type Adapter interface {
     AssetMapping() map[string]string
 
     // SupportedAssetTypes returns which asset types this adapter supports
-    // Profiles containing unsupported types will fail fast at install time
+    // Assets of an unsupported type are skipped with a warning, so one
+    // profile can carry assets for several targets
     SupportedAssetTypes() []string
 
     // ValidateAssets checks that assets are valid for this target
@@ -984,32 +985,51 @@ files:
     backup_path: /Users/amterp/.claude/CLAUDE.md.tai-backup
     is_templated: true
 
-# Config assets: tracked by type, name, and target file
+# Config assets: tracked by type, name, scope, and the edits that installed them
 config_entries:
   - type: statusline
     name: detailed
     source: local
     source_path: /Users/amterp/my-tai-config/assets/statuslines/detailed.yaml
     settings_file: ~/.claude/settings.json
-    checksum: sha256:status123... # Checksum of the installed JSON fragment
-
-  - type: mcp
-    name: github
-    source: local
-    source_path: /Users/amterp/my-tai-config/assets/mcps/github.yaml
-    target_file: .mcp.json
-    scope: project
-    checksum: sha256:mcp123...   # Checksum of the installed JSON fragment
+    scope: user
+    checksum: sha256:status123...
+    edits:
+      - file: /Users/amterp/.claude/settings.json
+        key_path: [statusLine]
+        mode: replace_key
+        checksum: sha256:abc...
 
   - type: hook
     name: format-on-save
     source: local
     source_path: /Users/amterp/my-tai-config/assets/hooks/format-on-save.yaml
-    target_file: .claude/settings.json
-    scope: project
-    event: PostToolUse           # For hooks: which event array it's in
+    settings_file: /Users/amterp/.claude/settings.json
+    scope: user
     checksum: sha256:hook456...
+    edits:
+      - file: /Users/amterp/.claude/settings.json
+        key_path: [hooks, PostToolUse]
+        mode: append_to_array
+        checksum: sha256:def...
 ```
+
+`edits` is what makes removal surgical. Each records where an entry went and a
+checksum of the entry itself, which is enough to find it again in a shared
+array and enough to notice the user has since edited it - without the manifest
+carrying a second copy of every installed entry.
+
+Merge modes:
+
+| Mode | Install | Uninstall |
+|------|---------|-----------|
+| `replace_key` | Set the key outright | Delete the key |
+| `upsert_map_entry` | Set one key inside an object | Delete that one key |
+| `append_to_array` | Append, leaving existing elements | Delete the single matching element |
+
+Only `replace_key` claims a whole key, and only where tai owns it - a target
+displays one status line. Hooks and MCP servers share their containers with
+entries tai did not write.
 
 The manifest enables:
 - `tai uninstall`: Remove exactly what tai installed
@@ -1099,20 +1119,34 @@ Config assets (MCPs, hooks) require different handling than file assets because 
 
 #### Conflict Handling for Config Assets
 
+Conflicts are judged per *entry*, not per settings key. Judging by key would be
+useless for keys that are shared by design: every Claude user has a `hooks`
+object holding entries from several tools, so "the key exists" would flag every
+install while telling nobody anything.
+
 | Scenario | Action |
 |----------|--------|
-| Key doesn't exist | Add normally |
-| Key exists, not in manifest | **Error**: Unmanaged conflict (use `--force` to overwrite) |
-| Key exists, in manifest, unchanged | Update to new version |
-| Key exists, in manifest, user modified | **Warning**: Overwrite with `--force`, skip with `--skip-conflicts` |
+| Entry doesn't exist | Add normally |
+| Entry exists, not in manifest | **Error**: Unmanaged conflict (use `--force` to overwrite) |
+| Entry exists, in manifest, unchanged | No-op; the file is not rewritten |
+| Entry exists, in manifest, content changed | Update in place |
+| Entry exists, in manifest, user modified | **Warning**: left alone - the user has taken ownership |
+
+Entries that merely sit alongside tai's in the same array cannot conflict:
+appending adds to a shared list rather than displacing anything. That is what
+lets hooks from tai, the user, and unrelated tools coexist under one event.
 
 #### Scope Resolution
 
 Config assets can be installed at different scopes. The scope is determined by (in order of precedence):
 
-1. Per-asset override in profile (if supported)
+1. Per-asset `scope` in the bundle or profile entry
 2. Profile-level `scope` setting
-3. Default scope (typically `project`)
+3. Default scope: `user`
+
+The default is `user` because tai's target directory is user-global and every
+file asset installs there. A `project` default would write config into whatever
+directory `tai install` happened to run from.
 
 ```yaml
 # Profile with explicit scope

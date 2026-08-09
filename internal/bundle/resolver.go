@@ -114,6 +114,9 @@ func (r *Resolver) resolveAssetRef(entry config.AssetEntry) (*config.Asset, erro
 
 	// Propagate Dest from entry to asset (used by file type)
 	asset.Dest = entry.Dest
+	// Propagate the per-asset scope override (config types); empty inherits
+	// the profile's scope.
+	asset.Scope = entry.Scope
 
 	return asset, nil
 }

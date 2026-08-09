@@ -136,15 +136,45 @@ func (a *Adapter) InstallWarnings(_ *config.Asset) []string {
 	return nil
 }
 
-// SettingsFilePath returns the path to Claude's settings file.
-func (a *Adapter) SettingsFilePath(scope string) string {
-	if scope == "project" {
-		// Project-scoped settings would be in .claude/settings.json
-		// but we need the working directory context for that
-		return ".claude/settings.json"
+// ConfigFilePath returns the Claude config file a config asset type installs
+// into at the given scope.
+//
+// Project and local scopes resolve against the working directory, which is
+// what "this project" means for a CLI invoked inside a repo. They are returned
+// absolute so nothing downstream has to guess the base.
+func (a *Adapter) ConfigFilePath(assetType, scope string) string {
+	switch assetType {
+	case config.AssetTypeStatusLine:
+		return a.settingsFilePath(scope)
+	default:
+		return ""
 	}
-	// User-scoped settings
-	return filepath.Join(a.targetDir, "settings.json")
+}
+
+// settingsFilePath locates settings.json for a scope. Config asset types that
+// live in settings.json share it.
+func (a *Adapter) settingsFilePath(scope string) string {
+	switch scope {
+	case config.ScopeProject:
+		return projectPath(".claude", "settings.json")
+	case config.ScopeLocal:
+		return projectPath(".claude", "settings.local.json")
+	default: // user
+		return filepath.Join(a.targetDir, "settings.json")
+	}
+}
+
+// projectPath builds an absolute path under the working directory. A relative
+// path would be re-resolved against whatever directory later code happened to
+// run in; resolving once here keeps the manifest's record of what was written
+// meaningful.
+func projectPath(parts ...string) string {
+	rel := filepath.Join(parts...)
+	abs, err := filepath.Abs(rel)
+	if err != nil {
+		return rel
+	}
+	return abs
 }
 
 // TransformStatusLine transforms a tai status line config to Claude's format.

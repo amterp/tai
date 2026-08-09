@@ -67,7 +67,8 @@ Sources → Assets → Bundles → Profiles → Install Pipeline → Target Conf
 - **internal/patch/** - Search/replace patches: parse, validate, apply exactly-once, and derive edits from a diff. Pure; no install/source deps
 - **internal/bundle/** - Recursive bundle composition with cycle detection
 - **internal/profile/** - Composes bundles into profiles, handles asset deduplication
-- **internal/install/** - Installation logic with manifest tracking, conflict detection, backup/restore
+- **internal/install/** - Installation logic with manifest tracking, conflict detection, backup/restore. `configfile.go` holds the config-file merge engine: batched read/modify/write, plus `applyEdit`/`removeEdit`
+- **internal/configasset/** - Config asset types (statusline, and later hooks/mcps): a `Handler` per type that parses and validates its YAML and returns declarative `Edit`s. Knows nothing about manifests or files
 - **internal/adapter/** - Target-specific implementations (Claude, Codex, and OpenCode)
 - **internal/frontmatter/** - YAML frontmatter parsing/rendering (target-agnostic)
 - **internal/template/** - Jinja2-style template processing (pongo2): variables, conditionals, `{% include_asset %}`
@@ -82,6 +83,8 @@ Sources → Assets → Bundles → Profiles → Install Pipeline → Target Conf
 6. **Patched sources are materialized, not patched at read time**: a source declaring `patches:` gets a patched view built in the cache, and `LoadedSource.ContentPath()` redirects all content lookups to it. The install pipeline is unaware patches exist. Patching at each read site instead would make correctness depend on every present and future `os.ReadFile(asset.SourcePath)` remembering to patch—and the failure mode is silent wrong content (this bit us twice: dependency resolution and statusline parsing).
 7. **The pristine source is never written to**: views are built from it and swapped in atomically. That is what lets `.blessed` snapshots detect real upstream drift rather than tai's own edits, and keeps `tai locate` pointing at an editable checkout.
 8. **Patches fail loudly**: each `find` must match exactly once; 0 or 2+ aborts before anything is written. A patch that silently stops applying would reintroduce content the user explicitly rejected.
+9. **tai owns config *entries*, not config keys**: a config asset records the exact edits it made (`ConfigEntry.Edits`: file, key path, merge mode, and a checksum of the entry), and uninstall reverses precisely those. Owning whole keys instead only works while a key has one owner - true for `statusLine`, false for `hooks` and `mcpServers`, where deleting the key would take out entries written by the user and by other tools. The checksum doubles as the "user edited this" signal: a mismatch means they took ownership, so tai leaves it alone.
+10. **Config files are merged, never rendered**: they are read into a document, mutated, and written back, so keys tai does not manage survive untouched. JSON is decoded with `UseNumber` - the default `float64` would silently reformat or lose precision on large integers in files like `~/.claude.json`, which holds a session's whole state next to the entries tai manages. A file whose content does not actually change is not rewritten, since every rewrite risks racing a running target.
 
 ### Adapter Interface
 
@@ -90,6 +93,10 @@ Adapters translate tai concepts to target-specific formats. Key methods:
 - `ProvideVariables()` - Returns target-specific template variables (e.g., `target_name`, `target_agents_file`)
 - `MapAssetPath()` - Maps tai asset paths to target paths, interpreting `dest` for file assets
 - `UnsupportedFileAssetTypes()` - Declares file asset types to skip entirely during install (vs `InstallWarnings` which warns but still installs)
+- `ConfigFilePath(assetType, scope)` - Which config file a config asset type installs into at a given scope; empty means unsupported
+- `SupportedConfigAssetTypes()` - Config asset types this target supports; others are skipped with a warning
+
+Per-type translation lives behind *optional* interfaces in `internal/configasset` (e.g. `StatusLineTranslator`), which an adapter implements only for the types it supports. Keeping them off `adapter.Adapter` means the base interface does not grow a method every time a config asset type is added, and targets without the feature carry no dead stubs.
 
 The Claude adapter maps:
 - `personas/` → `output-styles/` (renders `name`, `description` frontmatter)

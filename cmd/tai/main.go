@@ -758,6 +758,7 @@ func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts 
 		Force:         force,
 		SkipConflicts: skipConflicts,
 		Variables:     mergedVars,
+		Scope:         resolved.Scope,
 	}
 
 	assets := make([]*config.Asset, len(resolved.Assets))

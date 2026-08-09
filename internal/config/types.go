@@ -104,6 +104,10 @@ type AssetEntry struct {
 	Type string `yaml:"type"` // Singular: "persona", "delegate", "skill", "file", "statusline"
 	Path string `yaml:"path"` // "source:path" or just "path" (defaults to "local" source)
 	Dest string `yaml:"dest"` // Target destination path (required for "file" type only)
+
+	// Scope overrides the profile's scope for this config asset only. Config
+	// asset types only; empty means inherit. See ScopeUser and friends.
+	Scope string `yaml:"scope"`
 }
 
 // UnmarshalYAML detects the old string-based asset format and provides a clear migration error.
@@ -153,6 +157,49 @@ type Profile struct {
 	// PostInstallTimeout bounds the hook, parsed via time.ParseDuration.
 	// Defaults to DefaultCommandTimeout when unset.
 	PostInstallTimeout string `yaml:"post_install_timeout"`
+
+	// Scope is the default installation scope for this profile's config
+	// assets. File assets ignore it - they always install to the target dir.
+	// Empty means DefaultScope.
+	Scope string `yaml:"scope"`
+}
+
+// Installation scopes for config assets. These select which of a target's
+// config files an entry is merged into.
+//
+// DefaultScope is "user", matching tai's model everywhere else: the target dir
+// is user-global and every file asset lands there. It is deliberately not
+// "project" - installs are not project-aware, so a project default would write
+// config into whatever directory tai happened to run from.
+const (
+	ScopeUser    = "user"
+	ScopeProject = "project"
+	ScopeLocal   = "local"
+
+	DefaultScope = ScopeUser
+)
+
+// ValidScopes returns all recognized installation scopes.
+func ValidScopes() []string {
+	return []string{ScopeUser, ScopeProject, ScopeLocal}
+}
+
+// IsValidScope reports whether s names a recognized installation scope.
+func IsValidScope(s string) bool {
+	for _, valid := range ValidScopes() {
+		if s == valid {
+			return true
+		}
+	}
+	return false
+}
+
+// ResolvedScope returns the profile's default scope for config assets.
+func (p *Profile) ResolvedScope() string {
+	if p.Scope == "" {
+		return DefaultScope
+	}
+	return p.Scope
 }
 
 // ResolvedPostInstallTimeout returns the parsed post-install hook timeout, or
@@ -169,6 +216,14 @@ type Asset struct {
 	SourcePath string // Full filesystem path to the asset
 	IsDir      bool   // True for directory assets (any type can be a directory)
 	Dest       string // Target destination path (used by "file" type)
+	Scope      string // Per-asset scope override (config assets); empty inherits
+}
+
+// ConfigName is the identity of a config asset within its type: the filename
+// with its extension stripped. Collection types (many entries per type) are
+// keyed by it, so "github.yaml" installs an MCP server named "github".
+func (a *Asset) ConfigName() string {
+	return strings.TrimSuffix(a.Name, filepath.Ext(a.Name))
 }
 
 // ResolvedAsset is an Asset with its content loaded and ready for installation.

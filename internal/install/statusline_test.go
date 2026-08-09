@@ -2,6 +2,7 @@ package install
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,8 +10,19 @@ import (
 
 	"github.com/amterp/tai/internal/adapter/claude"
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/configasset"
 	"github.com/amterp/tai/internal/testutil"
 )
+
+// readJSONFile parses a target config file the way the installer does, so
+// tests see the same value types production code does.
+func readJSONFile(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return decodeJSON(data)
+}
 
 func setupStatusLineTest(t *testing.T) (*testutil.TestEnv, *Installer, *claude.Adapter) {
 	t.Helper()
@@ -188,8 +200,9 @@ padding: 2
 	if statusLine["command"] != "~/.scripts/statusline.sh" {
 		t.Errorf("statusLine.command = %v, want '~/.scripts/statusline.sh'", statusLine["command"])
 	}
-	// padding is stored as float64 in JSON
-	if statusLine["padding"] != float64(2) {
+	// Numbers decode as json.Number, not float64: config files are read with
+	// UseNumber so values tai does not manage survive a rewrite unchanged.
+	if got := fmt.Sprintf("%v", statusLine["padding"]); got != "2" {
 		t.Errorf("statusLine.padding = %v, want 2", statusLine["padding"])
 	}
 }
@@ -584,9 +597,9 @@ func TestValidateStatusLineConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateStatusLineConfig(tt.cfg)
+			err := configasset.ValidateStatusLineConfig(tt.cfg)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateStatusLineConfig() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ValidateStatusLineConfig() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil && tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
 				t.Errorf("error = %q, want to contain %q", err.Error(), tt.errMsg)

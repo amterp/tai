@@ -2,7 +2,6 @@
 package opencode
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -172,14 +171,10 @@ func (a *Adapter) InstallWarnings(_ *config.Asset) []string {
 	return nil
 }
 
-// SettingsFilePath returns the settings file path for OpenCode.
-func (a *Adapter) SettingsFilePath(string) string {
+// ConfigFilePath returns no config file: OpenCode supports no config asset
+// types yet, so nothing has a home here.
+func (a *Adapter) ConfigFilePath(string, string) string {
 	return ""
-}
-
-// TransformStatusLine is unsupported for OpenCode.
-func (a *Adapter) TransformStatusLine(*config.StatusLineConfig, []byte) (map[string]any, error) {
-	return nil, fmt.Errorf("statusline is not supported by target opencode")
 }
 
 // SettingsKey returns the JSON key name for a config asset type.

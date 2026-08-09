@@ -143,12 +143,24 @@ The Codex adapter does not support statusline assets. StatusLine assets targetin
 
 ### Config asset installation scope
 
-StatusLine installation scope is controlled by the profile's `scope` field. See [Profile Format](/tai/reference/profile-format/#scope) for details.
+Scope comes from the profile's `scope` field, or from an individual asset's own `scope`, which overrides it. It defaults to `user`. See [Profile Format](/tai/reference/profile-format/#scope).
 
 | Scope | Claude target file |
 |-------|-------------------|
 | `user` | `~/.claude/settings.json` |
 | `project` | `.claude/settings.json` |
+| `local` | `.claude/settings.local.json` |
+
+Project and local scopes resolve against the directory you run `tai install` from.
+
+### How config assets are merged
+
+tai owns *entries*, not files or keys. Config files are shared: a `settings.json` holds entries written by you and by other tools alongside tai's. So installing merges entries into the parsed document and records exactly what was written; uninstalling takes back precisely those entries and leaves everything else untouched.
+
+Two consequences worth knowing:
+
+- **Editing an installed entry takes ownership of it.** tai notices the entry no longer matches what it wrote and leaves it alone rather than reverting or deleting your change.
+- **Unchanged means untouched.** Reinstalling an asset that produces the same entries rewrites nothing, so tai does not churn a file the target may also be writing.
 
 ---
 

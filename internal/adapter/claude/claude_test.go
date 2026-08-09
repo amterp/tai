@@ -136,17 +136,33 @@ func TestAdapterSupportedConfigAssetTypes(t *testing.T) {
 	}
 }
 
-func TestAdapterSettingsFilePath(t *testing.T) {
+func TestAdapterConfigFilePath(t *testing.T) {
 	a := New("/custom/path")
 
-	userPath := a.SettingsFilePath("user")
+	userPath := a.ConfigFilePath(config.AssetTypeStatusLine, config.ScopeUser)
 	if userPath != "/custom/path/settings.json" {
-		t.Errorf("SettingsFilePath('user') = %q, want '/custom/path/settings.json'", userPath)
+		t.Errorf("ConfigFilePath(statusline, user) = %q, want '/custom/path/settings.json'", userPath)
 	}
 
-	projectPath := a.SettingsFilePath("project")
-	if projectPath != ".claude/settings.json" {
-		t.Errorf("SettingsFilePath('project') = %q, want '.claude/settings.json'", projectPath)
+	// Project and local scopes resolve against the working directory, and are
+	// returned absolute so nothing downstream has to re-resolve them.
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+
+	projectPath := a.ConfigFilePath(config.AssetTypeStatusLine, config.ScopeProject)
+	if want := filepath.Join(wd, ".claude", "settings.json"); projectPath != want {
+		t.Errorf("ConfigFilePath(statusline, project) = %q, want %q", projectPath, want)
+	}
+
+	localPath := a.ConfigFilePath(config.AssetTypeStatusLine, config.ScopeLocal)
+	if want := filepath.Join(wd, ".claude", "settings.local.json"); localPath != want {
+		t.Errorf("ConfigFilePath(statusline, local) = %q, want %q", localPath, want)
+	}
+
+	if got := a.ConfigFilePath("nonexistent-type", config.ScopeUser); got != "" {
+		t.Errorf("ConfigFilePath(nonexistent-type, user) = %q, want empty string", got)
 	}
 }
 

@@ -2,24 +2,11 @@ package install
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/frontmatter"
 )
-
-// validateStatusLineLevelValid checks if the level is valid (used by validateStatusLineConfig).
-func validateStatusLineLevelValid(level string) bool {
-	validLevels := []string{
-		config.StatusLineLevelMinimal,
-		config.StatusLineLevelStandard,
-		config.StatusLineLevelDetailed,
-		config.StatusLineLevelHidden,
-		config.StatusLineLevelCustom,
-	}
-	return slices.Contains(validLevels, level)
-}
 
 // knownAssetTypes is the set of asset types that validation recognizes.
 // Note: "file" type assets skip frontmatter validation entirely.
@@ -63,49 +50,3 @@ func validateAssetMetadata(metadata map[string]string, assetType string) error {
 	return nil
 }
 
-// validateStatusLineConfig validates a tai-format status line configuration.
-func validateStatusLineConfig(cfg *config.StatusLineConfig) error {
-	if cfg == nil {
-		return nil
-	}
-
-	// Validate level
-	if !validateStatusLineLevelValid(cfg.Level) {
-		validLevels := []string{
-			config.StatusLineLevelMinimal,
-			config.StatusLineLevelStandard,
-			config.StatusLineLevelDetailed,
-			config.StatusLineLevelHidden,
-			config.StatusLineLevelCustom,
-		}
-		return fmt.Errorf("invalid level %q; must be one of: %s",
-			cfg.Level, strings.Join(validLevels, ", "))
-	}
-
-	// Level-specific validation
-	switch cfg.Level {
-	case config.StatusLineLevelCustom:
-		if cfg.Command == "" {
-			return fmt.Errorf("'command' is required when level is 'custom'")
-		}
-		if len(cfg.Show) > 0 {
-			return fmt.Errorf("'show' is not allowed when level is 'custom'")
-		}
-	case config.StatusLineLevelHidden:
-		if len(cfg.Show) > 0 {
-			return fmt.Errorf("'show' is not allowed when level is 'hidden'")
-		}
-		if cfg.Command != "" {
-			return fmt.Errorf("'command' is not allowed when level is 'hidden'")
-		}
-	default: // minimal, standard, detailed
-		if cfg.Command != "" {
-			return fmt.Errorf("'command' is only allowed when level is 'custom'")
-		}
-	}
-
-	// Note: Unknown show elements are silently ignored for forward compatibility.
-	// This allows configs to use newer elements without failing on older tai versions.
-
-	return nil
-}

@@ -30,6 +30,7 @@ type ResolvedProfile struct {
 	Assets             []*config.Asset
 	PostInstall        []string // Hook run after a successful install
 	PostInstallTimeout time.Duration
+	Scope              string // Default installation scope for config assets
 }
 
 // Resolver handles profile resolution.
@@ -136,6 +137,7 @@ func (r *Resolver) resolveProfile(profile *config.Profile) (*ResolvedProfile, er
 		Assets:             assets,
 		PostInstall:        profile.PostInstall,
 		PostInstallTimeout: profile.ResolvedPostInstallTimeout(),
+		Scope:              profile.ResolvedScope(),
 	}, nil
 }
 
@@ -155,6 +157,9 @@ func (r *Resolver) resolveAssetRef(entry config.AssetEntry) (*config.Asset, erro
 
 	// Propagate Dest from entry to asset (used by file type)
 	asset.Dest = entry.Dest
+	// Propagate the per-asset scope override (config types); empty inherits
+	// the profile's scope.
+	asset.Scope = entry.Scope
 
 	return asset, nil
 }

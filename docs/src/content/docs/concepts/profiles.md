@@ -80,16 +80,19 @@ options:
 
 ### `scope`
 
-Controls where config assets (statuslines, and in the future MCPs and hooks) are installed. Defaults to `project`.
+Sets the default installation scope for config assets (statuslines, and in the future MCPs and hooks). Defaults to `user`, matching where every other asset type installs.
 
 | Scope | Effect |
 |-------|--------|
-| `project` | Install to project-level config (e.g., `.claude/settings.json`) |
-| `user` | Install to user-level config (e.g., `~/.claude/settings.json`) |
+| `user` | Install to user-level config (e.g. `~/.claude/settings.json`) |
+| `project` | Install to project-level config (e.g. `.claude/settings.json`), resolved against the working directory |
+| `local` | Install to local config (e.g. `.claude/settings.local.json`) |
 
 ```yaml
 scope: user  # StatusLines install to user-level settings
 ```
+
+Individual assets can override the profile default with their own `scope` field.
 
 ### `post_install`
 

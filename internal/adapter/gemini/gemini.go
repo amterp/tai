@@ -136,15 +136,10 @@ func (a *Adapter) InstallWarnings(asset *config.Asset) []string {
 	}
 }
 
-// SettingsFilePath returns the settings file path for Gemini.
-// Returns empty - no config assets supported yet.
-func (a *Adapter) SettingsFilePath(string) string {
+// ConfigFilePath returns no config file: Gemini CLI supports no config asset
+// types yet, so nothing has a home here.
+func (a *Adapter) ConfigFilePath(string, string) string {
 	return ""
-}
-
-// TransformStatusLine is unsupported for Gemini CLI.
-func (a *Adapter) TransformStatusLine(*config.StatusLineConfig, []byte) (map[string]any, error) {
-	return nil, fmt.Errorf("statusline is not supported by target gemini")
 }
 
 // SettingsKey returns the JSON key name for a config asset type.

@@ -292,14 +292,11 @@ func TestAdapterInstallWarnings(t *testing.T) {
 func TestAdapterSettingsFunctions(t *testing.T) {
 	a := New("")
 
-	if got := a.SettingsFilePath("user"); got != "" {
-		t.Errorf("SettingsFilePath('user') = %q, want empty string", got)
+	if got := a.ConfigFilePath(config.AssetTypeStatusLine, config.ScopeUser); got != "" {
+		t.Errorf("ConfigFilePath(statusline, user) = %q, want empty string", got)
 	}
 	if got := a.SettingsKey(config.AssetTypeStatusLine); got != "" {
 		t.Errorf("SettingsKey('statusline') = %q, want empty string", got)
-	}
-	if _, err := a.TransformStatusLine(nil, nil); err == nil {
-		t.Error("TransformStatusLine() error = nil, want error")
 	}
 }
 

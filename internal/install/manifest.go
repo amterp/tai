@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/configasset"
 )
 
 // Manifest tracks what tai has installed to a target.
@@ -38,15 +39,40 @@ type ManifestEntry struct {
 }
 
 // ConfigEntry represents an installed config asset (statusline, mcp, hook, etc.).
-// Config assets are installed as entries in target settings files rather than
+// Config assets are installed as entries in target config files rather than
 // as standalone files.
 type ConfigEntry struct {
 	Type         string `yaml:"type"`          // Asset type (e.g., "statusline")
-	Name         string `yaml:"name"`          // Asset name (filename without extension)
+	Name         string `yaml:"name"`          // Asset name (filename, extension stripped)
 	SourceName   string `yaml:"source"`        // Source name
 	SourcePath   string `yaml:"source_path"`   // Full filesystem path in source
-	SettingsFile string `yaml:"settings_file"` // Target settings file this was installed to
-	Checksum     string `yaml:"checksum"`      // SHA-256 checksum of the installed config
+	SettingsFile string `yaml:"settings_file"` // Primary config file this was installed to
+	Scope        string `yaml:"scope,omitempty"`
+	Checksum     string `yaml:"checksum"` // SHA-256 checksum of the installed config
+
+	// Edits records exactly what tai wrote, so uninstall can take back those
+	// entries and nothing else. Config files are shared - a settings.json holds
+	// hooks from other tools beside tai's, and ~/.claude.json holds a session's
+	// whole state - so removal has to be surgical.
+	//
+	// Empty for entries written before tai tracked edits; those fall back to
+	// removing the whole settings key, which is what installed them.
+	Edits []configasset.AppliedEdit `yaml:"edits,omitempty"`
+}
+
+// Key returns the manifest identity of a config entry. Collection types hold
+// many entries per type and so are keyed by name; singletons are keyed by type
+// alone, which keeps a renamed status line asset from installing twice.
+func (e ConfigEntry) Key() string {
+	return ConfigEntryKey(e.Type, e.Name)
+}
+
+// ConfigEntryKey builds the lookup key for a config asset of the given type.
+func ConfigEntryKey(assetType, name string) string {
+	if configasset.IsCollection(assetType) {
+		return assetType + "/" + name
+	}
+	return assetType
 }
 
 // ManifestStore handles loading and saving manifests.

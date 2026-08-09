@@ -25,7 +25,7 @@ assets:
 options:
   # Adapter-specific settings (reserved for future use)
 
-scope: project
+scope: user
 ```
 
 ## Fields
@@ -38,7 +38,7 @@ scope: project
 | `bundles` | list of strings | no | | Bundle names to include. |
 | `assets` | list of [asset entries](#assets) | no | | Direct asset references. |
 | `options` | map | no | | Adapter-specific settings (reserved for future use). |
-| `scope` | string | no | `project` | Installation scope for config assets. |
+| `scope` | string | no | `user` | Default installation scope for config assets. |
 | `post_install` | list of strings | no | | Argv list run after a successful install. |
 | `post_install_timeout` | string | no | `30s` | Duration bound for `post_install` (e.g. `"60s"`, `"2m"`). |
 
@@ -125,21 +125,35 @@ options:
 
 ## scope
 
-Optional. Controls where config assets (statuslines, and future MCPs/hooks) are installed. Defaults to `project`.
+Optional. Sets the default installation scope for this profile's config assets. Defaults to `user`.
 
 | Scope | Description |
 |-------|-------------|
-| `project` | Install to project-level config files |
-| `user` | Install to user-level config files |
-| `local` | Install to local config files (project-specific, not checked in) |
+| `user` | Install to user-level config files (e.g. `~/.claude/settings.json`) |
+| `project` | Install to project-level config files, resolved against the working directory |
+| `local` | Install to local config files - project-specific, conventionally not checked in |
 
 ```yaml
 scope: user  # StatusLines go to ~/.claude/settings.json
 ```
 
-The scope affects which settings file config assets are merged into. File assets (personas, delegates, skills, files) are not affected by scope - they always install to the target directory.
+The default is `user` because that is what tai does everywhere else: the target directory is user-global, and every file asset installs there. A `project` default would write config into whichever directory you happened to run `tai install` from.
 
-See [Config Assets](/tai/reference/config-assets/) for details on how scope maps to specific files per target.
+Individual assets can override it:
+
+```yaml
+scope: user
+assets:
+  - type: statusline
+    path: statuslines/detailed.yaml
+  - type: mcp
+    path: mcps/repo-tools.yaml
+    scope: project    # this one is shared with the repo
+```
+
+Scope affects only config assets. File assets (personas, delegates, skills, files) always install to the target directory.
+
+See [Config Assets](/tai/reference/config-assets/) for how each scope maps to a file per target.
 
 ## post_install
 

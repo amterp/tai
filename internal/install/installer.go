@@ -1,7 +1,6 @@
 package install
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -9,10 +8,12 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/configasset"
 	"github.com/amterp/tai/internal/frontmatter"
 	"github.com/amterp/tai/internal/pathutil"
 	"github.com/amterp/tai/internal/source"
@@ -34,6 +35,10 @@ type InstallOptions struct {
 	// Adapter vars are prepended at lowest priority by buildInstallContext - do not
 	// include them here, or they will be merged twice (harmlessly but wastefully).
 	Variables template.Variables
+
+	// Scope is the profile's default installation scope for config assets.
+	// Empty means config.DefaultScope. Individual assets may override it.
+	Scope string
 }
 
 // InstallResult contains the result of an installation.
@@ -112,12 +117,39 @@ type resolvedFileAsset struct {
 // installContext holds shared state during the two-phase install process.
 // This avoids threading many parameters through helper functions.
 type installContext struct {
-	adap                  adapter.Adapter
-	targetDir             string
-	templateEngine        *template.Engine
-	existingFiles         map[string]ManifestEntry
+	adap           adapter.Adapter
+	targetDir      string
+	templateEngine *template.Engine
+	existingFiles  map[string]ManifestEntry
+
+	// existingConfigEntries is keyed by ConfigEntryKey, not by asset type.
+	// Collection types (hooks, MCP servers) hold many entries per type, so
+	// keying by type alone would silently collapse them to one.
 	existingConfigEntries map[string]ConfigEntry
-	opts                  InstallOptions
+
+	// configFiles batches every target config file touched this install, so
+	// each is read and written once even when many assets share it.
+	configFiles *configFileSet
+
+	opts InstallOptions
+}
+
+// resolvedConfigAsset pairs a config asset with the scope it resolved to.
+type resolvedConfigAsset struct {
+	asset *config.Asset
+	scope string
+}
+
+// scopeFor resolves an asset's installation scope: its own override, else the
+// profile default, else tai's default.
+func (ctx *installContext) scopeFor(asset *config.Asset) string {
+	if asset.Scope != "" {
+		return asset.Scope
+	}
+	if ctx.opts.Scope != "" {
+		return ctx.opts.Scope
+	}
+	return config.DefaultScope
 }
 
 // Install installs resolved assets to a target.
@@ -189,7 +221,7 @@ func (i *Installer) buildInstallContext(adap adapter.Adapter, existing *Manifest
 			existingFiles[entry.Path] = entry
 		}
 		for _, entry := range existing.ConfigEntries {
-			existingConfigEntries[entry.Type] = entry
+			existingConfigEntries[entry.Key()] = entry
 		}
 	}
 
@@ -209,6 +241,7 @@ func (i *Installer) buildInstallContext(adap adapter.Adapter, existing *Manifest
 		templateEngine:        engine,
 		existingFiles:         existingFiles,
 		existingConfigEntries: existingConfigEntries,
+		configFiles:           newConfigFileSet(),
 		opts:                  opts,
 	}
 }
@@ -263,7 +296,7 @@ func (i *Installer) resolveAndDetectConflicts(
 	ctx *installContext,
 	fileAssets []*config.Asset,
 	configAssets []*config.Asset,
-) ([]resolvedFileAsset, map[string]*config.Asset, []ConflictDetail, map[string]bool, error) {
+) ([]resolvedFileAsset, map[string]resolvedConfigAsset, []ConflictDetail, map[string]bool, error) {
 	var resolvedAssets []resolvedFileAsset
 	var conflicts []ConflictDetail
 
@@ -303,27 +336,31 @@ func (i *Installer) resolveAndDetectConflicts(
 		}
 	}
 
-	// Resolve and check config assets
-	// For singleton config types like statusline, later assets override earlier ones
-	configByType := make(map[string]*config.Asset)
+	// Resolve and check config assets. Keying by ConfigEntryKey rather than by
+	// type is what lets collection types coexist: two statuslines still
+	// collapse to one (a target shows a single status line), while two hooks
+	// or two MCP servers keep their own entries.
+	configByKey := make(map[string]resolvedConfigAsset)
 	configConflicts := make(map[string]bool)
 
 	for _, asset := range configAssets {
-		if prev, exists := configByType[asset.Type]; exists {
-			i.logger.Printf("Override: %s/%s overrides %s/%s", asset.Type, asset.Name, prev.Type, prev.Name)
+		key := ConfigEntryKey(asset.Type, asset.ConfigName())
+		if prev, exists := configByKey[key]; exists {
+			i.logger.Printf("Override: %s/%s overrides %s/%s",
+				asset.Type, asset.Name, prev.asset.Type, prev.asset.Name)
 		}
-		configByType[asset.Type] = asset
+		configByKey[key] = resolvedConfigAsset{asset: asset, scope: ctx.scopeFor(asset)}
 	}
 
-	for assetType := range configByType {
-		conflict := i.checkConfigConflict(ctx.adap, assetType, ctx.existingConfigEntries)
+	for key, rca := range configByKey {
+		conflict := i.checkConfigConflict(ctx, key, rca)
 		if conflict != nil {
 			conflicts = append(conflicts, *conflict)
-			configConflicts[assetType] = true
+			configConflicts[key] = true
 		}
 	}
 
-	return resolvedAssets, configByType, conflicts, configConflicts, nil
+	return resolvedAssets, configByKey, conflicts, configConflicts, nil
 }
 
 // resolveFileAsset resolves a single file asset and checks for conflicts.
@@ -397,7 +434,7 @@ func (i *Installer) resolveFileAsset(ctx *installContext, asset *config.Asset) (
 func (i *Installer) executeInstall(
 	ctx *installContext,
 	resolvedAssets []resolvedFileAsset,
-	configByType map[string]*config.Asset,
+	configByKey map[string]resolvedConfigAsset,
 	configConflicts map[string]bool,
 	result *InstallResult,
 ) ([]ManifestEntry, []ConfigEntry, error) {
@@ -425,35 +462,49 @@ func (i *Installer) executeInstall(
 		delete(ctx.existingFiles, ra.targetPath)
 	}
 
-	// Install config assets
-	for assetType, asset := range configByType {
-		if configConflicts[assetType] {
+	// Install config assets. Iterating a map gives no stable order, but the
+	// order assets merge in is visible: appended array entries land in it. Sort
+	// so repeated installs produce byte-identical config files.
+	for _, key := range sortedKeys(configByKey) {
+		rca := configByKey[key]
+		asset := rca.asset
+
+		if configConflicts[key] {
 			if opts.Force {
 				// Proceed with overwrite
 			} else if opts.SkipConflicts {
-				result.Skipped = append(result.Skipped, fmt.Sprintf("[%s] %s", assetType, asset.Name))
+				result.Skipped = append(result.Skipped, fmt.Sprintf("[%s] %s", asset.Type, asset.ConfigName()))
+				// A skipped entry tai already manages keeps its manifest entry,
+				// mirroring how skipped file assets stay managed.
+				if prev, wasManaged := ctx.existingConfigEntries[key]; wasManaged {
+					newConfigEntries = append(newConfigEntries, prev)
+					delete(ctx.existingConfigEntries, key)
+				}
 				continue
 			}
 		}
 
-		configEntry, err := i.installConfigAsset(ctx.adap, asset, ctx.existingConfigEntries, opts)
+		configEntry, err := i.installConfigAsset(ctx, key, rca, result)
 		if err != nil {
-			return nil, nil, fmt.Errorf("installing config asset %s/%s: %w", assetType, asset.Name, err)
+			return nil, nil, fmt.Errorf("installing config asset %s/%s: %w", asset.Type, asset.ConfigName(), err)
 		}
-		if configEntry != nil {
-			existingEntry, wasManaged := ctx.existingConfigEntries[assetType]
-			if wasManaged {
-				if configEntry.Checksum == existingEntry.Checksum {
-					result.Unchanged = append(result.Unchanged, fmt.Sprintf("[%s] %s", assetType, asset.Name))
-				} else {
-					result.Updated = append(result.Updated, fmt.Sprintf("[%s] %s", assetType, asset.Name))
-				}
-			} else {
-				result.Added = append(result.Added, fmt.Sprintf("[%s] %s", assetType, asset.Name))
-			}
-			newConfigEntries = append(newConfigEntries, *configEntry)
-			delete(ctx.existingConfigEntries, assetType)
+		if configEntry == nil {
+			continue
 		}
+
+		label := fmt.Sprintf("[%s] %s", asset.Type, asset.ConfigName())
+		existingEntry, wasManaged := ctx.existingConfigEntries[key]
+		switch {
+		case !wasManaged:
+			result.Added = append(result.Added, label)
+		case configEntry.Checksum == existingEntry.Checksum:
+			result.Unchanged = append(result.Unchanged, label)
+		default:
+			result.Updated = append(result.Updated, label)
+		}
+
+		newConfigEntries = append(newConfigEntries, *configEntry)
+		delete(ctx.existingConfigEntries, key)
 	}
 
 	// Remove files that are no longer in the profile
@@ -464,7 +515,25 @@ func (i *Installer) executeInstall(
 	// Remove config entries that are no longer in the profile
 	i.removeStaleConfigEntries(ctx, result)
 
+	// Every config file edit so far has been in memory. Commit them together,
+	// after all adds and removals, so each file is written once.
+	if !opts.DryRun {
+		if _, err := ctx.configFiles.flush(); err != nil {
+			return nil, nil, err
+		}
+	}
+
 	return newEntries, newConfigEntries, nil
+}
+
+// sortedKeys returns a map's keys in a deterministic order.
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // installFileAsset installs a single resolved file asset.
@@ -556,203 +625,251 @@ func (i *Installer) removeStaleFiles(ctx *installContext, result *InstallResult)
 
 // removeStaleConfigEntries removes config entries that are no longer in the profile.
 func (i *Installer) removeStaleConfigEntries(ctx *installContext, result *InstallResult) {
-	for assetType, entry := range ctx.existingConfigEntries {
-		result.Removed = append(result.Removed, fmt.Sprintf("[%s] %s", assetType, entry.Name))
-		if !ctx.opts.DryRun {
-			if err := i.uninstallConfigEntry(ctx.adap, entry); err != nil {
-				result.Errors = append(result.Errors, fmt.Errorf("removing config %s/%s: %w", assetType, entry.Name, err))
-			}
+	for _, key := range sortedKeys(ctx.existingConfigEntries) {
+		entry := ctx.existingConfigEntries[key]
+		result.Removed = append(result.Removed, fmt.Sprintf("[%s] %s", entry.Type, entry.Name))
+		if ctx.opts.DryRun {
+			continue
+		}
+		if err := i.revertConfigEdits(ctx, entry); err != nil {
+			result.Errors = append(result.Errors,
+				fmt.Errorf("removing config %s/%s: %w", entry.Type, entry.Name, err))
 		}
 	}
 }
 
-// checkConfigConflict checks if a config asset type has an unmanaged entry in the settings file.
-// Returns a ConflictDetail if there's a conflict, nil otherwise.
-func (i *Installer) checkConfigConflict(
-	adap adapter.Adapter,
-	assetType string,
-	existingConfigEntries map[string]ConfigEntry,
-) *ConflictDetail {
-	scope := "user" // TODO: get from profile options
-
-	_, wasManaged := existingConfigEntries[assetType]
-	if wasManaged {
-		return nil // Already managed by tai, not a conflict
+// checkConfigConflict reports whether installing a config asset would collide
+// with an entry tai does not manage.
+//
+// Conflict is judged per entry, not per settings key. Judging by key would be
+// useless for shared keys: every Claude user has a "hooks" object holding
+// entries from other tools, so "the key exists" would flag every install while
+// telling nobody anything. What matters is whether the specific entry tai is
+// about to write is already there under someone else's ownership.
+func (i *Installer) checkConfigConflict(ctx *installContext, key string, rca resolvedConfigAsset) *ConflictDetail {
+	if _, wasManaged := ctx.existingConfigEntries[key]; wasManaged {
+		return nil // Already tai's; an update, not a conflict.
 	}
 
-	settingsPath := adap.SettingsFilePath(scope)
-	existingSettings, err := readJSONFile(settingsPath)
-	if err != nil || existingSettings == nil {
-		return nil // No settings file or can't read it
+	plan, err := i.planConfigAsset(ctx, rca)
+	if err != nil {
+		// Planning problems surface with full context at install time; here we
+		// only decline to claim a conflict we cannot actually check for.
+		return nil
 	}
 
-	settingsKey := adap.SettingsKey(assetType)
-	if settingsKey == "" {
-		return nil // Unknown asset type
-	}
-
-	if _, hasKey := existingSettings[settingsKey]; hasKey {
-		return &ConflictDetail{
-			Path:   fmt.Sprintf("[%s]", assetType),
-			Reason: fmt.Sprintf("unmanaged %s exists in %s", settingsKey, settingsPath),
-			IsDir:  false,
+	for _, edit := range plan.Edits {
+		doc, err := ctx.configFiles.load(edit.File)
+		if err != nil {
+			return nil // Unreadable config file; install will report it properly.
+		}
+		if occupied, where := editCollides(doc, edit); occupied {
+			return &ConflictDetail{
+				Path:   fmt.Sprintf("[%s] %s", rca.asset.Type, rca.asset.ConfigName()),
+				Reason: fmt.Sprintf("unmanaged %s exists in %s", where, edit.File),
+			}
 		}
 	}
 
 	return nil
 }
 
-// installConfigAsset installs a config asset (statusline, etc.) to the target's settings file.
+// editCollides reports whether an edit would displace an entry tai does not
+// own, and names the spot for the conflict message.
 //
-// Tech debt note: This switch-statement approach requires modification in multiple places
-// when adding new config asset types (MCPs, hooks in v0.2). If this pattern proves unwieldy
-// with 2-3 config types, consider refactoring to a handler registry pattern where each
-// config type registers its own install/uninstall handlers.
-func (i *Installer) installConfigAsset(
-	adap adapter.Adapter,
-	asset *config.Asset,
-	existingConfigEntries map[string]ConfigEntry,
-	opts InstallOptions,
-) (*ConfigEntry, error) {
-	scope := "user" // TODO: get from profile options
-
-	switch asset.Type {
-	case config.AssetTypeStatusLine:
-		return i.installStatusLine(adap, asset, existingConfigEntries, scope, opts)
-	default:
-		return nil, fmt.Errorf("unsupported config asset type: %s", asset.Type)
-	}
-}
-
-// installStatusLine installs a status line config to the target's settings file.
-func (i *Installer) installStatusLine(
-	adap adapter.Adapter,
-	asset *config.Asset,
-	_ map[string]ConfigEntry, // existingConfigEntries - unused; conflict check moved to phase 1
-	scope string,
-	opts InstallOptions,
-) (*ConfigEntry, error) {
-	// Parse the status line config
-	cfg, rawNative, err := config.ParseStatusLineConfig(asset.SourcePath)
-	if err != nil {
-		return nil, fmt.Errorf("parsing status line config: %w", err)
+// Only modes that overwrite can collide. AppendToArray adds alongside whatever
+// is already there, so it never displaces anything and never conflicts - which
+// is exactly what makes hooks from several tools able to share one event.
+func editCollides(doc map[string]any, edit configasset.Edit) (bool, string) {
+	parent, key, err := descend(doc, edit.KeyPath, false)
+	if err != nil || parent == nil {
+		return false, ""
 	}
 
-	// Validate if it's tai format
-	if cfg != nil {
-		if err := validateStatusLineConfig(cfg); err != nil {
-			return nil, fmt.Errorf("validating status line config: %w", err)
+	switch edit.Mode {
+	case configasset.ReplaceKey:
+		if _, exists := parent[key]; exists {
+			return true, key
 		}
-	} else {
-		i.logger.Printf("Using native format status line (not tai format): %s", asset.Name)
-	}
-
-	// Transform to target format
-	statusLineData, err := adap.TransformStatusLine(cfg, rawNative)
-	if err != nil {
-		return nil, fmt.Errorf("transforming status line: %w", err)
-	}
-
-	// Compute checksum of the transformed config
-	configJSON, err := json.Marshal(statusLineData)
-	if err != nil {
-		return nil, fmt.Errorf("serializing status line config: %w", err)
-	}
-	checksum := ComputeChecksum(configJSON)
-
-	// Note: Conflict checking for config assets is now done upfront in Install() phase 1.
-	// If we get here, either there was no conflict, or Force/SkipConflicts was set.
-
-	settingsPath := adap.SettingsFilePath(scope)
-
-	// Install to settings file
-	if !opts.DryRun {
-		settingsKey := adap.SettingsKey(config.AssetTypeStatusLine)
-		if err := i.writeConfigToSettings(settingsPath, settingsKey, statusLineData); err != nil {
-			return nil, fmt.Errorf("writing status line to settings: %w", err)
+	case configasset.UpsertMapEntry:
+		container, ok := parent[key].(map[string]any)
+		if !ok {
+			return false, ""
+		}
+		if _, exists := container[edit.ID]; exists {
+			return true, fmt.Sprintf("%s.%s", key, edit.ID)
 		}
 	}
 
-	return &ConfigEntry{
-		Type:         config.AssetTypeStatusLine,
-		Name:         asset.Name,
-		SourceName:   asset.SourceName,
-		SourcePath:   asset.SourcePath,
-		SettingsFile: settingsPath,
-		Checksum:     checksum,
-	}, nil
+	return false, ""
 }
 
-// uninstallConfigEntry removes a config entry from the target's settings file.
-func (i *Installer) uninstallConfigEntry(adap adapter.Adapter, entry ConfigEntry) error {
-	settingsKey := adap.SettingsKey(entry.Type)
-	if settingsKey == "" {
-		return fmt.Errorf("unsupported config asset type: %s", entry.Type)
-	}
-	return i.removeConfigFromSettings(entry.SettingsFile, settingsKey)
-}
-
-// writeConfigToSettings writes a config value to a settings JSON file.
-func (i *Installer) writeConfigToSettings(path, key string, value any) error {
-	settings, err := readJSONFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	if settings == nil {
-		settings = make(map[string]any)
+// planConfigAsset reads, templates, and plans a config asset without writing
+// anything. Used by both the conflict check and the install itself.
+func (i *Installer) planConfigAsset(ctx *installContext, rca resolvedConfigAsset) (*configasset.Plan, error) {
+	handler, ok := configasset.Lookup(rca.asset.Type)
+	if !ok {
+		return nil, fmt.Errorf("unsupported config asset type: %s", rca.asset.Type)
 	}
 
-	settings[key] = value
-
-	return writeJSONFile(path, settings)
-}
-
-// removeConfigFromSettings removes a config key from a settings JSON file.
-func (i *Installer) removeConfigFromSettings(path, key string) error {
-	settings, err := readJSONFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // Nothing to remove
-		}
-		return err
-	}
-
-	delete(settings, key)
-
-	// If settings is empty, we could remove the file, but it's safer to leave it
-	return writeJSONFile(path, settings)
-}
-
-// readJSONFile reads and parses a JSON file.
-func readJSONFile(path string) (map[string]any, error) {
-	data, err := os.ReadFile(path)
+	content, err := i.configAssetContent(ctx, rca.asset)
 	if err != nil {
 		return nil, err
 	}
 
-	var result map[string]any
-	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, fmt.Errorf("parsing JSON: %w", err)
-	}
-	return result, nil
+	return handler.Plan(configasset.Request{
+		Adapter: ctx.adap,
+		Asset:   rca.asset,
+		Content: content,
+		Scope:   rca.scope,
+		Name:    rca.asset.ConfigName(),
+	})
 }
 
-// writeJSONFile writes a map to a JSON file with nice formatting.
-func writeJSONFile(path string, data map[string]any) error {
-	// Ensure parent directory exists
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return fmt.Errorf("creating directory: %w", err)
-	}
-
-	content, err := json.MarshalIndent(data, "", "  ")
+// configAssetContent reads a config asset and runs it through the template
+// engine, so config assets get the same variables and conditionals as file
+// assets - a hook command can reference {{ target_agents_file }}, an MCP env
+// block can reference a var.
+func (i *Installer) configAssetContent(ctx *installContext, asset *config.Asset) ([]byte, error) {
+	data, err := os.ReadFile(asset.SourcePath)
 	if err != nil {
-		return fmt.Errorf("serializing JSON: %w", err)
+		return nil, fmt.Errorf("reading %s: %w", asset.SourcePath, err)
 	}
 
-	// Add trailing newline
-	content = append(content, '\n')
+	// No target path: {{ existing }} has no meaning for a config asset, whose
+	// output is entries merged into a shared document rather than a file whose
+	// prior content could be folded in.
+	rendered, err := ctx.templateEngine.Process(data, "")
+	if err != nil {
+		return nil, fmt.Errorf("templating %s: %w", asset.Name, err)
+	}
 
-	return os.WriteFile(path, content, 0644)
+	return rendered, nil
+}
+
+// installConfigAsset merges a config asset's entries into the target's config
+// files and returns the manifest record needed to remove them again.
+//
+// Previously-applied edits for this same entry are reversed first, so an
+// update replaces tai's entry rather than appending a second copy of it, and
+// reinstalling an unchanged asset is a no-op.
+func (i *Installer) installConfigAsset(
+	ctx *installContext,
+	key string,
+	rca resolvedConfigAsset,
+	result *InstallResult,
+) (*ConfigEntry, error) {
+	plan, err := i.planConfigAsset(ctx, rca)
+	if err != nil {
+		return nil, err
+	}
+	result.Warnings = append(result.Warnings, plan.Warnings...)
+
+	if prev, wasManaged := ctx.existingConfigEntries[key]; wasManaged {
+		if err := i.revertConfigEdits(ctx, prev); err != nil {
+			return nil, err
+		}
+	}
+
+	applied := make([]configasset.AppliedEdit, 0, len(plan.Edits))
+	for _, edit := range plan.Edits {
+		doc, err := ctx.configFiles.load(edit.File)
+		if err != nil {
+			return nil, err
+		}
+
+		record, err := applyEdit(doc, edit)
+		if err != nil {
+			return nil, fmt.Errorf("merging %s/%s into %s: %w",
+				rca.asset.Type, rca.asset.ConfigName(), edit.File, err)
+		}
+		ctx.configFiles.markDirty(edit.File)
+		applied = append(applied, record)
+	}
+
+	entry := &ConfigEntry{
+		Type:         rca.asset.Type,
+		Name:         rca.asset.ConfigName(),
+		SourceName:   rca.asset.SourceName,
+		SourcePath:   rca.asset.SourcePath,
+		SettingsFile: primaryFile(applied),
+		Scope:        rca.scope,
+		Checksum:     editsChecksum(applied),
+		Edits:        applied,
+	}
+
+	return entry, nil
+}
+
+// revertConfigEdits removes the entries a previous install wrote.
+func (i *Installer) revertConfigEdits(ctx *installContext, entry ConfigEntry) error {
+	// Entries recorded before tai tracked edits carry no Edits. They were
+	// installed by replacing a whole settings key, so that is how they come
+	// back out.
+	if len(entry.Edits) == 0 {
+		return i.revertLegacyConfigEntry(ctx, entry)
+	}
+
+	for _, applied := range entry.Edits {
+		doc, err := ctx.configFiles.load(applied.File)
+		if err != nil {
+			return err
+		}
+
+		changed, found, err := removeEdit(doc, applied)
+		if err != nil {
+			return err
+		}
+		if changed {
+			ctx.configFiles.markDirty(applied.File)
+		}
+		if !found {
+			i.logger.Printf(
+				"Config entry %s/%s in %s was modified or removed outside tai - leaving it in place",
+				entry.Type, entry.Name, applied.File)
+		}
+	}
+
+	return nil
+}
+
+// revertLegacyConfigEntry removes a config entry installed before edit
+// tracking existed, by deleting the settings key that carried it.
+func (i *Installer) revertLegacyConfigEntry(ctx *installContext, entry ConfigEntry) error {
+	settingsKey := ctx.adap.SettingsKey(entry.Type)
+	if settingsKey == "" || entry.SettingsFile == "" {
+		return nil
+	}
+
+	doc, err := ctx.configFiles.load(entry.SettingsFile)
+	if err != nil {
+		return err
+	}
+	if _, exists := doc[settingsKey]; !exists {
+		return nil
+	}
+
+	delete(doc, settingsKey)
+	ctx.configFiles.markDirty(entry.SettingsFile)
+	return nil
+}
+
+// primaryFile names the config file a manifest entry is reported against.
+func primaryFile(applied []configasset.AppliedEdit) string {
+	if len(applied) == 0 {
+		return ""
+	}
+	return applied[0].File
+}
+
+// editsChecksum summarizes every edit an asset produced, so an unchanged
+// reinstall is recognizable as unchanged.
+func editsChecksum(applied []configasset.AppliedEdit) string {
+	combined := ""
+	for _, a := range applied {
+		combined += a.File + "\x00" + pathString(a.KeyPath) + "\x00" + a.ID + "\x00" + a.Checksum + "\n"
+	}
+	return ComputeChecksum([]byte(combined))
 }
 
 // Uninstall removes all tai-managed files for a target.
@@ -794,12 +911,17 @@ func (i *Installer) Uninstall(adap adapter.Adapter) (*InstallResult, error) {
 		}
 	}
 
-	// Remove config entries
+	// Remove config entries, taking back exactly the entries tai wrote and
+	// leaving entries from the user and other tools untouched.
+	uninstallCtx := &installContext{adap: adap, configFiles: newConfigFileSet()}
 	for _, entry := range manifest.ConfigEntries {
 		result.Removed = append(result.Removed, fmt.Sprintf("[%s] %s", entry.Type, entry.Name))
-		if err := i.uninstallConfigEntry(adap, entry); err != nil {
+		if err := i.revertConfigEdits(uninstallCtx, entry); err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("removing config %s/%s: %w", entry.Type, entry.Name, err))
 		}
+	}
+	if _, err := uninstallCtx.configFiles.flush(); err != nil {
+		result.Errors = append(result.Errors, err)
 	}
 
 	// Delete manifest

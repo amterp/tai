@@ -224,6 +224,10 @@ func validateProfile(profile *Profile, path string) error {
 	if len(profile.Bundles) == 0 && len(profile.Assets) == 0 {
 		return fmt.Errorf("profile %q: must specify at least one bundle or asset", profile.Name)
 	}
+	if profile.Scope != "" && !IsValidScope(profile.Scope) {
+		return fmt.Errorf("profile %q: invalid scope %q; must be one of: %s",
+			profile.Name, profile.Scope, strings.Join(ValidScopes(), ", "))
+	}
 
 	for i, entry := range profile.Assets {
 		if err := validateAssetEntry(entry, i); err != nil {
@@ -281,6 +285,16 @@ func validateAssetEntry(entry AssetEntry, index int) error {
 	} else if entry.Dest != "" {
 		// dest is only valid for file type
 		return fmt.Errorf("asset[%d]: 'dest' field is only valid for 'file' type, not %q", index, entry.Type)
+	}
+
+	if entry.Scope != "" {
+		if !IsConfigAssetType(entry.Type) {
+			return fmt.Errorf("asset[%d]: 'scope' is only valid for config asset types, not %q", index, entry.Type)
+		}
+		if !IsValidScope(entry.Scope) {
+			return fmt.Errorf("asset[%d]: invalid scope %q; must be one of: %s",
+				index, entry.Scope, strings.Join(ValidScopes(), ", "))
+		}
 	}
 
 	return nil
@@ -349,21 +363,22 @@ func LoadBundlesFromDir(dir string) (map[string]*Bundle, error) {
 	return bundles, nil
 }
 
-// ParseStatusLineConfig parses a status line config YAML file.
-// Returns the parsed config and a flag indicating if it's in tai format.
-// If not tai format, the raw YAML content should be passed through to the target.
-func ParseStatusLineConfig(path string) (*StatusLineConfig, []byte, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, nil, fmt.Errorf("reading status line config: %w", err)
-	}
-
+// ParseStatusLineConfig parses status line config YAML.
+//
+// A config carrying a `level` field is tai format and is returned parsed, for
+// the adapter to translate. Without one it is native format: the raw bytes come
+// back instead, to be passed through to the target untouched.
+//
+// It takes bytes rather than a path deliberately. Config assets are templated
+// before parsing, and reading the file here would both skip templating and
+// bypass a source's patched view - the silent-wrong-content failure that has
+// bitten this project twice.
+func ParseStatusLineConfig(data []byte) (*StatusLineConfig, []byte, error) {
 	var cfg StatusLineConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, nil, fmt.Errorf("parsing status line config: %w", err)
 	}
 
-	// If no level field, treat as native format (pass through raw data)
 	if !cfg.IsTaiFormat() {
 		return nil, data, nil
 	}

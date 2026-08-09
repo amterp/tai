@@ -45,15 +45,15 @@ type Adapter interface {
 	// This allows adapters to communicate fallback behavior during install.
 	InstallWarnings(asset *config.Asset) []string
 
-	// SettingsFilePath returns the path to the settings file for a given scope.
-	// Scope is "user" (default) or "project".
-	// Returns empty string if the adapter doesn't use a settings file.
-	SettingsFilePath(scope string) string
-
-	// TransformStatusLine transforms a tai status line config to the target's format.
-	// Returns a map suitable for JSON serialization into the target's settings.
-	// If rawNative is provided, it's passed through as-is (native format).
-	TransformStatusLine(cfg *config.StatusLineConfig, rawNative []byte) (map[string]any, error)
+	// ConfigFilePath returns the config file a given asset type installs into
+	// at a given scope ("user", "project", "local"). The asset type is part of
+	// the question, not just the scope: a target may keep different config
+	// asset types in different files - Claude holds status lines and hooks in
+	// settings.json but MCP servers elsewhere.
+	//
+	// Returns empty string when this target has no such file for that
+	// type and scope, which the installer reports as unsupported.
+	ConfigFilePath(assetType, scope string) string
 
 	// SettingsKey returns the JSON key name for a config asset type in the target's
 	// settings file. For example, Claude uses "statusLine" for statusline configs.
