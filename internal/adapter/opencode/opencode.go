@@ -202,6 +202,12 @@ func (a *Adapter) ConfigFilePath(assetType, scope string) string {
 // and "type" is required rather than inferred. Its config schema also rejects
 // unknown keys outright, so a field in the wrong place is a hard failure there
 // rather than something quietly ignored.
+// MCPKeyPath locates the server map. OpenCode keeps every scope's servers
+// under one top-level key; only the config file differs.
+func (a *Adapter) MCPKeyPath(_ string) []string {
+	return []string{MCPSettingsKey}
+}
+
 func (a *Adapter) TransformMCP(_ string, cfg *config.MCPConfig) (map[string]any, []string, error) {
 	entry := map[string]any{}
 	var warnings []string

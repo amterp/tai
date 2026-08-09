@@ -49,4 +49,3 @@ func validateAssetMetadata(metadata map[string]string, assetType string) error {
 
 	return nil
 }
-

@@ -24,6 +24,12 @@ type MCPTranslator interface {
 	// report fields this target cannot express, which are dropped rather than
 	// failing the install; a transport the target does not support is an error.
 	TransformMCP(name string, cfg *config.MCPConfig) (entry map[string]any, warnings []string, err error)
+
+	// MCPKeyPath locates the server map within the config file for a scope.
+	// Usually a single top-level key, but not always: Claude keys its
+	// project-local servers under the project's own record inside the same file
+	// its global servers live in. Returning nil means the scope is unsupported.
+	MCPKeyPath(scope string) []string
 }
 
 // mcpHandler installs MCP servers as keyed entries in a target's server map.
@@ -67,13 +73,13 @@ func (h *mcpHandler) Plan(req Request) (*Plan, error) {
 
 	file := req.Adapter.ConfigFilePath(config.AssetTypeMCP, req.Scope)
 	if file == "" {
-		return nil, fmt.Errorf("target %q has no MCP config file for scope %q",
-			req.Adapter.Name(), req.Scope)
+		return nil, UnsupportedScopeError(req.Adapter, config.AssetTypeMCP, req.Scope, "MCP server")
 	}
 
-	key := req.Adapter.SettingsKey(config.AssetTypeMCP)
-	if key == "" {
-		return nil, fmt.Errorf("target %q has no settings key for MCP servers", req.Adapter.Name())
+	keyPath := translator.MCPKeyPath(req.Scope)
+	if len(keyPath) == 0 {
+		return nil, fmt.Errorf("target %q has no MCP server map for scope %q",
+			req.Adapter.Name(), req.Scope)
 	}
 
 	if consenter, ok := req.Adapter.(ConfigWriteConsenter); ok {
@@ -82,7 +88,7 @@ func (h *mcpHandler) Plan(req Request) (*Plan, error) {
 
 	plan.Edits = append(plan.Edits, Edit{
 		File:    file,
-		KeyPath: []string{key},
+		KeyPath: keyPath,
 		Mode:    UpsertMapEntry,
 		ID:      req.Name,
 		Value:   entry,
@@ -172,4 +178,24 @@ func RewriteEnvRefs(s string, render func(name string) string) string {
 		name := envRefPattern.FindStringSubmatch(match)[1]
 		return render(name)
 	})
+}
+
+// AnySlice and AnyMap widen string collections for serialization. Config
+// documents are held as map[string]any so tai can merge into a file it shares
+// with other writers, and every adapter needs the same conversion on the way
+// in.
+func AnySlice(in []string) []any {
+	out := make([]any, len(in))
+	for i, s := range in {
+		out[i] = s
+	}
+	return out
+}
+
+func AnyMap(in map[string]string) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }

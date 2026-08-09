@@ -2,6 +2,7 @@ package install
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -418,5 +419,173 @@ func TestMCPReinstallIsIdempotent(t *testing.T) {
 			t.Errorf("install %d changed .mcp.json", run)
 		}
 		last = string(data)
+	}
+}
+
+// Claude's "local" scope means a server private to one project. It records that
+// under the project's own entry in ~/.claude.json, not in a file in the project
+// directory - writing a .claude.json in the repo would produce a file Claude
+// never reads, so the server would silently never appear.
+func TestMCPLocalScopeNestsUnderProjectRecord(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+	installer := NewInstaller(NewManifestStore(filepath.Join(env.ConfigDir, "manifests")), env.ConfigRepo, nil)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	adap := claude.New(env.TargetDir)
+
+	wd := t.TempDir()
+	defer chdir(t, wd)()
+	// The working directory is the project key, and macOS hands out symlinked
+	// temp dirs, so resolve it the same way the adapter does.
+	project, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatalf("abs: %v", err)
+	}
+
+	claudeJSON := filepath.Join(home, ".claude.json")
+	seed := `{"projects":{"` + project + `":{"hasTrustDialogAccepted":true}},"userID":"user-9"}`
+	if err := os.WriteFile(claudeJSON, []byte(seed), 0644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	env.SetupAsset("mcps", "scratch.yaml", "transport: stdio\ncommand: npx\n")
+	asset := mcpAsset(env, "scratch.yaml")
+	asset.Scope = config.ScopeLocal
+
+	if _, err := installer.Install(adap, "p", []*config.Asset{asset}, InstallOptions{}); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(wd, ".claude.json")); !os.IsNotExist(err) {
+		t.Error("a .claude.json was written in the project directory, which Claude never reads")
+	}
+
+	doc, err := readJSONFile(claudeJSON)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	record, ok := doc["projects"].(map[string]any)[project].(map[string]any)
+	if !ok {
+		t.Fatalf("no project record for %q in:\n%v", project, doc)
+	}
+	if _, ok := record["mcpServers"].(map[string]any)["scratch"]; !ok {
+		t.Errorf("server not recorded under projects[%q].mcpServers: %v", project, record)
+	}
+	if record["hasTrustDialogAccepted"] != true {
+		t.Error("the project's existing trust decision was lost")
+	}
+	if _, exists := doc["mcpServers"]; exists {
+		t.Error("a local-scope server leaked into the global mcpServers map")
+	}
+
+	// Removal must take the nested map out without touching the rest of the
+	// project's record.
+	if _, err := installer.Uninstall(adap); err != nil {
+		t.Fatalf("Uninstall failed: %v", err)
+	}
+	after, err := readJSONFile(claudeJSON)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	record = after["projects"].(map[string]any)[project].(map[string]any)
+	if _, exists := record["mcpServers"]; exists {
+		t.Error("the emptied mcpServers map survived uninstall")
+	}
+	if record["hasTrustDialogAccepted"] != true {
+		t.Error("uninstall took the project's trust decision with it")
+	}
+	if after["userID"] != "user-9" {
+		t.Error("unrelated global state was lost")
+	}
+}
+
+// When tai creates the project record itself - a project Claude has never
+// opened - uninstall should leave no empty husk behind.
+func TestMCPLocalScopePrunesRecordItCreated(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+	installer := NewInstaller(NewManifestStore(filepath.Join(env.ConfigDir, "manifests")), env.ConfigRepo, nil)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	adap := claude.New(env.TargetDir)
+
+	defer chdir(t, t.TempDir())()
+
+	claudeJSON := filepath.Join(home, ".claude.json")
+	if err := os.WriteFile(claudeJSON, []byte(`{"userID":"user-9"}`), 0644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	env.SetupAsset("mcps", "scratch.yaml", "transport: stdio\ncommand: npx\n")
+	asset := mcpAsset(env, "scratch.yaml")
+	asset.Scope = config.ScopeLocal
+
+	if _, err := installer.Install(adap, "p", []*config.Asset{asset}, InstallOptions{}); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+	if _, err := installer.Uninstall(adap); err != nil {
+		t.Fatalf("Uninstall failed: %v", err)
+	}
+
+	doc, err := readJSONFile(claudeJSON)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if projects, exists := doc["projects"]; exists {
+		t.Errorf("uninstall left an empty projects husk: %v", projects)
+	}
+	if doc["userID"] != "user-9" {
+		t.Error("unrelated state was lost")
+	}
+}
+
+// Hand-editing a tai-managed server and reinstalling used to silently restore
+// tai's version - no conflict, no --force required. Drift means the user has
+// taken ownership, and is gated exactly like a modified file asset.
+func TestMCPReinstallOverUserEditIsAConflict(t *testing.T) {
+	env, installer, adap := setupStatusLineTest(t)
+	wd := t.TempDir()
+	defer chdir(t, wd)()
+
+	env.SetupAsset("mcps", "github.yaml", "transport: stdio\ncommand: npx\n")
+	assets := []*config.Asset{projectScoped(mcpAsset(env, "github.yaml"))}
+
+	if _, err := installer.Install(adap, "p", assets, InstallOptions{}); err != nil {
+		t.Fatalf("first install failed: %v", err)
+	}
+
+	mcpPath := filepath.Join(wd, ".mcp.json")
+	doc, err := readJSONFile(mcpPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	doc["mcpServers"].(map[string]any)["github"].(map[string]any)["command"] = "bunx"
+	writeJSONFile(t, mcpPath, doc)
+
+	_, err = installer.Install(adap, "p", assets, InstallOptions{})
+	var conflictErr *ConflictsError
+	if !errors.As(err, &conflictErr) {
+		t.Fatalf("reinstall over a hand-edited server returned %v, want a conflict", err)
+	}
+
+	doc, err = readJSONFile(mcpPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if got := doc["mcpServers"].(map[string]any)["github"].(map[string]any)["command"]; got != "bunx" {
+		t.Errorf("command = %v, want the user's edit preserved", got)
+	}
+
+	// --force takes it back.
+	if _, err := installer.Install(adap, "p", assets, InstallOptions{Force: true}); err != nil {
+		t.Fatalf("forced reinstall failed: %v", err)
+	}
+	doc, err = readJSONFile(mcpPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if got := doc["mcpServers"].(map[string]any)["github"].(map[string]any)["command"]; got != "npx" {
+		t.Errorf("command = %v, want tai's value restored by --force", got)
 	}
 }

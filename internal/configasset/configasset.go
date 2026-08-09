@@ -14,6 +14,7 @@ package configasset
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
@@ -83,6 +84,13 @@ type AppliedEdit struct {
 	Mode     MergeMode `yaml:"mode"`
 	ID       string    `yaml:"id,omitempty"`
 	Checksum string    `yaml:"checksum"`
+
+	// Index is where an AppendToArray entry was written. The checksum is the
+	// real identity - an element that moved is still found - but an element
+	// whose content changed is not, and without a position there would be no
+	// way to tell "the user edited tai's entry" from "the user deleted it".
+	// Unused by the other modes.
+	Index int `yaml:"index,omitempty"`
 }
 
 // Request is the input to a handler: one config asset, already templated,
@@ -185,6 +193,24 @@ func Types() []string {
 	}
 	sort.Strings(types)
 	return types
+}
+
+// UnsupportedScopeError explains that a target has no config file for an asset
+// type at a scope, and names the scopes it does have - the information needed
+// to fix the profile without a trip to the docs.
+func UnsupportedScopeError(adap adapter.Adapter, assetType, scope, label string) error {
+	var supported []string
+	for _, s := range config.ValidScopes() {
+		if adap.ConfigFilePath(assetType, s) != "" {
+			supported = append(supported, s)
+		}
+	}
+
+	if len(supported) == 0 {
+		return fmt.Errorf("target %q does not install %s at any scope", adap.Name(), label)
+	}
+	return fmt.Errorf("target %q has no %s config file for scope %q; it supports: %s",
+		adap.Name(), label, scope, strings.Join(supported, ", "))
 }
 
 // IsCollection reports whether a type may hold many entries. Unregistered

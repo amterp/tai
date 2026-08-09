@@ -35,10 +35,14 @@ type Adapter interface {
 	// Run invokes the target with the given arguments.
 	Run(args []string) error
 
-	// SupportedConfigAssetTypes returns the config asset types this adapter supports.
-	// Config assets are installed as entries in target settings files rather than
-	// as standalone files. Returns empty slice if no config assets are supported.
-	// Example: Claude returns ["statusline"], OpenCode returns []
+	// SupportedConfigAssetTypes returns the config asset types this adapter
+	// supports. Config assets are installed as entries in target settings files
+	// rather than as standalone files. Returns an empty slice if none are.
+	//
+	// Every type listed here must also have its translator interface
+	// implemented - StatusLineTranslator, HookTranslator, MCPTranslator - or
+	// installing that type fails at runtime. Nothing enforces that pairing at
+	// compile time; the invariant is covered by tests instead.
 	SupportedConfigAssetTypes() []string
 
 	// InstallWarnings returns non-fatal, adapter-specific warnings for an asset.

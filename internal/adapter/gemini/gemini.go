@@ -155,6 +155,12 @@ func (a *Adapter) SupportedConfigAssetTypes() []string {
 	return []string{config.AssetTypeHook, config.AssetTypeMCP}
 }
 
+// MCPKeyPath locates the server map. Gemini keeps every scope's servers under
+// one top-level key; only the settings file differs.
+func (a *Adapter) MCPKeyPath(_ string) []string {
+	return []string{MCPSettingsKey}
+}
+
 // TransformMCP renders an MCP server in Gemini's shape.
 //
 // Gemini resolves both $VAR and ${VAR} anywhere in settings.json, so
@@ -166,10 +172,10 @@ func (a *Adapter) TransformMCP(_ string, cfg *config.MCPConfig) (map[string]any,
 	case config.MCPTransportStdio:
 		entry["command"] = cfg.Command
 		if len(cfg.Args) > 0 {
-			entry["args"] = toAnySlice(cfg.Args)
+			entry["args"] = configasset.AnySlice(cfg.Args)
 		}
 		if len(cfg.Env) > 0 {
-			entry["env"] = toAnyMap(cfg.Env)
+			entry["env"] = configasset.AnyMap(cfg.Env)
 		}
 		if cfg.Cwd != "" {
 			entry["cwd"] = cfg.Cwd
@@ -179,7 +185,7 @@ func (a *Adapter) TransformMCP(_ string, cfg *config.MCPConfig) (map[string]any,
 		entry["type"] = "http"
 		entry["url"] = cfg.URL
 		if len(cfg.Headers) > 0 {
-			entry["headers"] = toAnyMap(cfg.Headers)
+			entry["headers"] = configasset.AnyMap(cfg.Headers)
 		}
 	}
 
@@ -192,24 +198,6 @@ func (a *Adapter) TransformMCP(_ string, cfg *config.MCPConfig) (map[string]any,
 	}
 
 	return entry, nil, nil
-}
-
-// toAnySlice converts a string slice for JSON serialization.
-func toAnySlice(in []string) []any {
-	out := make([]any, len(in))
-	for i, s := range in {
-		out[i] = s
-	}
-	return out
-}
-
-// toAnyMap converts a string map for JSON serialization.
-func toAnyMap(in map[string]string) map[string]any {
-	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
 }
 
 // UnsupportedFileAssetTypes returns file asset types Gemini doesn't support.

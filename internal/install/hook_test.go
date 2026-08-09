@@ -2,6 +2,7 @@ package install
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -591,4 +592,113 @@ func jsonMarshal(t *testing.T, v any) string {
 		t.Fatalf("marshal: %v", err)
 	}
 	return string(b)
+}
+
+// Hand-editing a tai-managed hook and reinstalling used to append a second copy
+// beside the edit - so the hook fired twice, forever, reported as "Unchanged".
+// Drift is the user taking ownership, and is gated like a modified file asset.
+func TestHookReinstallOverUserEditIsAConflict(t *testing.T) {
+	env, installer, adap := setupStatusLineTest(t)
+	env.SetupAsset("hooks", "notify.yaml", "on: stop\nrun: say done\n")
+	assets := []*config.Asset{hookAsset(env, "notify.yaml")}
+
+	if _, err := installer.Install(adap, "p", assets, InstallOptions{}); err != nil {
+		t.Fatalf("first install failed: %v", err)
+	}
+
+	settingsPath := filepath.Join(env.TargetDir, "settings.json")
+	hookGroups := func(t *testing.T) []any {
+		t.Helper()
+		doc, err := readJSONFile(settingsPath)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		return doc["hooks"].(map[string]any)["Stop"].([]any)
+	}
+
+	// The user tweaks the command in place, as Claude's own /hooks UI would.
+	doc, err := readJSONFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	group := doc["hooks"].(map[string]any)["Stop"].([]any)[0].(map[string]any)
+	group["hooks"].([]any)[0].(map[string]any)["command"] = "say finished"
+	writeJSONFile(t, settingsPath, doc)
+
+	_, err = installer.Install(adap, "p", assets, InstallOptions{})
+	var conflictErr *ConflictsError
+	if !errors.As(err, &conflictErr) {
+		t.Fatalf("reinstall over a hand-edited hook returned %v, want a conflict", err)
+	}
+
+	if groups := hookGroups(t); len(groups) != 1 {
+		t.Errorf("hooks.Stop has %d groups, want the user's single edited one", len(groups))
+	}
+	edited := hookGroups(t)[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)
+	if edited["command"] != "say finished" {
+		t.Errorf("command = %v, want the user's edit preserved", edited["command"])
+	}
+
+	// --force is how you say "take it back": one entry, tai's version.
+	if _, err := installer.Install(adap, "p", assets, InstallOptions{Force: true}); err != nil {
+		t.Fatalf("forced reinstall failed: %v", err)
+	}
+	if groups := hookGroups(t); len(groups) != 1 {
+		t.Errorf("hooks.Stop has %d groups after --force, want 1", len(groups))
+	}
+}
+
+// Reinstalling an unchanged hook used to remove and re-append it, moving it to
+// the end of an array it shares with other tools - rewriting settings.json and
+// silently reordering handlers on every single install.
+func TestHookReinstallKeepsPositionAndDoesNotChurn(t *testing.T) {
+	env, installer, adap := setupStatusLineTest(t)
+	env.SetupAsset("hooks", "notify.yaml", "on: stop\nrun: say done\n")
+	assets := []*config.Asset{hookAsset(env, "notify.yaml")}
+
+	if _, err := installer.Install(adap, "p", assets, InstallOptions{}); err != nil {
+		t.Fatalf("first install failed: %v", err)
+	}
+
+	// Another tool adds its own hook to the same event afterwards, so tai's is
+	// no longer last.
+	settingsPath := filepath.Join(env.TargetDir, "settings.json")
+	doc, err := readJSONFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	stop := doc["hooks"].(map[string]any)["Stop"].([]any)
+	foreign := map[string]any{"hooks": []any{map[string]any{"type": "command", "command": "afplay Glass.aiff"}}}
+	doc["hooks"].(map[string]any)["Stop"] = append(stop, foreign)
+	writeJSONFile(t, settingsPath, doc)
+
+	before, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	if _, err := installer.Install(adap, "p", assets, InstallOptions{}); err != nil {
+		t.Fatalf("reinstall failed: %v", err)
+	}
+
+	after, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("an unchanged reinstall rewrote settings.json:\n got: %s\nwant: %s", after, before)
+	}
+}
+
+// writeJSONFile rewrites a target config file, standing in for a user or
+// another tool editing it between installs.
+func writeJSONFile(t *testing.T, path string, doc map[string]any) {
+	t.Helper()
+	encoded, err := encodeJSON(doc)
+	if err != nil {
+		t.Fatalf("encoding %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, encoded, 0644); err != nil {
+		t.Fatalf("writing %s: %v", path, err)
+	}
 }

@@ -325,12 +325,14 @@ tai writes each target's own shape; you write the tai one.
 
 | Target | `user` | `project` | `local` |
 |--------|--------|-----------|---------|
-| Claude | `~/.claude.json` | `.mcp.json` | `.claude.json` |
+| Claude | `~/.claude.json` | `.mcp.json` | `~/.claude.json`, under `projects.<project path>` |
 | Gemini | `~/.gemini/settings.json` | `.gemini/settings.json` | - |
 | OpenCode | `~/.config/opencode/opencode.json` | `opencode.json` | `opencode.json` |
 
 :::note
-At `user` scope Claude reads MCP servers from `~/.claude.json`, which also holds your account identity, per-project trust decisions, and a good deal of session state. tai merges into the parsed document and touches only the `mcpServers` key, and leaves numbers exactly as it found them - but it is worth knowing what else lives there. `project` scope writes `.mcp.json`, a dedicated single-key file, if you would rather keep tai away from it.
+Claude's `project` scope writes `.mcp.json`, meant to be committed and shared with the repo. `local` scope is the private counterpart, so Claude keeps it under the project's own entry in `~/.claude.json` rather than in a file in the repo.
+
+That file also holds your account identity, per-project trust decisions, and a good deal of session state. tai merges into the parsed document, touches only its own entries, and leaves numbers exactly as it found them - but it is worth knowing what else lives there. Use `project` scope if you would rather keep tai away from it.
 :::
 
 ## Installation scope
@@ -349,10 +351,11 @@ Project and local scopes resolve against the directory you run `tai install` fro
 
 tai owns *entries*, not files or keys. Config files are shared: a `settings.json` holds entries written by you and by other tools alongside tai's. So installing merges entries into the parsed document and records exactly what was written; uninstalling takes back precisely those entries and leaves everything else untouched.
 
-Two consequences worth knowing:
+Three consequences worth knowing:
 
-- **Editing an installed entry takes ownership of it.** tai notices the entry no longer matches what it wrote and leaves it alone rather than reverting or deleting your change.
-- **Unchanged means untouched.** Reinstalling an asset that produces the same entries rewrites nothing, so tai does not churn a file the target may also be writing.
+- **Editing an installed entry takes ownership of it.** tai notices the entry no longer matches what it wrote. Reinstalling reports a conflict instead of quietly restoring its own version - pass `--force` to take the entry back, or `--skip-conflicts` to keep your edit and carry on. Uninstalling leaves an edited entry in place entirely.
+- **Unchanged means untouched.** Reinstalling an asset that produces the same entries rewrites nothing, so tai does not churn a file the target may also be writing. An entry sharing an array with other tools keeps its position, so the order things run in does not drift between installs.
+- **Removing an entry by hand is not an error.** tai simply puts it back on the next install.
 
 ### Codex
 
@@ -377,6 +380,10 @@ Let tai manage MCP servers in Codex's config.toml?
 Answering "and remember" (or declining) records the decision in `~/.config/tai/preferences.yaml`, so you are asked once per machine. Delete the entry there to be asked again.
 
 Outside a terminal - CI, a script, a pipe - there is nobody to ask, so tai declines and says so. Pass `--allow-config-rewrite` to proceed without the prompt.
+
+`--dry-run` never asks either: a preview must not leave a real answer behind for a later install to reuse. It reports what it would have asked about instead.
+
+Declining is an answer about writing the file, not a request to undo anything. Servers installed under an earlier "yes" stay exactly where they are.
 
 Codex also does no string interpolation at all. Instead it takes environment variable *names* in dedicated fields, which can express a whole-value reference and nothing else:
 

@@ -261,6 +261,7 @@ func applyEdit(doc map[string]any, e configasset.Edit) (configasset.AppliedEdit,
 			}
 			arr = []any{}
 		}
+		applied.Index = len(arr)
 		parent[key] = append(arr, e.Value)
 
 	default:
@@ -268,6 +269,115 @@ func applyEdit(doc map[string]any, e configasset.Edit) (configasset.AppliedEdit,
 	}
 
 	return applied, nil
+}
+
+// updateEdit rewrites an entry tai already wrote, in place.
+//
+// Only arrays need this. A keyed entry is replaced by writing its key again, so
+// applyEdit alone suffices; an array element has no key, and removing it before
+// re-appending would move it to the end of an array it shares with other tools
+// - churning the file and silently changing the order handlers run in on every
+// reinstall.
+//
+// Returns found=false when the previous element is no longer recognizable, in
+// which case the caller applies the edit fresh.
+//
+// With force set, an element the user has edited is reclaimed by position -
+// which is what --force means, and the alternative is appending tai's version
+// beside theirs so the hook runs twice. Position is only consulted once the
+// checksum has failed to find the entry anywhere, so an element that merely
+// moved is never mistaken for one that changed.
+func updateEdit(doc map[string]any, prev configasset.AppliedEdit, e configasset.Edit, force bool) (configasset.AppliedEdit, bool, error) {
+	if e.Mode != configasset.AppendToArray {
+		return configasset.AppliedEdit{}, false, nil
+	}
+
+	parent, key, err := descend(doc, e.KeyPath, false)
+	if err != nil || parent == nil {
+		return configasset.AppliedEdit{}, false, nil
+	}
+	arr, ok := parent[key].([]any)
+	if !ok {
+		return configasset.AppliedEdit{}, false, nil
+	}
+
+	idx := indexOfChecksum(arr, prev.Checksum)
+	if idx < 0 && force && prev.Index >= 0 && prev.Index < len(arr) {
+		idx = prev.Index
+	}
+	if idx < 0 {
+		return configasset.AppliedEdit{}, false, nil
+	}
+
+	checksum, err := valueChecksum(e.Value)
+	if err != nil {
+		return configasset.AppliedEdit{}, false, err
+	}
+
+	arr[idx] = e.Value
+	return configasset.AppliedEdit{
+		File:     e.File,
+		KeyPath:  e.KeyPath,
+		Mode:     e.Mode,
+		ID:       e.ID,
+		Checksum: checksum,
+		Index:    idx,
+	}, true, nil
+}
+
+// indexOfChecksum finds the array element hashing to want, or -1.
+func indexOfChecksum(arr []any, want string) int {
+	for idx, elem := range arr {
+		if checksumMatches(elem, want) {
+			return idx
+		}
+	}
+	return -1
+}
+
+// findEntry returns the value an applied edit currently points at, for
+// comparing against what tai recorded.
+//
+// Arrays are the awkward case: the checksum is the identity, so a match means
+// the entry is untouched wherever it sits. Failing that, the recorded position
+// is the only remaining candidate - enough to notice the entry was edited
+// rather than deleted, which is the difference between reporting a conflict and
+// silently appending a second copy beside the user's version.
+func findEntry(doc map[string]any, a configasset.AppliedEdit) (any, bool) {
+	parent, key, err := descend(doc, a.KeyPath, false)
+	if err != nil || parent == nil {
+		return nil, false
+	}
+
+	switch a.Mode {
+	case configasset.ReplaceKey:
+		v, exists := parent[key]
+		return v, exists
+
+	case configasset.UpsertMapEntry:
+		container, ok := parent[key].(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		v, exists := container[a.ID]
+		return v, exists
+
+	case configasset.AppendToArray:
+		arr, ok := parent[key].([]any)
+		if !ok {
+			return nil, false
+		}
+		if idx := indexOfChecksum(arr, a.Checksum); idx >= 0 {
+			return arr[idx], true
+		}
+		if a.Index >= 0 && a.Index < len(arr) {
+			return arr[a.Index], true
+		}
+		return nil, false
+
+	default:
+		return nil, false
+	}
 }
 
 // removeEdit reverses an applied edit, taking out exactly the entry tai wrote
@@ -310,6 +420,7 @@ func removeEdit(doc map[string]any, a configasset.AppliedEdit) (changed bool, fo
 		delete(container, a.ID)
 		if len(container) == 0 {
 			delete(parent, key)
+			pruneEmptyAncestors(doc, a.KeyPath)
 		}
 		return true, true, nil
 

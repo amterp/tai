@@ -19,6 +19,10 @@ const (
 	StatusLineSettingsKey = "statusLine"
 	HooksSettingsKey      = "hooks"
 	MCPSettingsKey        = "mcpServers"
+
+	// ProjectsSettingsKey holds ~/.claude.json's per-project records, keyed by
+	// absolute path. Project-local MCP servers live inside them.
+	ProjectsSettingsKey = "projects"
 )
 
 // hookEvents maps canonical tai events to Claude's names. Claude has more
@@ -173,10 +177,10 @@ func (a *Adapter) TransformMCP(_ string, cfg *config.MCPConfig) (map[string]any,
 		entry["type"] = "stdio"
 		entry["command"] = cfg.Command
 		if len(cfg.Args) > 0 {
-			entry["args"] = toAnySlice(cfg.Args)
+			entry["args"] = configasset.AnySlice(cfg.Args)
 		}
 		if len(cfg.Env) > 0 {
-			entry["env"] = toAnyMap(cfg.Env)
+			entry["env"] = configasset.AnyMap(cfg.Env)
 		}
 		if cfg.Cwd != "" {
 			// Claude has no per-server working directory. Dropping it is
@@ -190,7 +194,7 @@ func (a *Adapter) TransformMCP(_ string, cfg *config.MCPConfig) (map[string]any,
 		entry["type"] = "http"
 		entry["url"] = cfg.URL
 		if len(cfg.Headers) > 0 {
-			entry["headers"] = toAnyMap(cfg.Headers)
+			entry["headers"] = configasset.AnyMap(cfg.Headers)
 		}
 	}
 
@@ -199,24 +203,6 @@ func (a *Adapter) TransformMCP(_ string, cfg *config.MCPConfig) (map[string]any,
 	}
 
 	return entry, warnings, nil
-}
-
-// toAnySlice converts a string slice for JSON serialization.
-func toAnySlice(in []string) []any {
-	out := make([]any, len(in))
-	for i, s := range in {
-		out[i] = s
-	}
-	return out
-}
-
-// toAnyMap converts a string map for JSON serialization.
-func toAnyMap(in map[string]string) map[string]any {
-	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
 }
 
 // HookEventName maps a canonical tai event to Claude's name for it.
@@ -260,24 +246,36 @@ func (a *Adapter) ConfigFilePath(assetType, scope string) string {
 
 // mcpFilePath locates the file Claude reads MCP servers from.
 //
-// MCP servers do not live in settings.json. At project scope they get
-// .mcp.json, a dedicated single-key file. At user scope they live in
-// ~/.claude.json alongside a session's entire mutable state - account
+// MCP servers do not live in settings.json. Project scope gets .mcp.json, a
+// dedicated single-key file meant to be committed. User and local scope both
+// land in ~/.claude.json alongside a session's entire mutable state - account
 // identity, per-project trust decisions, caches - which is why every write
-// merges into the parsed document rather than rendering the file.
+// merges into the parsed document rather than rendering the file. They differ
+// by where in that file they sit, not by which file: see mcpKeyPath.
 func (a *Adapter) mcpFilePath(scope string) string {
-	switch scope {
-	case config.ScopeProject:
+	if scope == config.ScopeProject {
 		return projectPath(".mcp.json")
-	case config.ScopeLocal:
-		return projectPath(".claude.json")
-	default: // user
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
-		return filepath.Join(home, ".claude.json")
 	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".claude.json")
+}
+
+// MCPKeyPath locates the server map for a scope.
+//
+// Local scope is the odd one. Claude records a private, uncommitted server
+// under the project's own entry in ~/.claude.json - keyed by absolute path,
+// beside that project's trust decision and history - rather than in any file in
+// the project directory. Writing a .claude.json in the repo instead would
+// produce a file Claude never reads, so the server would simply never appear.
+func (a *Adapter) MCPKeyPath(scope string) []string {
+	if scope == config.ScopeLocal {
+		return []string{ProjectsSettingsKey, projectPath("."), MCPSettingsKey}
+	}
+	return []string{MCPSettingsKey}
 }
 
 // settingsFilePath locates settings.json for a scope. Config asset types that

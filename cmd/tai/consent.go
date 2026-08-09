@@ -48,6 +48,14 @@ func (r *consentResolver) Resolve(req configasset.ConsentRequest) (bool, error) 
 		return true, nil
 	}
 	if granted, recorded := r.prefs.ConsentFor(req.Key); recorded {
+		if !granted {
+			// The explainer and the "change it by editing..." note printed once,
+			// when the question was answered - possibly weeks ago, possibly to
+			// someone else. Without this, every later run reports a refusal with
+			// no way back.
+			r.out.Info("Using a remembered answer: no. Change it by editing " +
+				r.store.Path() + ", or override once with --allow-config-rewrite.")
+		}
 		return granted, nil
 	}
 

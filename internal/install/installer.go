@@ -210,6 +210,9 @@ func (i *Installer) Install(
 	// ========================================================================
 	newEntries, newConfigEntries, err := i.executeInstall(ctx, resolvedAssets, configByType, configConflicts, result)
 	if err != nil {
+		// Record whatever reached disk before giving up, so a failed install
+		// leaves tai's view of the target consistent with the target itself.
+		i.saveSalvageManifest(adap, profile, opts, newEntries, newConfigEntries)
 		return nil, err
 	}
 
@@ -515,6 +518,11 @@ func (i *Installer) executeInstall(
 		switch {
 		case !wasManaged:
 			result.Added = append(result.Added, label)
+		// The checksum compares the asset to what the manifest recorded, so an
+		// entry edited on disk still matches it. Reporting that as unchanged
+		// would hide the fact that a --force just overwrote the edit.
+		case configConflicts[key]:
+			result.Updated = append(result.Updated, label)
 		case configEntry.Checksum == existingEntry.Checksum:
 			result.Unchanged = append(result.Unchanged, label)
 		default:
@@ -537,11 +545,45 @@ func (i *Installer) executeInstall(
 	// after all adds and removals, so each file is written once.
 	if !opts.DryRun {
 		if _, err := ctx.configFiles.flush(); err != nil {
-			return nil, nil, err
+			// Files are written one at a time, so a failure partway through
+			// leaves earlier ones on disk. Hand the entries back anyway: a
+			// manifest that records an edit which never landed costs nothing
+			// (removal simply finds nothing), while one that misses an edit
+			// that did land loses track of it for good - and the next install
+			// would append a second copy beside it.
+			return newEntries, newConfigEntries, err
 		}
 	}
 
 	return newEntries, newConfigEntries, nil
+}
+
+// saveSalvageManifest persists what an aborted install managed to write.
+//
+// Without it, entries already merged into a config file would be invisible to
+// tai: not in the manifest, so not recognized as its own, so the next install
+// appends a second copy and uninstall never cleans them up. Best effort by
+// design - the install is already failing, and the original error is the one
+// worth reporting.
+func (i *Installer) saveSalvageManifest(
+	adap adapter.Adapter,
+	profile string,
+	opts InstallOptions,
+	entries []ManifestEntry,
+	configEntries []ConfigEntry,
+) {
+	if opts.DryRun || (len(entries) == 0 && len(configEntries) == 0) {
+		return
+	}
+
+	manifest := BuildManifest(adap.Name(), profile, i.configRepo, entries, configEntries)
+	if err := i.manifestStore.Save(manifest); err != nil {
+		i.logger.Printf(
+			"Install failed and the partial manifest could not be saved either (%v). "+
+				"Entries already written to the target's config files are not tracked by tai: "+
+				"check them by hand, or re-run the install once the underlying problem is fixed.",
+			err)
+	}
 }
 
 // dedupeStrings drops repeated entries, keeping first-seen order.
@@ -682,8 +724,18 @@ func (i *Installer) removeStaleConfigEntries(ctx *installContext, result *Instal
 // telling nobody anything. What matters is whether the specific entry tai is
 // about to write is already there under someone else's ownership.
 func (i *Installer) checkConfigConflict(ctx *installContext, key string, rca resolvedConfigAsset) *ConflictDetail {
-	if _, wasManaged := ctx.existingConfigEntries[key]; wasManaged {
-		return nil // Already tai's; an update, not a conflict.
+	if prev, wasManaged := ctx.existingConfigEntries[key]; wasManaged {
+		// tai wrote this entry, but that only makes it tai's if it still looks
+		// the way tai left it. An entry edited since is the user's now, and
+		// reinstalling over it would silently discard their change - the same
+		// drift a modified file asset is gated on.
+		if where, drifted := i.configEntryDrifted(ctx, prev); drifted {
+			return &ConflictDetail{
+				Path:   fmt.Sprintf("[%s] %s", rca.asset.Type, rca.asset.ConfigName()),
+				Reason: fmt.Sprintf("%s modified since last install", where),
+			}
+		}
+		return nil // Still tai's; an update, not a conflict.
 	}
 
 	plan, err := i.planConfigAsset(ctx, rca)
@@ -707,6 +759,29 @@ func (i *Installer) checkConfigConflict(ctx *installContext, key string, rca res
 	}
 
 	return nil
+}
+
+// configEntryDrifted reports whether any entry tai previously wrote no longer
+// matches what it recorded, naming the first spot that differs.
+//
+// An entry that vanished is not drift: the user removing it is not a change to
+// preserve, and treating it as a conflict would make a reinstall that simply
+// puts it back require --force.
+func (i *Installer) configEntryDrifted(ctx *installContext, entry ConfigEntry) (string, bool) {
+	for _, applied := range entry.Edits {
+		doc, err := ctx.configFiles.load(applied.File)
+		if err != nil {
+			return "", false // Unreadable; install will report it properly.
+		}
+		current, exists := findEntry(doc, applied)
+		if !exists {
+			continue
+		}
+		if !checksumMatches(current, applied.Checksum) {
+			return fmt.Sprintf("%s in %s", pathString(applied.KeyPath), applied.File), true
+		}
+	}
+	return "", false
 }
 
 // editCollides reports whether an edit would displace an entry tai does not
@@ -785,8 +860,9 @@ func (i *Installer) configAssetContent(ctx *installContext, asset *config.Asset)
 // installConfigAsset merges a config asset's entries into the target's config
 // files and returns the manifest record needed to remove them again.
 //
-// Previously-applied edits for this same entry are reversed first, so an
-// update replaces tai's entry rather than appending a second copy of it, and
+// Nothing is written until the install is known to be going ahead. Only then
+// are previously-applied edits for this same entry reversed, so an update
+// replaces tai's entry rather than appending a second copy of it, and
 // reinstalling an unchanged asset is a no-op.
 func (i *Installer) installConfigAsset(
 	ctx *installContext,
@@ -800,21 +876,23 @@ func (i *Installer) installConfigAsset(
 	}
 	result.Warnings = append(result.Warnings, plan.Warnings...)
 
-	if prev, wasManaged := ctx.existingConfigEntries[key]; wasManaged {
-		if err := i.revertConfigEdits(ctx, prev); err != nil {
-			return nil, err
-		}
-	}
+	prev, wasManaged := ctx.existingConfigEntries[key]
 
+	// Consent is resolved before anything is touched. Declining means "do not
+	// write this file", so an entry already installed under an earlier yes stays
+	// exactly as it is - returning it unchanged keeps it in the manifest, where
+	// removing it would strand config tai still owns.
 	if plan.Consent != nil {
 		granted, err := i.askConsent(ctx, *plan.Consent)
 		if err != nil {
 			return nil, err
 		}
 		if !granted {
-			result.Warnings = append(result.Warnings, fmt.Sprintf(
-				"skipping %s/%s: writing %s was declined",
-				rca.asset.Type, rca.asset.ConfigName(), primaryPlanFile(plan)))
+			result.Warnings = append(result.Warnings,
+				noConsentWarning(ctx, rca, plan, wasManaged))
+			if wasManaged {
+				return &prev, nil
+			}
 			return nil, nil
 		}
 	}
@@ -822,9 +900,29 @@ func (i *Installer) installConfigAsset(
 	// A plan can legitimately produce nothing - a hook whose event this target
 	// does not have, for instance. Record no manifest entry for it: an entry
 	// with no edits is indistinguishable from one written before tai tracked
-	// edits, and would be removed by deleting a whole settings key.
+	// edits, and would be removed by deleting a whole settings key. Leaving any
+	// previous entry in place hands it to the stale-entry sweep, which removes
+	// it properly and reports it.
 	if len(plan.Edits) == 0 {
 		return nil, nil
+	}
+
+	// Each new edit is matched against the one it supersedes so it can be
+	// rewritten where it already sits. Whatever is left over is an edit this
+	// install no longer makes - a hook that changed event, say - and is removed.
+	superseded := supersededEdits(prev, plan.Edits)
+	if wasManaged {
+		// An entry with no edits at all is a legacy one, removed by deleting its
+		// whole settings key; hand that case through untouched. Otherwise revert
+		// only what this install is not about to rewrite, and skip the call
+		// entirely when that leaves nothing - an empty edit list would be
+		// mistaken for legacy.
+		stale := prev.withoutEdits(superseded)
+		if len(prev.Edits) == 0 || len(stale.Edits) > 0 {
+			if err := i.revertConfigEdits(ctx, stale); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	applied := make([]configasset.AppliedEdit, 0, len(plan.Edits))
@@ -834,10 +932,17 @@ func (i *Installer) installConfigAsset(
 			return nil, err
 		}
 
-		record, err := applyEdit(doc, edit)
+		record, updated, err := updateSupersededEdit(doc, superseded, edit, ctx.opts.Force)
 		if err != nil {
 			return nil, fmt.Errorf("merging %s/%s into %s: %w",
 				rca.asset.Type, rca.asset.ConfigName(), edit.File, err)
+		}
+		if !updated {
+			record, err = applyEdit(doc, edit)
+			if err != nil {
+				return nil, fmt.Errorf("merging %s/%s into %s: %w",
+					rca.asset.Type, rca.asset.ConfigName(), edit.File, err)
+			}
 		}
 		ctx.configFiles.markDirty(edit.File)
 		applied = append(applied, record)
@@ -865,6 +970,15 @@ func (i *Installer) askConsent(ctx *installContext, req configasset.ConsentReque
 		return granted, nil
 	}
 
+	// A preview must not decide anything. Asking here would put a real, durable
+	// answer - possibly a remembered one - behind a command whose whole promise
+	// is that it changes nothing, and a later real install would silently reuse
+	// it. Report what would be asked instead.
+	if ctx.opts.DryRun {
+		ctx.consent[req.Key] = false
+		return false, nil
+	}
+
 	if ctx.opts.Consent == nil {
 		ctx.consent[req.Key] = false
 		return false, nil
@@ -876,6 +990,75 @@ func (i *Installer) askConsent(ctx *installContext, req configasset.ConsentReque
 	}
 	ctx.consent[req.Key] = granted
 	return granted, nil
+}
+
+// editSlot identifies the place in a config file an edit occupies, so a new
+// edit can be matched to the one it replaces.
+type editSlot struct {
+	file    string
+	keyPath string
+	mode    configasset.MergeMode
+	id      string
+}
+
+func slotOf(file string, keyPath []string, mode configasset.MergeMode, id string) editSlot {
+	return editSlot{file: file, keyPath: pathString(keyPath), mode: mode, id: id}
+}
+
+// supersededEdits pairs each new edit with the applied edit it replaces.
+func supersededEdits(prev ConfigEntry, edits []configasset.Edit) map[editSlot]configasset.AppliedEdit {
+	wanted := make(map[editSlot]bool, len(edits))
+	for _, e := range edits {
+		wanted[slotOf(e.File, e.KeyPath, e.Mode, e.ID)] = true
+	}
+
+	matched := make(map[editSlot]configasset.AppliedEdit)
+	for _, a := range prev.Edits {
+		slot := slotOf(a.File, a.KeyPath, a.Mode, a.ID)
+		if wanted[slot] {
+			matched[slot] = a
+		}
+	}
+	return matched
+}
+
+// updateSupersededEdit rewrites an edit in the place its predecessor occupies,
+// reporting whether it did.
+func updateSupersededEdit(
+	doc map[string]any,
+	superseded map[editSlot]configasset.AppliedEdit,
+	e configasset.Edit,
+	force bool,
+) (configasset.AppliedEdit, bool, error) {
+	prev, ok := superseded[slotOf(e.File, e.KeyPath, e.Mode, e.ID)]
+	if !ok {
+		return configasset.AppliedEdit{}, false, nil
+	}
+	return updateEdit(doc, prev, e, force)
+}
+
+// noConsentWarning explains a config write that did not go ahead: what was
+// skipped, what that means for the target, and how to allow it.
+func noConsentWarning(ctx *installContext, rca resolvedConfigAsset, plan *configasset.Plan, wasManaged bool) string {
+	label := fmt.Sprintf("[%s] %s", rca.asset.Type, rca.asset.ConfigName())
+	file := primaryPlanFile(plan)
+
+	if ctx.opts.DryRun {
+		return fmt.Sprintf(
+			"Skipped %s: writing %s needs your say-so, which a dry run will not ask for. "+
+				"Run without --dry-run to decide, or pass --allow-config-rewrite.",
+			label, file)
+	}
+
+	outcome := fmt.Sprintf("it will not be available in %s", ctx.adap.Name())
+	if wasManaged {
+		outcome = "the copy from a previous install is left untouched"
+	}
+
+	return fmt.Sprintf(
+		"Skipped %s: writing %s was declined, so %s. "+
+			"To allow it, re-run with --allow-config-rewrite, or answer the prompt in an interactive terminal.",
+		label, file, outcome)
 }
 
 // primaryPlanFile names the file a plan would write, for messages.

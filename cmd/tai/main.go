@@ -1036,7 +1036,9 @@ func runUninstall(target string) {
 		out.Raw("  - " + path)
 	}
 
-	out.Success(strconv.Itoa(len(result.Removed)) + " files removed")
+	// "files" would be wrong for config assets, which are removed as entries
+	// inside a target's config files rather than as files of their own.
+	out.Success(strconv.Itoa(len(result.Removed)) + " removed")
 
 	if len(result.Errors) > 0 {
 		out.Warning("Some files could not be removed:")
@@ -1076,12 +1078,23 @@ func runStatus(target string) {
 			{Key: "Config repo", Value: manifest.ConfigRepo},
 			{Key: "Installed", Value: manifest.InstalledAt.Format("2006-01-02 15:04:05")},
 			{Key: "Files", Value: strconv.Itoa(len(manifest.Files))},
+			{Key: "Config entries", Value: strconv.Itoa(len(manifest.ConfigEntries))},
 		})
 
 		if len(manifest.Files) > 0 {
 			out.Header("  Installed files:")
 			for _, f := range manifest.Files {
 				out.Raw("    " + f.Path)
+			}
+		}
+
+		// Config assets install as entries inside a target's config files, so
+		// they show up nowhere in the file list. Without this, "did my hook
+		// install?" has no answer short of grepping settings.json by hand.
+		if len(manifest.ConfigEntries) > 0 {
+			out.Header("  Installed config entries:")
+			for _, e := range manifest.ConfigEntries {
+				out.Raw(fmt.Sprintf("    [%s] %s -> %s", e.Type, e.Name, e.SettingsFile))
 			}
 		}
 	}

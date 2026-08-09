@@ -213,6 +213,12 @@ func (a *Adapter) ConfigWriteConsent(assetType, file string) *configasset.Consen
 // reference and nothing else. So "${TOKEN}" translates cleanly while
 // "Bearer ${TOKEN}" cannot, and saying so beats installing a server that
 // authenticates with a literal dollar sign.
+// MCPKeyPath locates the server table. Codex has one config file and one
+// [mcp_servers] table in it, whatever the scope.
+func (a *Adapter) MCPKeyPath(_ string) []string {
+	return []string{MCPSettingsKey}
+}
+
 func (a *Adapter) TransformMCP(_ string, cfg *config.MCPConfig) (map[string]any, []string, error) {
 	entry := map[string]any{}
 	var warnings []string
@@ -221,7 +227,7 @@ func (a *Adapter) TransformMCP(_ string, cfg *config.MCPConfig) (map[string]any,
 	case config.MCPTransportStdio:
 		entry["command"] = cfg.Command
 		if len(cfg.Args) > 0 {
-			entry["args"] = toAnySlice(cfg.Args)
+			entry["args"] = configasset.AnySlice(cfg.Args)
 		}
 		if cfg.Cwd != "" {
 			entry["cwd"] = cfg.Cwd
@@ -311,15 +317,6 @@ func bearerEnvRef(header, value string) (string, bool) {
 		return "", false
 	}
 	return configasset.WholeEnvRef(rest)
-}
-
-// toAnySlice converts a string slice for serialization.
-func toAnySlice(in []string) []any {
-	out := make([]any, len(in))
-	for i, s := range in {
-		out[i] = s
-	}
-	return out
 }
 
 // sortAny sorts a slice of strings held as any, for deterministic output.

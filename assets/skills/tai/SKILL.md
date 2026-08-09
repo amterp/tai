@@ -253,7 +253,9 @@ literal `${VAR}` it would never expand.
 At `user` scope, Claude MCP servers go in `~/.claude.json`, which also holds
 account and session state. tai merges into it rather than rewriting it, but
 `scope: project` writes the dedicated `.mcp.json` if you would rather keep tai
-out of that file.
+out of that file. `scope: local` is the private counterpart to `project`: it
+also lands in `~/.claude.json`, under that project's own entry, since Claude
+reads no `.claude.json` from the project directory.
 
 ## Configuration Files
 

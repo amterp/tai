@@ -98,15 +98,17 @@ See [Config Assets](/tai/reference/config-assets/#hooks) for the event vocabular
 
 ## MCP servers
 
-MCP server assets merge into the `mcpServers` key of whichever file matches their scope:
+MCP server assets merge into whichever file and key matches their scope:
 
-| Scope | Target file |
-|-------|-------------|
-| `user` | `~/.claude.json` |
-| `project` | `.mcp.json` |
-| `local` | `.claude.json` |
+| Scope | Target file | Key |
+|-------|-------------|-----|
+| `user` | `~/.claude.json` | `mcpServers` |
+| `project` | `.mcp.json` | `mcpServers` |
+| `local` | `~/.claude.json` | `projects.<project path>.mcpServers` |
 
-`~/.claude.json` also holds your account identity, per-project trust decisions, and a good deal of session state. tai merges into the parsed document rather than rendering the file, touches only the `mcpServers` key, and preserves numbers exactly as it found them - but if you would rather keep tai out of that file entirely, use `project` scope, which writes the dedicated `.mcp.json`.
+`project` scope writes the dedicated `.mcp.json`, which is meant to be committed and shared with everyone working in the repo. `local` scope is the private counterpart: the server is yours alone, so Claude records it under the project's own entry in `~/.claude.json` rather than in any file in the repo.
+
+`~/.claude.json` also holds your account identity, per-project trust decisions, and a good deal of session state. tai merges into the parsed document rather than rendering the file, touches only its own entries, and preserves numbers exactly as it found them - but if you would rather keep tai out of that file entirely, use `project` scope.
 
 Claude has no per-server `cwd`; an asset that sets one installs without it and tai warns.
 

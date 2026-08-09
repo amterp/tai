@@ -372,25 +372,34 @@ tai status [target]
 ```bash
 tai status
 # claude:
-#   Profile:     work
-#   Config repo: /Users/you/my-tai-config
-#   Installed:   2025-01-21 14:30:05
-#   Files:       5
+#   Profile:        work
+#   Config repo:    /Users/you/my-tai-config
+#   Installed:      2025-01-21 14:30:05
+#   Files:          5
+#   Config entries: 2
 #   Installed files:
 #     output-styles/senior-swe.md
 #     output-styles/company-style.md
 #     agents/code-reviewer.md
 #     skills/council-participant
 #     CLAUDE.md
+#   Installed config entries:
+#     [hook] format-on-save -> /Users/you/.claude/settings.json
+#     [mcp] github -> /Users/you/.claude.json
 # codex: not installed
 
 tai status claude
 # claude:
-#   Profile:     work
-#   Config repo: /Users/you/my-tai-config
-#   Installed:   2025-01-21 14:30:05
-#   Files:       5
+#   Profile:        work
+#   Config repo:    /Users/you/my-tai-config
+#   Installed:      2025-01-21 14:30:05
+#   Files:          5
+#   Config entries: 2
 ```
+
+Config assets install as entries inside a target's config files, so they never
+appear in the file list. They are listed separately, with the file each one
+landed in.
 
 ## tai run
 

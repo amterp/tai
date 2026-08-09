@@ -674,17 +674,24 @@ requires an explicit `local`/`remote` type. Each adapter renders its own shape.
 
 | Target | `user` | `project` | `local` |
 |--------|--------|-----------|---------|
-| Claude | `~/.claude.json` | `.mcp.json` | `.claude.json` |
+| Claude | `~/.claude.json` | `.mcp.json` | `~/.claude.json`, under `projects.<path>` |
 | Codex | `~/.codex/config.toml` | `.codex/config.toml` | - |
 | Gemini | `~/.gemini/settings.json` | `.gemini/settings.json` | - |
 | OpenCode | `~/.config/opencode/opencode.json` | `opencode.json` | `opencode.json` |
 
-At user scope Claude reads MCP servers from `~/.claude.json`, which also holds
-account identity, per-project trust decisions, and a good deal of session
-state. tai merges into the parsed document, touches only the `mcpServers` key,
-and preserves numbers as literals so nothing it does not manage is reformatted.
-Project scope writes `.mcp.json`, a dedicated single-key file, for anyone who
-would rather keep tai out of that file entirely.
+Claude's two project scopes differ in who else sees the server. Project scope
+writes `.mcp.json`, meant to be committed and shared with the repo. Local scope
+is the private counterpart, so Claude keeps it under the project's own entry in
+`~/.claude.json` - keyed by absolute path, beside that project's trust decision
+- rather than in a file in the repo. Writing a `.claude.json` in the project
+directory instead would produce a file Claude never reads, so the server would
+silently never appear.
+
+`~/.claude.json` also holds account identity, per-project trust decisions, and
+a good deal of session state. tai merges into the parsed document, touches only
+its own entries, and preserves numbers as literals so nothing it does not
+manage is reformatted. Project scope writes `.mcp.json`, a dedicated single-key
+file, for anyone who would rather keep tai out of that file entirely.
 
 **Codex asks first.** It has no dedicated MCP config file - servers live in
 `~/.codex/config.toml` beside model settings and project trust levels - and
@@ -692,6 +699,12 @@ rewriting that file loses comments and key order, since no Go TOML library
 round-trips them. tai explains the cost, remembers the answer per machine in
 `~/.config/tai/preferences.yaml`, and declines when there is no terminal to ask
 in (`--allow-config-rewrite` overrides).
+
+A dry run never asks. Prompting there would put a real, possibly remembered
+answer behind a command that promises to change nothing, and a later install
+would silently reuse it; the preview reports what it would have asked instead.
+Declining leaves servers from an earlier install exactly as they are - it is an
+answer about a write, not a request to remove anything.
 
 Codex also does no string interpolation. It takes environment variable *names*
 in dedicated fields, so a whole-value reference translates and nothing else
@@ -991,7 +1004,7 @@ The Claude adapter:
 | `statuslines` | project | `.claude/settings.json` |
 | `mcps` | project | `.mcp.json` (project root) |
 | `mcps` | user | `~/.claude.json` |
-| `mcps` | local | `.claude.json` (project root) |
+| `mcps` | local | `~/.claude.json`, under `projects.<path>.mcpServers` |
 | `hooks` | project | `.claude/settings.json` |
 | `hooks` | user | `~/.claude/settings.json` |
 | `hooks` | local | `.claude/settings.local.json` |
@@ -1245,14 +1258,24 @@ install while telling nobody anything.
 | Scenario | Action |
 |----------|--------|
 | Entry doesn't exist | Add normally |
-| Entry exists, not in manifest | **Error**: Unmanaged conflict (use `--force` to overwrite) |
+| Entry exists, not in manifest | **Error**: unmanaged conflict (use `--force` to overwrite) |
 | Entry exists, in manifest, unchanged | No-op; the file is not rewritten |
-| Entry exists, in manifest, content changed | Update in place |
-| Entry exists, in manifest, user modified | **Warning**: left alone - the user has taken ownership |
+| Entry exists, in manifest, asset changed | Update in place |
+| Entry exists, in manifest, edited since install | **Error**: conflict (use `--force` to take it back, `--skip-conflicts` to keep the edit) |
+| Entry in manifest, gone from the file | Add it back |
+
+The drift case is the same bargain tai strikes for files: an entry that no
+longer matches what tai wrote is the user's now, so tai stops and says so
+rather than deciding for them. Uninstall makes the opposite call and leaves a
+modified entry alone entirely, since removing it would destroy work tai has no
+claim on.
 
 Entries that merely sit alongside tai's in the same array cannot conflict:
 appending adds to a shared list rather than displacing anything. That is what
 lets hooks from tai, the user, and unrelated tools coexist under one event.
+Reinstalling rewrites tai's element where it already sits rather than removing
+and re-appending it, so a shared array keeps its order and the file is not
+rewritten when nothing changed.
 
 #### Scope Resolution
 

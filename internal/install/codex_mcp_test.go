@@ -254,3 +254,98 @@ func TestCodexHooksNeedNoConsent(t *testing.T) {
 		t.Errorf("hooks.json not written: %v", err)
 	}
 }
+
+// Declining is an answer about a *write*, not a request to remove anything. A
+// server installed under an earlier yes must survive a later no - otherwise one
+// non-interactive reinstall silently deletes a working server, and reports it
+// as merely "skipped".
+func TestCodexMCPDeclineLeavesInstalledServerAlone(t *testing.T) {
+	env, installer, adap := setupCodexMCP(t)
+
+	env.SetupAsset("mcps", "github.yaml", "transport: stdio\ncommand: npx\n")
+	assets := []*config.Asset{mcpAsset(env, "github.yaml")}
+
+	if _, err := installer.Install(adap, "p", assets, InstallOptions{Consent: grantAll}); err != nil {
+		t.Fatalf("first install failed: %v", err)
+	}
+
+	tomlPath := filepath.Join(env.TargetDir, "config.toml")
+	before, err := os.ReadFile(tomlPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	// A second install where consent is now declined - a non-interactive run,
+	// or the user answering differently after an "allow once".
+	result, err := installer.Install(adap, "p", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("second install failed: %v", err)
+	}
+
+	after, err := os.ReadFile(tomlPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("declining rewrote config.toml:\n got: %s\nwant: %s", after, before)
+	}
+	if len(result.Removed) != 0 {
+		t.Errorf("Removed = %v, want the declined entry left alone", result.Removed)
+	}
+	if len(result.Manifest.ConfigEntries) != 1 {
+		t.Fatalf("manifest has %d config entries, want the installed one retained",
+			len(result.Manifest.ConfigEntries))
+	}
+
+	// And it must still be removable afterwards - retaining the manifest entry
+	// is what keeps uninstall able to find it.
+	if _, err := installer.Uninstall(adap); err != nil {
+		t.Fatalf("Uninstall failed: %v", err)
+	}
+	final, err := os.ReadFile(tomlPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if strings.Contains(string(final), "mcp_servers") {
+		t.Errorf("uninstall left the server behind:\n%s", final)
+	}
+}
+
+// A dry run must decide nothing. Asking would put a real, possibly remembered
+// answer behind a command whose whole promise is that it changes nothing.
+func TestCodexMCPDryRunNeverAsks(t *testing.T) {
+	env, installer, adap := setupCodexMCP(t)
+
+	env.SetupAsset("mcps", "github.yaml", "transport: stdio\ncommand: npx\n")
+	assets := []*config.Asset{mcpAsset(env, "github.yaml")}
+
+	asked := 0
+	opts := InstallOptions{
+		DryRun: true,
+		Consent: func(configasset.ConsentRequest) (bool, error) {
+			asked++
+			return true, nil
+		},
+	}
+
+	result, err := installer.Install(adap, "p", assets, opts)
+	if err != nil {
+		t.Fatalf("dry run failed: %v", err)
+	}
+	if asked != 0 {
+		t.Errorf("a dry run asked for consent %d times, want 0", asked)
+	}
+	if _, err := os.Stat(filepath.Join(env.TargetDir, "config.toml")); !os.IsNotExist(err) {
+		t.Error("a dry run wrote config.toml")
+	}
+
+	var explained bool
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "--dry-run") && strings.Contains(w, "--allow-config-rewrite") {
+			explained = true
+		}
+	}
+	if !explained {
+		t.Errorf("warnings = %v, want one saying why it was skipped and how to proceed", result.Warnings)
+	}
+}

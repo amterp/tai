@@ -67,6 +67,19 @@ func (e ConfigEntry) Key() string {
 	return ConfigEntryKey(e.Type, e.Name)
 }
 
+// withoutEdits returns a copy holding only the edits not present in keep, so a
+// reinstall removes what it is not about to rewrite in place.
+func (e ConfigEntry) withoutEdits(keep map[editSlot]configasset.AppliedEdit) ConfigEntry {
+	remaining := make([]configasset.AppliedEdit, 0, len(e.Edits))
+	for _, a := range e.Edits {
+		if _, kept := keep[slotOf(a.File, a.KeyPath, a.Mode, a.ID)]; !kept {
+			remaining = append(remaining, a)
+		}
+	}
+	e.Edits = remaining
+	return e
+}
+
 // ConfigEntryKey builds the lookup key for a config asset of the given type.
 func ConfigEntryKey(assetType, name string) string {
 	if configasset.IsCollection(assetType) {

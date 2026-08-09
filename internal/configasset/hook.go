@@ -95,8 +95,7 @@ func (h *hookHandler) Plan(req Request) (*Plan, error) {
 
 	file := req.Adapter.ConfigFilePath(config.AssetTypeHook, req.Scope)
 	if file == "" {
-		return nil, fmt.Errorf("target %q has no hooks config file for scope %q",
-			req.Adapter.Name(), req.Scope)
+		return nil, UnsupportedScopeError(req.Adapter, config.AssetTypeHook, req.Scope, "hooks")
 	}
 
 	key := req.Adapter.SettingsKey(config.AssetTypeHook)
