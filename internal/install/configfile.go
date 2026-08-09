@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/pelletier/go-toml/v2"
 
 	"github.com/amterp/tai/internal/configasset"
 )
@@ -56,12 +59,12 @@ func (s *configFileSet) load(path string) (map[string]any, error) {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
 
-	doc, err := decodeJSON(data)
+	doc, err := decodeDoc(path, data)
 	if err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
 
-	baseline, err := encodeJSON(doc)
+	baseline, err := encodeDoc(path, doc)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
@@ -82,7 +85,7 @@ func (s *configFileSet) flush() ([]string, error) {
 	for path := range s.dirty {
 		doc := s.docs[path]
 
-		encoded, err := encodeJSON(doc)
+		encoded, err := encodeDoc(path, doc)
 		if err != nil {
 			return written, fmt.Errorf("serializing %s: %w", path, err)
 		}
@@ -99,6 +102,50 @@ func (s *configFileSet) flush() ([]string, error) {
 		written = append(written, path)
 	}
 	return written, nil
+}
+
+// decodeDoc parses a config file into a generic document, picking the format
+// from the file extension. Targets do not agree on one: Codex keeps its config
+// in TOML while everyone else uses JSON.
+func decodeDoc(path string, data []byte) (map[string]any, error) {
+	if isTOML(path) {
+		return decodeTOML(data)
+	}
+	return decodeJSON(data)
+}
+
+// encodeDoc renders a config document in the file's own format.
+func encodeDoc(path string, doc map[string]any) ([]byte, error) {
+	if isTOML(path) {
+		return encodeTOML(doc)
+	}
+	return encodeJSON(doc)
+}
+
+// isTOML reports whether a config file is TOML rather than JSON.
+func isTOML(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".toml")
+}
+
+// decodeTOML parses a TOML config file.
+//
+// Comments and key ordering do not survive: no Go TOML library round-trips
+// them. That loss is why writing a TOML config the user also hand-edits is
+// gated behind their explicit consent.
+func decodeTOML(data []byte) (map[string]any, error) {
+	var doc map[string]any
+	if err := toml.Unmarshal(data, &doc); err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		doc = make(map[string]any)
+	}
+	return doc, nil
+}
+
+// encodeTOML renders a TOML config file.
+func encodeTOML(doc map[string]any) ([]byte, error) {
+	return toml.Marshal(doc)
 }
 
 // decodeJSON parses a config file into a generic document.

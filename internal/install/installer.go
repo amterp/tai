@@ -39,6 +39,14 @@ type InstallOptions struct {
 	// Scope is the profile's default installation scope for config assets.
 	// Empty means config.DefaultScope. Individual assets may override it.
 	Scope string
+
+	// Consent is asked before tai writes a config file that requires the
+	// user's agreement. Returning false skips those assets with a warning.
+	//
+	// Nil declines everything, which is the right default for a library caller
+	// and for any non-interactive context: nothing that needs asking about
+	// happens without someone having been asked.
+	Consent func(configasset.ConsentRequest) (bool, error)
 }
 
 // InstallResult contains the result of an installation.
@@ -130,6 +138,10 @@ type installContext struct {
 	// configFiles batches every target config file touched this install, so
 	// each is read and written once even when many assets share it.
 	configFiles *configFileSet
+
+	// consent caches answers by request key, so a profile with several assets
+	// writing the same file asks about it once.
+	consent map[string]bool
 
 	opts InstallOptions
 }
@@ -247,6 +259,7 @@ func (i *Installer) buildInstallContext(adap adapter.Adapter, existing *Manifest
 		existingFiles:         existingFiles,
 		existingConfigEntries: existingConfigEntries,
 		configFiles:           newConfigFileSet(),
+		consent:               make(map[string]bool),
 		opts:                  opts,
 	}
 }
@@ -793,6 +806,19 @@ func (i *Installer) installConfigAsset(
 		}
 	}
 
+	if plan.Consent != nil {
+		granted, err := i.askConsent(ctx, *plan.Consent)
+		if err != nil {
+			return nil, err
+		}
+		if !granted {
+			result.Warnings = append(result.Warnings, fmt.Sprintf(
+				"skipping %s/%s: writing %s was declined",
+				rca.asset.Type, rca.asset.ConfigName(), primaryPlanFile(plan)))
+			return nil, nil
+		}
+	}
+
 	// A plan can legitimately produce nothing - a hook whose event this target
 	// does not have, for instance. Record no manifest entry for it: an entry
 	// with no edits is indistinguishable from one written before tai tracked
@@ -829,6 +855,35 @@ func (i *Installer) installConfigAsset(
 	}
 
 	return entry, nil
+}
+
+// askConsent resolves a consent request once per install, caching the answer
+// so a profile with several MCP servers asks about the file once rather than
+// once per server.
+func (i *Installer) askConsent(ctx *installContext, req configasset.ConsentRequest) (bool, error) {
+	if granted, asked := ctx.consent[req.Key]; asked {
+		return granted, nil
+	}
+
+	if ctx.opts.Consent == nil {
+		ctx.consent[req.Key] = false
+		return false, nil
+	}
+
+	granted, err := ctx.opts.Consent(req)
+	if err != nil {
+		return false, err
+	}
+	ctx.consent[req.Key] = granted
+	return granted, nil
+}
+
+// primaryPlanFile names the file a plan would write, for messages.
+func primaryPlanFile(plan *configasset.Plan) string {
+	if len(plan.Edits) == 0 {
+		return "the target config"
+	}
+	return plan.Edits[0].File
 }
 
 // revertConfigEdits removes the entries a previous install wrote.
@@ -951,7 +1006,11 @@ func (i *Installer) Uninstall(adap adapter.Adapter) (*InstallResult, error) {
 
 	// Remove config entries, taking back exactly the entries tai wrote and
 	// leaving entries from the user and other tools untouched.
-	uninstallCtx := &installContext{adap: adap, configFiles: newConfigFileSet()}
+	uninstallCtx := &installContext{
+		adap:        adap,
+		configFiles: newConfigFileSet(),
+		consent:     make(map[string]bool),
+	}
 	for _, entry := range manifest.ConfigEntries {
 		result.Removed = append(result.Removed, fmt.Sprintf("[%s] %s", entry.Type, entry.Name))
 		if err := i.revertConfigEdits(uninstallCtx, entry); err != nil {

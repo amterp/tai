@@ -354,10 +354,42 @@ Two consequences worth knowing:
 - **Editing an installed entry takes ownership of it.** tai notices the entry no longer matches what it wrote and leaves it alone rather than reverting or deleting your change.
 - **Unchanged means untouched.** Reinstalling an asset that produces the same entries rewrites nothing, so tai does not churn a file the target may also be writing.
 
+### Codex
+
+Codex has no dedicated MCP config file: servers live in `~/.codex/config.toml`, alongside your model settings, `notify` command, and per-project trust levels. Adding one server means reparsing and re-rendering that whole file, and no Go TOML library preserves comments or key order - so the file comes back correct but reformatted.
+
+Because that is a real cost to a file tai does not own, tai asks first:
+
+```
+Codex has no separate MCP config file, so servers go in ~/.codex/config.toml,
+alongside your model settings, notify command, and project trust levels.
+
+tai reads that file, adds its servers, and writes it back. Your settings
+are preserved, but comments and key order are not - the file comes back
+reformatted. tai only ever removes the servers it added.
+
+Let tai manage MCP servers in Codex's config.toml?
+> Allow, and remember for this machine
+  Allow just this once
+  Decline
+```
+
+Answering "and remember" (or declining) records the decision in `~/.config/tai/preferences.yaml`, so you are asked once per machine. Delete the entry there to be asked again.
+
+Outside a terminal - CI, a script, a pipe - there is nobody to ask, so tai declines and says so. Pass `--allow-config-rewrite` to proceed without the prompt.
+
+Codex also does no string interpolation at all. Instead it takes environment variable *names* in dedicated fields, which can express a whole-value reference and nothing else:
+
+| tai | Codex |
+|-----|-------|
+| `env: {GITHUB_TOKEN: "${GITHUB_TOKEN}"}` | `env_vars = ['GITHUB_TOKEN']` |
+| `headers: {Authorization: "Bearer ${API_KEY}"}` | `bearer_token_env_var = 'API_KEY'` |
+| `headers: {X-Key: "${KEY}"}` | `env_http_headers = {X-Key = 'KEY'}` |
+
+Anything Codex cannot express - an environment key that differs from the variable it reads, or a reference embedded in a longer string like `"https://${HOST}/x"` - is an error rather than a literal `${VAR}` written into the config, which Codex would never expand. Use `native.codex` for those.
+
 ---
 
 ## Planned config assets
 
-:::caution
-MCP servers are not yet supported on Codex. Codex has no dedicated MCP config file - servers live in `~/.codex/config.toml` alongside your model settings and project trust decisions - so installing them means rewriting TOML that tai does not own. MCP assets targeting Codex are currently skipped with a warning.
-:::
+Every config asset type is now implemented. Status lines remain Claude-only, and hooks remain unsupported on OpenCode, for the reasons given above.

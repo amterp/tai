@@ -36,7 +36,7 @@ Tai uses target-agnostic terminology. Here's how asset types map to current targ
 | `file` | (per `dest`) | (per `dest`) | (per `dest`) | (per `dest`) | Loose files copied as-is |
 | `statusline` | `settings.json` | unsupported | unsupported | unsupported | Status bar configuration |
 | `hook` | `settings.json` | `hooks.json` | `settings.json` | unsupported | Command run on a target event |
-| `mcp` | `.mcp.json` / `~/.claude.json` | unsupported | `settings.json` | `opencode.json` | MCP server |
+| `mcp` | `.mcp.json` / `~/.claude.json` | `config.toml` | `settings.json` | `opencode.json` | MCP server |
 
 The last two are **config assets**: they merge as entries into the target's config files instead of being written as files. See "Config Assets" below.
 
@@ -241,8 +241,14 @@ Targets keep the same protocol in different shapes, and tai writes each: Claude
 and Gemini key servers under `mcpServers`, OpenCode uses `mcp` with the command
 as one argv array and env spelled `environment`.
 
-**Codex MCP is not supported yet** - it keeps servers in `config.toml` beside
-settings tai does not own.
+**Codex asks before installing MCP servers**: it keeps them in `config.toml`
+beside settings tai does not own, and rewriting that file loses comments and key
+order. The answer is remembered per machine in
+`~/.config/tai/preferences.yaml`; `--allow-config-rewrite` skips the prompt for
+scripts. Codex also does no interpolation - it takes env var *names*, so
+`TOKEN: "${TOKEN}"` becomes `env_vars`, `Authorization: "Bearer ${KEY}"` becomes
+`bearer_token_env_var`, and anything it cannot express is an error rather than a
+literal `${VAR}` it would never expand.
 
 At `user` scope, Claude MCP servers go in `~/.claude.json`, which also holds
 account and session state. tai merges into it rather than rewriting it, but

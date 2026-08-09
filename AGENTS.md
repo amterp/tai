@@ -116,7 +116,7 @@ The Codex adapter maps:
 - `files/` → location specified by `dest` field (content copied as-is, no transformation)
 - `statuslines/` → unsupported (skipped with warning)
 - `hooks/` → entries under `hooks.<Event>` in `~/.codex/hooks.json` (a dedicated JSON file, so tai never rewrites `config.toml`)
-- `mcps/` → unsupported for now: Codex keeps servers in `config.toml` beside model settings and project trust levels, and tai has no TOML writer
+- `mcps/` → entries under `[mcp_servers]` in `~/.codex/config.toml`, gated behind a one-time consent prompt because writing that file loses comments and key order
 
 Codex `ProvideVariables()` returns: `target_name: "codex"`, `target_name_display: "Codex"`, `target_agents_file: "AGENTS.md"`
 

@@ -675,6 +675,7 @@ requires an explicit `local`/`remote` type. Each adapter renders its own shape.
 | Target | `user` | `project` | `local` |
 |--------|--------|-----------|---------|
 | Claude | `~/.claude.json` | `.mcp.json` | `.claude.json` |
+| Codex | `~/.codex/config.toml` | `.codex/config.toml` | - |
 | Gemini | `~/.gemini/settings.json` | `.gemini/settings.json` | - |
 | OpenCode | `~/.config/opencode/opencode.json` | `opencode.json` | `opencode.json` |
 
@@ -685,10 +686,26 @@ and preserves numbers as literals so nothing it does not manage is reformatted.
 Project scope writes `.mcp.json`, a dedicated single-key file, for anyone who
 would rather keep tai out of that file entirely.
 
-**Codex is not yet supported.** It has no dedicated MCP config file - servers
-live in `~/.codex/config.toml` beside model settings and project trust levels -
-so installing there means rewriting TOML tai does not own. MCP assets targeting
-Codex are skipped with a warning.
+**Codex asks first.** It has no dedicated MCP config file - servers live in
+`~/.codex/config.toml` beside model settings and project trust levels - and
+rewriting that file loses comments and key order, since no Go TOML library
+round-trips them. tai explains the cost, remembers the answer per machine in
+`~/.config/tai/preferences.yaml`, and declines when there is no terminal to ask
+in (`--allow-config-rewrite` overrides).
+
+Codex also does no string interpolation. It takes environment variable *names*
+in dedicated fields, so a whole-value reference translates and nothing else
+does:
+
+| tai | Codex |
+|-----|-------|
+| `env: {TOKEN: "${TOKEN}"}` | `env_vars = ['TOKEN']` |
+| `headers: {Authorization: "Bearer ${KEY}"}` | `bearer_token_env_var = 'KEY'` |
+| `headers: {X-Key: "${KEY}"}` | `env_http_headers = {X-Key = 'KEY'}` |
+
+A reference Codex cannot express - an env key that differs from the variable it
+reads, or one embedded in a longer string - is an error, not a literal `${VAR}`
+written into a config that will never expand it.
 
 #### Hook Definition
 
@@ -2046,7 +2063,7 @@ bundles:
 - [x] **Config assets**
   - [x] StatusLine definitions (`assets/statuslines/`)
   - [x] Hook definitions (`assets/hooks/`)
-  - [x] MCP server definitions (`assets/mcps/`) - Codex still pending
+  - [x] MCP server definitions (`assets/mcps/`)
   - [x] Entry-level merge and surgical removal
   - [x] Scope handling (user/project/local)
   - [x] Config entry manifest tracking

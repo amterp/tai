@@ -112,6 +112,36 @@ type Request struct {
 type Plan struct {
 	Edits    []Edit
 	Warnings []string
+
+	// Consent, when set, must be granted before these edits may be applied.
+	// Used where writing means touching a file on terms the user should agree
+	// to first.
+	Consent *ConsentRequest
+}
+
+// ConsentRequest asks the user to approve writing a config file whose terms
+// they should know about before tai touches it.
+type ConsentRequest struct {
+	// Key identifies the decision so an answer can be remembered. Stable
+	// across runs and independent of which asset triggered it.
+	Key string
+
+	// Question is the one-line prompt.
+	Question string
+
+	// Details explain what tai will do and what it costs, one point per line.
+	Details []string
+}
+
+// ConfigWriteConsenter is implemented by adapters that need the user's
+// agreement before tai writes a particular config file.
+//
+// Optional, like the translator interfaces: a target whose config files tai
+// can write freely implements nothing and is never asked.
+type ConfigWriteConsenter interface {
+	// ConfigWriteConsent returns the consent needed to write file for this
+	// asset type, or nil when none is needed.
+	ConfigWriteConsent(assetType, file string) *ConsentRequest
 }
 
 // Handler owns one config asset type: parsing and validating its YAML, and

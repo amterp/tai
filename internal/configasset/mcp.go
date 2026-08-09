@@ -76,6 +76,10 @@ func (h *mcpHandler) Plan(req Request) (*Plan, error) {
 		return nil, fmt.Errorf("target %q has no settings key for MCP servers", req.Adapter.Name())
 	}
 
+	if consenter, ok := req.Adapter.(ConfigWriteConsenter); ok {
+		plan.Consent = consenter.ConfigWriteConsent(config.AssetTypeMCP, file)
+	}
+
 	plan.Edits = append(plan.Edits, Edit{
 		File:    file,
 		KeyPath: []string{key},

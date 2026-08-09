@@ -173,6 +173,10 @@ func main() {
 		SetDefault(false).
 		SetUsage("Show unified diffs for conflicting files").
 		Register(installCmd)
+	installAllowRewrite, _ := ra.NewBool("allow-config-rewrite").
+		SetDefault(false).
+		SetUsage("Allow rewriting target config files that need consent, without asking").
+		Register(installCmd)
 	installUsed, _ := root.RegisterCmd(installCmd)
 
 	// Reinstall command
@@ -204,6 +208,10 @@ func main() {
 	reinstallDiff, _ := ra.NewBool("diff").
 		SetDefault(false).
 		SetUsage("Show unified diffs for conflicting files").
+		Register(reinstallCmd)
+	reinstallAllowRewrite, _ := ra.NewBool("allow-config-rewrite").
+		SetDefault(false).
+		SetUsage("Allow rewriting target config files that need consent, without asking").
 		Register(reinstallCmd)
 	reinstallUsed, _ := root.RegisterCmd(reinstallCmd)
 
@@ -316,9 +324,23 @@ func main() {
 			os.Exit(1)
 		}
 	case *installUsed:
-		runInstall(*installProfile, *installDryRun, *installForce, *installSkipConflicts, *installVars, *installDiff)
+		runInstall(*installProfile, installFlags{
+			dryRun:             *installDryRun,
+			force:              *installForce,
+			skipConflicts:      *installSkipConflicts,
+			vars:               *installVars,
+			showDiff:           *installDiff,
+			allowConfigRewrite: *installAllowRewrite,
+		})
 	case *reinstallUsed:
-		runReinstall(*reinstallTarget, *reinstallDryRun, *reinstallForce, *reinstallSkipConflicts, *reinstallVars, *reinstallDiff)
+		runReinstall(*reinstallTarget, installFlags{
+			dryRun:             *reinstallDryRun,
+			force:              *reinstallForce,
+			skipConflicts:      *reinstallSkipConflicts,
+			vars:               *reinstallVars,
+			showDiff:           *reinstallDiff,
+			allowConfigRewrite: *reinstallAllowRewrite,
+		})
 	case *refreshUsed:
 		runRefresh(*refreshSource)
 	case *uninstallUsed:
@@ -591,12 +613,24 @@ func runShowBundle(name string) {
 
 // --- Install commands ---
 
-func runInstall(profileName string, dryRun, force, skipConflicts bool, varsStr string, showDiff bool) {
+// installFlags carries the install/reinstall command-line options. They travel
+// together through several layers, and a growing positional parameter list was
+// getting easy to misorder.
+type installFlags struct {
+	dryRun             bool
+	force              bool
+	skipConflicts      bool
+	vars               string
+	showDiff           bool
+	allowConfigRewrite bool
+}
+
+func runInstall(profileName string, flags installFlags) {
 	s := loadState()
 	requireActiveConfig(s)
-	refreshSourcesForInstall(s, dryRun)
+	refreshSourcesForInstall(s, flags.dryRun)
 	buildPatchedViews(s)
-	if err := doInstall(s, profileName, dryRun, force, skipConflicts, varsStr, showDiff); err != nil {
+	if err := doInstall(s, profileName, flags); err != nil {
 		os.Exit(1)
 	}
 }
@@ -665,7 +699,8 @@ func runRefresh(sourceName string) {
 	out.Success(fmt.Sprintf("Refreshed %d source(s).", refreshed))
 }
 
-func runReinstall(target string, dryRun, force, skipConflicts bool, varsStr string, showDiff bool) {
+func runReinstall(target string, flags installFlags) {
+	dryRun := flags.dryRun
 	s := loadState()
 	requireActiveConfig(s)
 
@@ -710,7 +745,7 @@ func runReinstall(target string, dryRun, force, skipConflicts bool, varsStr stri
 		if i > 0 {
 			out.Blank()
 		}
-		if err := doInstall(s, rt.profile, dryRun, force, skipConflicts, varsStr, showDiff); err != nil {
+		if err := doInstall(s, rt.profile, flags); err != nil {
 			// Keep reinstalling the remaining targets; surface the failure
 			// in the exit code at the end.
 			failed = true
@@ -727,7 +762,8 @@ func runReinstall(target string, dryRun, force, skipConflicts bool, varsStr stri
 // should not stop other targets - conflicts, post_install hook failure -
 // are returned instead, so runReinstall can continue its loop and aggregate
 // them into the final exit code.
-func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts bool, varsStr string, showDiff bool) error {
+func doInstall(s *state.State, profileName string, flags installFlags) error {
+	dryRun, force, skipConflicts, varsStr, showDiff := flags.dryRun, flags.force, flags.skipConflicts, flags.vars, flags.showDiff
 	resolved, err := s.ResolveProfile(profileName)
 	if err != nil {
 		fatal("resolving profile: %v", err)
@@ -753,12 +789,18 @@ func doInstall(s *state.State, profileName string, dryRun, force, skipConflicts 
 	if err := template.ValidateVarNames(mergedVars); err != nil {
 		fatal("%v", err)
 	}
+	consent, err := newConsentResolver(out, s.Paths.ConfigDir, flags.allowConfigRewrite)
+	if err != nil {
+		fatal("%v", err)
+	}
+
 	opts := install.InstallOptions{
 		DryRun:        dryRun,
 		Force:         force,
 		SkipConflicts: skipConflicts,
 		Variables:     mergedVars,
 		Scope:         resolved.Scope,
+		Consent:       consent.Resolve,
 	}
 
 	assets := make([]*config.Asset, len(resolved.Assets))

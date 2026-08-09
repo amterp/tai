@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/amterp/tai/internal/adapter"
@@ -25,6 +26,14 @@ type Adapter struct {
 
 // HooksSettingsKey is the top-level key Codex reads hooks from.
 const HooksSettingsKey = "hooks"
+
+// MCPSettingsKey is the TOML table Codex reads MCP servers from. Note the
+// snake_case spelling, unlike the mcpServers other targets use.
+const MCPSettingsKey = "mcp_servers"
+
+// mcpConsentKey identifies the "may tai rewrite config.toml" decision, so the
+// answer can be remembered across runs.
+const mcpConsentKey = "codex:config.toml"
 
 // hookEvents maps canonical tai events to Codex's names.
 //
@@ -168,7 +177,156 @@ func (a *Adapter) Run(args []string) error {
 
 // SupportedConfigAssetTypes returns the config asset types Codex supports.
 func (a *Adapter) SupportedConfigAssetTypes() []string {
-	return []string{config.AssetTypeHook}
+	return []string{config.AssetTypeHook, config.AssetTypeMCP}
+}
+
+// ConfigWriteConsent asks before tai rewrites config.toml.
+//
+// Codex has no dedicated MCP file, so servers land in the same config.toml
+// that holds the user's model settings, notify command, and per-project trust
+// levels. tai has to reparse and re-render that whole file to add one table,
+// and no Go TOML library preserves comments or key order - so the file comes
+// back correct but reformatted. That is a real cost to a file tai does not
+// own, and worth one question rather than a surprise.
+func (a *Adapter) ConfigWriteConsent(assetType, file string) *configasset.ConsentRequest {
+	if assetType != config.AssetTypeMCP {
+		return nil
+	}
+	return &configasset.ConsentRequest{
+		Key:      mcpConsentKey,
+		Question: "Let tai manage MCP servers in Codex's config.toml?",
+		Details: []string{
+			"Codex has no separate MCP config file, so servers go in " + file + ",",
+			"alongside your model settings, notify command, and project trust levels.",
+			"",
+			"tai reads that file, adds its servers, and writes it back. Your settings",
+			"are preserved, but comments and key order are not - the file comes back",
+			"reformatted. tai only ever removes the servers it added.",
+		},
+	}
+}
+
+// TransformMCP renders an MCP server in Codex's shape.
+//
+// Codex does no string interpolation at all. Instead it takes environment
+// variable *names* in dedicated fields, which can express a whole-value
+// reference and nothing else. So "${TOKEN}" translates cleanly while
+// "Bearer ${TOKEN}" cannot, and saying so beats installing a server that
+// authenticates with a literal dollar sign.
+func (a *Adapter) TransformMCP(_ string, cfg *config.MCPConfig) (map[string]any, []string, error) {
+	entry := map[string]any{}
+	var warnings []string
+
+	switch cfg.Transport {
+	case config.MCPTransportStdio:
+		entry["command"] = cfg.Command
+		if len(cfg.Args) > 0 {
+			entry["args"] = toAnySlice(cfg.Args)
+		}
+		if cfg.Cwd != "" {
+			entry["cwd"] = cfg.Cwd
+		}
+
+		env := map[string]any{}
+		var forward []any
+		for key, value := range cfg.Env {
+			if !configasset.HasEnvRef(value) {
+				env[key] = value
+				continue
+			}
+			name, whole := configasset.WholeEnvRef(value)
+			if !whole {
+				return nil, nil, fmt.Errorf(
+					"env %q embeds an environment reference in a larger string, which Codex cannot express; "+
+						"use a whole-value reference like \"${VAR}\", or set it via native.codex", key)
+			}
+			if name != key {
+				return nil, nil, fmt.Errorf(
+					"env %q reads ${%s}: Codex can only forward a variable under its own name; "+
+						"rename the key to %s, or set it via native.codex", key, name, name)
+			}
+			// Codex forwards a variable of the same name rather than assigning
+			// a value, which is exactly what a whole-value self-reference means.
+			forward = append(forward, name)
+		}
+		if len(env) > 0 {
+			entry["env"] = env
+		}
+		if len(forward) > 0 {
+			sortAny(forward)
+			entry["env_vars"] = forward
+		}
+
+	case config.MCPTransportHTTP:
+		entry["url"] = cfg.URL
+
+		headers := map[string]any{}
+		envHeaders := map[string]any{}
+		for key, value := range cfg.Headers {
+			if !configasset.HasEnvRef(value) {
+				headers[key] = value
+				continue
+			}
+			if name, ok := bearerEnvRef(key, value); ok {
+				// The overwhelmingly common shape, and the one Codex has a
+				// dedicated field for.
+				entry["bearer_token_env_var"] = name
+				continue
+			}
+			name, whole := configasset.WholeEnvRef(value)
+			if !whole {
+				return nil, nil, fmt.Errorf(
+					"header %q embeds an environment reference in a larger string, which Codex cannot express; "+
+						"use a whole-value reference, an Authorization: \"Bearer ${VAR}\" header, or native.codex", key)
+			}
+			envHeaders[key] = name
+		}
+		if len(headers) > 0 {
+			entry["http_headers"] = headers
+		}
+		if len(envHeaders) > 0 {
+			entry["env_http_headers"] = envHeaders
+		}
+	}
+
+	if cfg.Description != "" {
+		warnings = append(warnings, "Codex MCP entries have no 'description' field - dropped")
+	}
+
+	for key, value := range cfg.Native[a.Name()] {
+		entry[key] = value
+	}
+
+	return entry, warnings, nil
+}
+
+// bearerEnvRef recognizes an Authorization header of the form
+// "Bearer ${VAR}", which Codex expresses with bearer_token_env_var.
+func bearerEnvRef(header, value string) (string, bool) {
+	if !strings.EqualFold(header, "Authorization") {
+		return "", false
+	}
+	rest, ok := strings.CutPrefix(value, "Bearer ")
+	if !ok {
+		return "", false
+	}
+	return configasset.WholeEnvRef(rest)
+}
+
+// toAnySlice converts a string slice for serialization.
+func toAnySlice(in []string) []any {
+	out := make([]any, len(in))
+	for i, s := range in {
+		out[i] = s
+	}
+	return out
+}
+
+// sortAny sorts a slice of strings held as any, for deterministic output.
+func sortAny(in []any) {
+	sort.Slice(in, func(i, j int) bool {
+		return in[i].(string) < in[j].(string)
+	})
 }
 
 // InstallWarnings returns Codex-specific advisory install warnings.
@@ -202,20 +360,27 @@ func (a *Adapter) InstallWarnings(asset *config.Asset) []string {
 // reads both, and the JSON file means tai never has to rewrite the TOML that
 // also holds the user's model settings and project trust decisions.
 func (a *Adapter) ConfigFilePath(assetType, scope string) string {
-	if assetType != config.AssetTypeHook {
+	var name string
+	switch assetType {
+	case config.AssetTypeHook:
+		name = "hooks.json"
+	case config.AssetTypeMCP:
+		// No dedicated MCP file exists; servers live in the main config.
+		name = "config.toml"
+	default:
 		return ""
 	}
 
 	switch scope {
 	case config.ScopeProject:
-		rel := filepath.Join(".codex", "hooks.json")
+		rel := filepath.Join(".codex", name)
 		abs, err := filepath.Abs(rel)
 		if err != nil {
 			return rel
 		}
 		return abs
 	case config.ScopeUser:
-		return filepath.Join(a.targetDir, "hooks.json")
+		return filepath.Join(a.targetDir, name)
 	default:
 		// Codex has no local scope.
 		return ""
@@ -241,10 +406,14 @@ func (a *Adapter) HookTimeoutUnit() configasset.TimeoutUnit {
 
 // SettingsKey returns the JSON key name for a config asset type.
 func (a *Adapter) SettingsKey(assetType string) string {
-	if assetType == config.AssetTypeHook {
+	switch assetType {
+	case config.AssetTypeHook:
 		return HooksSettingsKey
+	case config.AssetTypeMCP:
+		return MCPSettingsKey
+	default:
+		return ""
 	}
-	return ""
 }
 
 // MainFileName returns the main file name for a directory asset type.

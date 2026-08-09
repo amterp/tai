@@ -252,7 +252,7 @@ func TestAdapterSupportedConfigAssetTypes(t *testing.T) {
 	a := New("")
 	got := a.SupportedConfigAssetTypes()
 
-	want := []string{config.AssetTypeHook}
+	want := []string{config.AssetTypeHook, config.AssetTypeMCP}
 	if len(got) != len(want) {
 		t.Fatalf("SupportedConfigAssetTypes() = %v, want %v", got, want)
 	}
