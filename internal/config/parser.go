@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/amterp/tai/internal/fetch"
 )
 
 // ParseTaiConfig parses a tai.yaml file from the given path.
@@ -82,8 +84,14 @@ func validateTaiConfig(config *TaiConfig) error {
 			if len(s.Command) > 0 {
 				return fmt.Errorf("source %q: 'command' is only valid with type 'command'", s.Name)
 			}
+			if s.URL != "" {
+				return fmt.Errorf("source %q: 'url' is only valid with type 'url'", s.Name)
+			}
+			if s.Filename != "" {
+				return fmt.Errorf("source %q: 'filename' is only valid with type 'url'", s.Name)
+			}
 			if s.Timeout != "" {
-				return fmt.Errorf("source %q: 'timeout' is only valid with type 'command'", s.Name)
+				return fmt.Errorf("source %q: 'timeout' is only valid with type 'command' or 'url'", s.Name)
 			}
 		case SourceTypeCommand:
 			if len(s.Command) == 0 {
@@ -95,11 +103,44 @@ func validateTaiConfig(config *TaiConfig) error {
 			if s.Path != "" {
 				return fmt.Errorf("source %q: 'path' is not valid with type 'command'", s.Name)
 			}
+			if s.URL != "" {
+				return fmt.Errorf("source %q: 'url' is only valid with type 'url'", s.Name)
+			}
+			if s.Filename != "" {
+				return fmt.Errorf("source %q: 'filename' is only valid with type 'url'", s.Name)
+			}
+			if err := validateTimeoutString(s.Timeout, "timeout"); err != nil {
+				return fmt.Errorf("source %q: %w", s.Name, err)
+			}
+		case SourceTypeURL:
+			if s.URL == "" {
+				return fmt.Errorf("source %q: type 'url' requires 'url'", s.Name)
+			}
+			// Checked here rather than at fetch time so a typo'd URL is a
+			// config error, not a failure part-way through an install.
+			if _, err := fetch.ParseURL(s.URL); err != nil {
+				return fmt.Errorf("source %q: %w", s.Name, err)
+			}
+			if s.Path != "" {
+				return fmt.Errorf("source %q: 'path' is not valid with type 'url'", s.Name)
+			}
+			if len(s.Command) > 0 {
+				return fmt.Errorf("source %q: 'command' is only valid with type 'command'", s.Name)
+			}
+			// The filename becomes a path segment inside the source's cache
+			// dir and the `path:` includes address it by, so it has to be a
+			// plain name.
+			if s.Filename != "" && (strings.ContainsAny(s.Filename, `/\`) || s.Filename == "." || s.Filename == "..") {
+				return fmt.Errorf("source %q: 'filename' must be a plain name (no path separators or '.'/'..'): %q", s.Name, s.Filename)
+			}
+			if s.ResolvedFilename() == "" {
+				return fmt.Errorf("source %q: cannot derive a filename from url %q; set 'filename:'", s.Name, s.URL)
+			}
 			if err := validateTimeoutString(s.Timeout, "timeout"); err != nil {
 				return fmt.Errorf("source %q: %w", s.Name, err)
 			}
 		default:
-			return fmt.Errorf("source %q: invalid type %q (expected 'local', 'tai-repo', or 'command')", s.Name, s.Type)
+			return fmt.Errorf("source %q: invalid type %q (expected 'local', 'tai-repo', 'command', or 'url')", s.Name, s.Type)
 		}
 
 		// Patches and exclusions apply to every source type.

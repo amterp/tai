@@ -1,6 +1,8 @@
 package source
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -415,14 +417,177 @@ func TestLoaderCommandSource(t *testing.T) {
 		}
 	})
 
-	t.Run("refresh on non-command source rejected", func(t *testing.T) {
+	t.Run("refresh on non-fetchable source rejected", func(t *testing.T) {
 		env := testutil.NewTestEnv(t)
 		loader := NewLoader(env.ConfigRepo)
 		loader.SetCacheDir(env.CacheDir)
 
 		err := loader.Refresh(config.Source{Name: "local", Type: "local", Path: "./assets"}, "")
 		if err == nil {
-			t.Fatal("expected error refreshing non-command source")
+			t.Fatal("expected error refreshing a source that is not fetched")
+		}
+		if !strings.Contains(err.Error(), "cannot be fetched") {
+			t.Errorf("error = %v, want it to say the source cannot be fetched", err)
+		}
+	})
+}
+
+func TestLoaderURLSource(t *testing.T) {
+	urlSource := func(rawURL string) config.Source {
+		return config.Source{Name: "upstream", Type: config.SourceTypeURL, URL: rawURL}
+	}
+
+	t.Run("resolvePath points into cache dir", func(t *testing.T) {
+		env := testutil.NewTestEnv(t)
+		loader := NewLoader(env.ConfigRepo)
+		loader.SetCacheDir(env.CacheDir)
+
+		path, err := loader.resolvePath(urlSource("https://example.com/GUIDE.md"))
+		if err != nil {
+			t.Fatalf("resolvePath() error = %v", err)
+		}
+		wantPrefix := filepath.Join(env.CacheDir, "sources") + string(filepath.Separator)
+		if !strings.HasPrefix(path, wantPrefix) {
+			t.Errorf("resolved path %q not under %q", path, wantPrefix)
+		}
+		if filepath.Base(path) != "upstream" {
+			t.Errorf("resolved path %q should end in source name", path)
+		}
+	})
+
+	t.Run("load with missing cache tolerated", func(t *testing.T) {
+		env := testutil.NewTestEnv(t)
+		loader := NewLoader(env.ConfigRepo)
+		loader.SetCacheDir(env.CacheDir)
+
+		ls, err := loader.Load(urlSource("https://example.com/GUIDE.md"))
+		if err != nil {
+			t.Fatalf("Load() error = %v (missing cache must not fail the load)", err)
+		}
+		if ls.Materialized {
+			t.Error("Materialized should be false before first fetch")
+		}
+		if err := ls.RequireMaterialized(); err == nil {
+			t.Error("RequireMaterialized() should error before first fetch")
+		} else if !strings.Contains(err.Error(), "tai refresh") {
+			t.Errorf("error should hint at 'tai refresh', got: %v", err)
+		}
+	})
+
+	t.Run("refresh writes the file into a one-file directory", func(t *testing.T) {
+		var gotUA string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotUA = r.Header.Get("User-Agent")
+			_, _ = w.Write([]byte("# Guide\n"))
+		}))
+		defer server.Close()
+
+		env := testutil.NewTestEnv(t)
+		loader := NewLoader(env.ConfigRepo)
+		loader.SetCacheDir(env.CacheDir)
+
+		src := urlSource(server.URL + "/GUIDE.md")
+		if err := loader.Refresh(src, "1.2.3"); err != nil {
+			t.Fatalf("Refresh() error = %v", err)
+		}
+
+		ls, err := loader.Load(src)
+		if err != nil {
+			t.Fatalf("Load() after refresh error = %v", err)
+		}
+		if !ls.Materialized {
+			t.Error("Materialized should be true after refresh")
+		}
+
+		got, err := os.ReadFile(filepath.Join(ls.ResolvedPath, "GUIDE.md"))
+		if err != nil {
+			t.Fatalf("reading fetched file: %v", err)
+		}
+		if string(got) != "# Guide\n" {
+			t.Errorf("content = %q, want %q", got, "# Guide\n")
+		}
+		if gotUA != "tai/1.2.3" {
+			t.Errorf("User-Agent = %q, want %q", gotUA, "tai/1.2.3")
+		}
+	})
+
+	t.Run("url source carries no assets", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("# Guide\n"))
+		}))
+		defer server.Close()
+
+		env := testutil.NewTestEnv(t)
+		loader := NewLoader(env.ConfigRepo)
+		loader.SetCacheDir(env.CacheDir)
+
+		src := urlSource(server.URL + "/GUIDE.md")
+		if err := loader.Refresh(src, ""); err != nil {
+			t.Fatalf("Refresh() error = %v", err)
+		}
+		ls, err := loader.Load(src)
+		if err != nil {
+			t.Fatalf("Load() error = %v (a source with no asset dirs must still load)", err)
+		}
+		if got := len(ls.ListAllAssets()); got != 0 {
+			t.Errorf("url source should carry 0 assets, got %d", got)
+		}
+	})
+
+	t.Run("explicit filename is honored", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("x"))
+		}))
+		defer server.Close()
+
+		env := testutil.NewTestEnv(t)
+		loader := NewLoader(env.ConfigRepo)
+		loader.SetCacheDir(env.CacheDir)
+
+		src := urlSource(server.URL + "/raw")
+		src.Filename = "GUIDE.md"
+		if err := loader.Refresh(src, ""); err != nil {
+			t.Fatalf("Refresh() error = %v", err)
+		}
+		ls, err := loader.Load(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(ls.ResolvedPath, "GUIDE.md")); err != nil {
+			t.Errorf("expected the file to be stored as GUIDE.md: %v", err)
+		}
+	})
+
+	t.Run("failed refresh preserves previous cache", func(t *testing.T) {
+		serve := "v1"
+		status := http.StatusOK
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(serve))
+		}))
+		defer server.Close()
+
+		env := testutil.NewTestEnv(t)
+		loader := NewLoader(env.ConfigRepo)
+		loader.SetCacheDir(env.CacheDir)
+
+		src := urlSource(server.URL + "/GUIDE.md")
+		if err := loader.Refresh(src, ""); err != nil {
+			t.Fatalf("initial Refresh() error = %v", err)
+		}
+
+		status = http.StatusInternalServerError
+		if err := loader.Refresh(src, ""); err == nil {
+			t.Fatal("expected error from failing fetch")
+		}
+
+		ls, err := loader.Load(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(filepath.Join(ls.ResolvedPath, "GUIDE.md"))
+		if err != nil || string(got) != "v1" {
+			t.Errorf("previous cache should survive failed refresh, got %q, err %v", string(got), err)
 		}
 	})
 }

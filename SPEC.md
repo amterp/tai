@@ -210,6 +210,13 @@ sources:
       - git clone --depth=1 git@github.com:company/ai-standards.git "$TAI_DEST_DIR"
     timeout: 2m   # optional, default 30s
 
+  # A url source: one file downloaded over http(s). For pulling a single
+  # document off a raw host and, usually, patching it.
+  - name: upstream-guide
+    type: url
+    url: https://raw.githubusercontent.com/foo/bar/main/GUIDE.md
+    patches: patches/upstream-guide/
+
 # Default profile to use when none specified
 default_profile: personal
 ```
@@ -254,6 +261,66 @@ Freshness model:
 Trust model matches command skill-includes: source commands run arbitrary
 code with your environment. Treat a config repo that declares command sources
 the same as running its code.
+
+#### URL Sources
+
+A `type: url` source downloads one file over http or https. It exists so that
+patching a single remote document - a skill file off raw.githubusercontent.com,
+a reference doc your team publishes - takes one declaration instead of a
+`command` source wrapping `curl`.
+
+The file is stored in the source's cache directory under its filename, so the
+source is a **directory holding one file**:
+
+```
+~/.cache/tai/sources/<repo-key>/upstream-guide/
+└── GUIDE.md
+```
+
+That shape is what makes the rest of tai work on it unchanged. A patched view
+is built from it like any other source, `tai patch` operates on it like any
+other source, and a skill reaches the file with an ordinary include:
+
+```yaml
+# assets/skills/mine/tai.yaml
+include:
+  - from: upstream-guide
+    path: GUIDE.md
+    dest: refs/guide.md
+```
+
+Because `resolveSourceInclude` reads through the source's content path, the
+include receives the *patched* bytes. Nothing in the include pipeline knows
+patches exist.
+
+Field rules:
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `url` | Yes | http or https. Scheme is validated when tai.yaml is parsed, not at fetch time. |
+| `filename` | No | Name the file is stored under. Defaults to the URL's basename; required when the URL has none (e.g. `https://host/` or a query-only path). Must be a plain name. |
+| `timeout` | No | Duration string. Default 30s. |
+| `path` | Rejected | url sources have no on-disk path |
+| `command` | Rejected | Use `type: command` for that |
+
+A url source carries **no assets** - it has no `personas/`, `skills/`, or other
+asset directory, so `tai list assets` shows nothing for it. That is the
+intended configuration, not a mistake, and tai does not warn about it. The
+source exists to be named by an include's `from:` and by `patches:`.
+
+Freshness matches command sources exactly: fetched before every install,
+fetched by `tai refresh`, served from cache by read-only commands, and never
+fetched under `--dry-run`. An unreachable URL fails the install rather than
+falling back to the cache - silently installing yesterday's content is the
+failure mode patches exist to prevent. The atomic swap means a failed fetch
+leaves the previous cache intact.
+
+Requests carry `User-Agent: tai/<version>`, follow at most 10 redirects
+(re-validating the scheme at each hop), and are capped at 10MB.
+
+Unlike a command source, a url source runs no code. Its trust model is only
+that of the content it downloads, which patches and `.blessed` snapshots exist
+to keep honest.
 
 ### Bundle Definition
 
@@ -1299,14 +1366,14 @@ bundles:
   - dev-tools
 ```
 
-### Command Source Caching
+### Fetched Source Caching
 
-Command sources are cached in `~/.cache/tai/sources/<repo-key>/<name>`, where
-`<repo-key>` is derived from the active config repo's path - switching
-between config repos that declare same-named command sources cannot poison
-each other's cache.
+Command and url sources are cached in `~/.cache/tai/sources/<repo-key>/<name>`,
+where `<repo-key>` is derived from the active config repo's path - switching
+between config repos that declare same-named sources cannot poison each
+other's cache.
 
-- `tai install` / `tai reinstall` re-fetch command sources automatically; no
+- `tai install` / `tai reinstall` re-fetch these sources automatically; no
   explicit refresh is needed.
 - `tai refresh` fetches without installing.
 - Fetches stage into `~/.cache/tai/staging` and swap in atomically; a failed
@@ -2064,7 +2131,7 @@ bundles:
 
 - [x] Config repo structure (tai.yaml, bundles/, profiles/, assets/)
 - [x] Target-agnostic asset structure (personas/, delegates/, skills/, files/)
-- [x] Source types: local path, other tai repo
+- [x] Source types: local path, other tai repo, command, url
 - [x] Bundle and profile resolution with circular reference detection (fail-fast)
 - [x] Diamond dependency deduplication
 - [x] Claude adapter with file-copy installation and terminology mapping

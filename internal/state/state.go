@@ -218,27 +218,27 @@ func (s *State) LoadConfigRepo(path string) error {
 	return nil
 }
 
-// HasCommandSources reports whether the active config declares any command
-// sources.
-func (s *State) HasCommandSources() bool {
+// HasFetchableSources reports whether the active config declares any source
+// whose content is pulled into the cache.
+func (s *State) HasFetchableSources() bool {
 	if s.TaiConfig == nil {
 		return false
 	}
 	for _, src := range s.TaiConfig.Sources {
-		if src.IsCommand() {
+		if src.NeedsFetch() {
 			return true
 		}
 	}
 	return false
 }
 
-// RefreshCommandSources runs the fetch command for every command source
-// (or just the named one when name is non-empty), then reloads the config
-// repo so sources, resolvers, and the installer all see the freshly
-// materialized content - they capture the sources map at construction, so
-// mutating it in place would leave them stale. onRefresh (may be nil) is
-// called with each source name before its fetch runs, for progress output.
-func (s *State) RefreshCommandSources(name string, onRefresh func(name string)) error {
+// RefreshSources fetches every source that needs fetching (or just the named
+// one when name is non-empty), then reloads the config repo so sources,
+// resolvers, and the installer all see the freshly materialized content -
+// they capture the sources map at construction, so mutating it in place would
+// leave them stale. onRefresh (may be nil) is called with each source name
+// before its fetch runs, for progress output.
+func (s *State) RefreshSources(name string, onRefresh func(name string)) error {
 	if err := s.RequireActiveConfig(); err != nil {
 		return err
 	}
@@ -248,9 +248,9 @@ func (s *State) RefreshCommandSources(name string, onRefresh func(name string)) 
 
 	refreshed := 0
 	for _, src := range s.TaiConfig.Sources {
-		if !src.IsCommand() {
+		if !src.NeedsFetch() {
 			if name != "" && src.Name == name {
-				return fmt.Errorf("source %q is not a command source (type %q)", src.Name, src.Type)
+				return fmt.Errorf("source %q does not need fetching (type %q); only 'command' and 'url' sources are fetched", src.Name, src.Type)
 			}
 			continue
 		}

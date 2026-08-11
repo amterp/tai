@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"io/fs"
+	"net/url"
 	"path"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,7 @@ type TaiConfig struct {
 // Source represents a location that provides assets.
 type Source struct {
 	Name string `yaml:"name"`
-	Type string `yaml:"type"` // "local" (default), "tai-repo", or "command"
+	Type string `yaml:"type"` // "local" (default), "tai-repo", "command", or "url"
 	Path string `yaml:"path"` // local/tai-repo only
 
 	// Command materializes the source ("command" type only). The argv list is
@@ -32,8 +33,22 @@ type Source struct {
 	// cache directory, which is then treated exactly like a local source.
 	Command []string `yaml:"command"`
 
-	// Timeout for the command, parsed via time.ParseDuration. Defaults to
-	// DefaultCommandTimeout when unset. Command sources only.
+	// URL is the single file a "url" source fetches. The file is cached at
+	// <cacheDir>/sources/<repoKey>/<name>/<filename>, so the source is a
+	// directory holding one file: includes reach it as `path: <filename>`,
+	// and a patch targets `file: <filename>`.
+	//
+	// Modeling it as a one-file directory rather than as a bare file is what
+	// lets the rest of tai treat it like any other source - patched views,
+	// asset discovery, and exclusion all walk a directory.
+	URL string `yaml:"url"`
+
+	// Filename is the name a url source's fetched file is stored under.
+	// Defaults to the URL's basename; required when the URL has none.
+	Filename string `yaml:"filename"`
+
+	// Timeout for the fetch, parsed via time.ParseDuration. Defaults to
+	// DefaultCommandTimeout when unset. Command and url sources only.
 	Timeout string `yaml:"timeout"`
 
 	// Patches is a config-repo-relative directory of patch files applied to
@@ -90,6 +105,44 @@ const SourceTypeCommand = "command"
 // IsCommand returns true if this source is materialized by running a command.
 func (s *Source) IsCommand() bool {
 	return s.Type == SourceTypeCommand
+}
+
+// SourceTypeURL is the source type materialized by downloading a single file.
+const SourceTypeURL = "url"
+
+// IsURL returns true if this source is materialized by downloading a file.
+func (s *Source) IsURL() bool {
+	return s.Type == SourceTypeURL
+}
+
+// NeedsFetch reports whether this source's content is pulled from elsewhere
+// into the cache, rather than read from a path the user already has.
+//
+// This, not IsCommand, is what the fetch lifecycle keys off: fetched sources
+// are refreshed before every install, are the only ones `tai refresh` acts on,
+// and are the only ones whose absence at load time is tolerated rather than
+// fatal. Named for the question being asked, since Materialized already
+// answers "has it been fetched".
+func (s *Source) NeedsFetch() bool {
+	return s.IsCommand() || s.IsURL()
+}
+
+// ResolvedFilename returns the name a url source's fetched file is stored
+// under: the explicit Filename, else the URL's basename. Returns "" when
+// neither yields a usable name, which validation rejects at parse time.
+func (s *Source) ResolvedFilename() string {
+	if s.Filename != "" {
+		return s.Filename
+	}
+	parsed, err := url.Parse(s.URL)
+	if err != nil {
+		return ""
+	}
+	base := path.Base(parsed.Path)
+	if base == "." || base == "/" || base == "" {
+		return ""
+	}
+	return base
 }
 
 // ResolvedTimeout returns the parsed command timeout, or DefaultCommandTimeout

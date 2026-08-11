@@ -9,7 +9,7 @@ const (
 	StatusUnblessed                     // applies cleanly; no snapshot to compare against
 	StatusBroken                        // an edit could not be applied
 	StatusFileMissing                   // the target file is absent from the source
-	StatusSourceUnfetched               // command source not fetched yet
+	StatusSourceUnfetched               // a fetched source (command or url) whose fetch has not run
 )
 
 // String renders the status as `tai patch list` shows it.

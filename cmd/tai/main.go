@@ -217,10 +217,10 @@ func main() {
 
 	// Refresh command
 	refreshCmd := ra.NewCmd("refresh")
-	refreshCmd.SetDescription("Fetch command sources into the cache")
+	refreshCmd.SetDescription("Fetch remote sources into the cache")
 	refreshSource, _ := ra.NewString("source").
 		SetOptional(true).
-		SetUsage("Source to refresh (default: all command sources)").
+		SetUsage("Source to refresh (default: all fetchable sources)").
 		Register(refreshCmd)
 	refreshUsed, _ := root.RegisterCmd(refreshCmd)
 
@@ -442,7 +442,7 @@ func runListSources() {
 			typeStr = "local"
 		}
 		extra := src.Path
-		if src.IsCommand() {
+		if src.NeedsFetch() {
 			extra = "not fetched (run 'tai refresh')"
 			if loaded, ok := s.Sources[src.Name]; ok && loaded.Materialized {
 				extra = "cached"
@@ -649,30 +649,30 @@ func buildPatchedViews(s *state.State) {
 	}
 }
 
-// refreshSourcesForInstall fetches command sources so installs always see
+// refreshSourcesForInstall fetches remote sources so installs always see
 // fresh content. Dry-run skips the fetch (it's a side effect a preview
 // shouldn't have) and resolves from whatever is cached.
 func refreshSourcesForInstall(s *state.State, dryRun bool) {
-	if !s.HasCommandSources() {
+	if !s.HasFetchableSources() {
 		return
 	}
 	if dryRun {
 		for _, src := range s.TaiConfig.Sources {
-			if !src.IsCommand() {
+			if !src.NeedsFetch() {
 				continue
 			}
 			if loaded, ok := s.Sources[src.Name]; ok && !loaded.Materialized {
 				// Resolution will fail if the profile uses this source; warn
 				// up front so the failure isn't a surprise.
-				out.Info("Would refresh command source '" + src.Name + "' (not fetched yet; run 'tai refresh' to enable previewing its assets)")
+				out.Info("Would refresh source '" + src.Name + "' (not fetched yet; run 'tai refresh' to enable previewing its assets)")
 			} else {
-				out.Info("Would refresh command source '" + src.Name + "'")
+				out.Info("Would refresh source '" + src.Name + "'")
 			}
 		}
 		return
 	}
-	err := s.RefreshCommandSources("", func(name string) {
-		out.Info("Refreshing command source '" + name + "'...")
+	err := s.RefreshSources("", func(name string) {
+		out.Info("Refreshing source '" + name + "'...")
 	})
 	if err != nil {
 		fatal("refreshing sources: %v", err)
@@ -683,14 +683,14 @@ func runRefresh(sourceName string) {
 	s := loadState()
 	requireActiveConfig(s)
 
-	if !s.HasCommandSources() {
-		out.Info("No command sources configured.")
+	if !s.HasFetchableSources() {
+		out.Info("No fetchable sources configured (only 'command' and 'url' sources are fetched).")
 		return
 	}
 
 	refreshed := 0
-	err := s.RefreshCommandSources(sourceName, func(name string) {
-		out.Info("Refreshing command source '" + name + "'...")
+	err := s.RefreshSources(sourceName, func(name string) {
+		out.Info("Refreshing source '" + name + "'...")
 		refreshed++
 	})
 	if err != nil {

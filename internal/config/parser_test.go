@@ -197,6 +197,182 @@ sources:
 			wantErr: true,
 		},
 		{
+			name: "valid url source",
+			content: `version: 1
+sources:
+  - name: upstream
+    type: url
+    url: https://raw.githubusercontent.com/foo/bar/main/GUIDE.md
+    timeout: 1m
+`,
+			check: func(t *testing.T, c *TaiConfig) {
+				src := c.Sources[1] // implicit local + upstream
+				if !src.IsURL() {
+					t.Error("IsURL() = false, want true")
+				}
+				if !src.NeedsFetch() {
+					t.Error("NeedsFetch() = false, want true")
+				}
+				if src.IsCommand() {
+					t.Error("IsCommand() = true, want false")
+				}
+				if got := src.ResolvedFilename(); got != "GUIDE.md" {
+					t.Errorf("ResolvedFilename() = %q, want %q", got, "GUIDE.md")
+				}
+				if got := src.ResolvedTimeout(); got != time.Minute {
+					t.Errorf("ResolvedTimeout() = %v, want 1m", got)
+				}
+			},
+		},
+		{
+			name: "url source defaults timeout",
+			content: `version: 1
+sources:
+  - name: upstream
+    type: url
+    url: https://example.com/GUIDE.md
+`,
+			check: func(t *testing.T, c *TaiConfig) {
+				if got := c.Sources[1].ResolvedTimeout(); got != DefaultCommandTimeout {
+					t.Errorf("ResolvedTimeout() = %v, want default %v", got, DefaultCommandTimeout)
+				}
+			},
+		},
+		{
+			name: "url source explicit filename overrides basename",
+			content: `version: 1
+sources:
+  - name: upstream
+    type: url
+    url: https://example.com/raw?id=42
+    filename: GUIDE.md
+`,
+			check: func(t *testing.T, c *TaiConfig) {
+				if got := c.Sources[1].ResolvedFilename(); got != "GUIDE.md" {
+					t.Errorf("ResolvedFilename() = %q, want %q", got, "GUIDE.md")
+				}
+			},
+		},
+		{
+			name: "url source without url rejected",
+			content: `version: 1
+sources:
+  - name: upstream
+    type: url
+`,
+			wantErr: true,
+		},
+		{
+			name: "url source with non-http scheme rejected",
+			content: `version: 1
+sources:
+  - name: upstream
+    type: url
+    url: file:///etc/passwd
+`,
+			wantErr: true,
+		},
+		{
+			name: "url source with path rejected",
+			content: `version: 1
+sources:
+  - name: upstream
+    type: url
+    url: https://example.com/GUIDE.md
+    path: ./assets
+`,
+			wantErr: true,
+		},
+		{
+			name: "url source with command rejected",
+			content: `version: 1
+sources:
+  - name: upstream
+    type: url
+    url: https://example.com/GUIDE.md
+    command: [./fetch.sh]
+`,
+			wantErr: true,
+		},
+		{
+			name: "url source with bad timeout rejected",
+			content: `version: 1
+sources:
+  - name: upstream
+    type: url
+    url: https://example.com/GUIDE.md
+    timeout: banana
+`,
+			wantErr: true,
+		},
+		{
+			name: "url source with underivable filename rejected",
+			content: `version: 1
+sources:
+  - name: upstream
+    type: url
+    url: https://example.com/
+`,
+			wantErr: true,
+		},
+		{
+			name: "url source with path separator in filename rejected",
+			content: `version: 1
+sources:
+  - name: upstream
+    type: url
+    url: https://example.com/GUIDE.md
+    filename: ../escape.md
+`,
+			wantErr: true,
+		},
+		{
+			name: "url on local source rejected",
+			content: `version: 1
+sources:
+  - name: local
+    path: ./assets
+    url: https://example.com/GUIDE.md
+`,
+			wantErr: true,
+		},
+		{
+			name: "url on command source rejected",
+			content: `version: 1
+sources:
+  - name: private
+    type: command
+    command: [./fetch.sh]
+    url: https://example.com/GUIDE.md
+`,
+			wantErr: true,
+		},
+		{
+			name: "filename on local source rejected",
+			content: `version: 1
+sources:
+  - name: local
+    path: ./assets
+    filename: GUIDE.md
+`,
+			wantErr: true,
+		},
+		{
+			name: "url source can declare patches",
+			content: `version: 1
+sources:
+  - name: upstream
+    type: url
+    url: https://example.com/GUIDE.md
+    patches: patches/upstream/
+`,
+			check: func(t *testing.T, c *TaiConfig) {
+				if !c.Sources[1].HasPatches() {
+					t.Error("HasPatches() = false, want true")
+				}
+			},
+		},
+		{
 			name: "timeout on local source rejected",
 			content: `version: 1
 sources:

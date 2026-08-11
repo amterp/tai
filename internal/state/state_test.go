@@ -346,8 +346,8 @@ bundles:
 		if err := state.LoadConfigRepo(state.GlobalConfig.ActiveConfig); err != nil {
 			t.Fatalf("LoadConfigRepo with unfetched command source failed: %v", err)
 		}
-		if !state.HasCommandSources() {
-			t.Error("HasCommandSources() = false, want true")
+		if !state.HasFetchableSources() {
+			t.Error("HasFetchableSources() = false, want true")
 		}
 
 		// Resolving a profile that references the unfetched source should
@@ -368,10 +368,10 @@ bundles:
 		}
 
 		var refreshedNames []string
-		if err := state.RefreshCommandSources("", func(name string) {
+		if err := state.RefreshSources("", func(name string) {
 			refreshedNames = append(refreshedNames, name)
 		}); err != nil {
-			t.Fatalf("RefreshCommandSources() error = %v", err)
+			t.Fatalf("RefreshSources() error = %v", err)
 		}
 		if len(refreshedNames) != 1 || refreshedNames[0] != "private" {
 			t.Errorf("refreshed = %v, want [private]", refreshedNames)
@@ -393,15 +393,15 @@ bundles:
 		}
 	})
 
-	t.Run("refresh of named non-command source rejected", func(t *testing.T) {
+	t.Run("refresh of named non-fetchable source rejected", func(t *testing.T) {
 		_, state := setup(t)
 		if err := state.LoadConfigRepo(state.GlobalConfig.ActiveConfig); err != nil {
 			t.Fatal(err)
 		}
-		if err := state.RefreshCommandSources("local", nil); err == nil {
-			t.Error("expected error refreshing non-command source by name")
+		if err := state.RefreshSources("local", nil); err == nil {
+			t.Error("expected error refreshing a non-fetchable source by name")
 		}
-		if err := state.RefreshCommandSources("nope", nil); err == nil {
+		if err := state.RefreshSources("nope", nil); err == nil {
 			t.Error("expected error refreshing unknown source")
 		}
 	})

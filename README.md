@@ -101,6 +101,12 @@ sources:
       - sh
       - -c
       - git clone --depth=1 git@github.com:company/ai-standards.git "$TAI_DEST_DIR"
+  # URL sources download a single file. Pair with 'patches:' to keep local
+  # edits on a document you don't control.
+  - name: upstream-guide
+    type: url
+    url: https://raw.githubusercontent.com/foo/bar/main/GUIDE.md
+    patches: patches/upstream-guide/
 
 default_profile: personal
 ```
@@ -226,7 +232,7 @@ tai install <profile> --var key=val     # Pass template variables
 
 tai uninstall <target>             # Remove Tai-managed files
 tai status [target]                # Show what's installed
-tai refresh [source]               # Fetch command sources without installing
+tai refresh [source]               # Fetch remote sources without installing
 ```
 
 ### Patches

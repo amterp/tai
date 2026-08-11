@@ -84,7 +84,7 @@ tai install <profile> --var key=val     # Pass template variables
 
 tai uninstall <target>             # Remove tai-managed files
 tai status [target]                # Show what's installed
-tai refresh [source]               # Fetch command sources without installing
+tai refresh [source]               # Fetch remote sources without installing
 ```
 
 ### Patches
@@ -282,6 +282,13 @@ sources:
       - -c
       - git clone --depth=1 git@github.com:company/ai-standards.git "$TAI_DEST_DIR"
     timeout: 2m           # Optional, default 30s. 'path' is rejected.
+  # URL source: downloads ONE file over http(s). Reach for this over a
+  # command source wrapping curl, especially when you want to patch the file.
+  - name: upstream-guide
+    type: url
+    url: https://raw.githubusercontent.com/foo/bar/main/GUIDE.md
+    filename: GUIDE.md    # Optional; defaults to the URL basename
+    patches: patches/upstream-guide/
 
 default_profile: personal
 ```
@@ -295,6 +302,24 @@ commands like `tai list assets` can see the source). Dry-run never fetches.
 A failed fetch fails the install and leaves the previous cache intact.
 Script env: `TAI_DEST_DIR`, `TAI_SOURCE`, `TAI_CONFIG_REPO`, `TAI_VERSION`,
 plus the inherited user env - keep credentials in env vars, not argv.
+
+**URL sources:** same fetch lifecycle as command sources, but they download a
+single file and run no code. The file lands in the source's cache directory
+under its filename, so the source is a directory holding one file and carries
+no assets - reach the file with an include:
+
+```yaml
+# assets/skills/mine/tai.yaml
+include:
+  - from: upstream-guide
+    path: GUIDE.md
+    dest: refs/guide.md
+```
+
+The include receives the source's *patched* content, which is the point:
+declare `patches:` on the url source and the skill gets the patched file.
+Set `filename:` when the URL has no usable basename (`https://host/`, or a
+path that is all query string) - tai rejects the config otherwise.
 
 ### Bundle Definition
 

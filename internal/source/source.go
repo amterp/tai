@@ -5,12 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/amterp/tai/internal/cmdexec"
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/fetch"
 	"github.com/amterp/tai/internal/pathutil"
 )
 
@@ -21,7 +23,7 @@ type LoadedSource struct {
 	Assets       map[string][]string // dir name (e.g. "personas") -> list of asset names
 
 	// Materialized reports whether ResolvedPath exists on disk. It is false
-	// only for command sources whose fetch has not run yet - Load tolerates
+	// only for fetched sources whose fetch has not run yet - Load tolerates
 	// that (the config repo must remain loadable before the first fetch),
 	// and asset resolution surfaces the actionable error instead.
 	Materialized bool
@@ -55,20 +57,20 @@ func (ls *LoadedSource) PristinePath() string {
 }
 
 // RequireMaterialized returns an error when the source's content is not on
-// disk yet (a command source that hasn't been fetched). Callers resolving
+// disk yet (a fetched source whose fetch hasn't run). Callers resolving
 // assets out of a source should check this to give users an actionable
 // remedy instead of a bare "asset not found".
 func (ls *LoadedSource) RequireMaterialized() error {
 	if ls.Materialized {
 		return nil
 	}
-	return fmt.Errorf("source %q has not been fetched yet (command source); run 'tai refresh' or 'tai install <profile>' to fetch it", ls.Name)
+	return fmt.Errorf("source %q has not been fetched yet (%s source); run 'tai refresh' or 'tai install <profile>' to fetch it", ls.Name, ls.Type)
 }
 
 // Loader handles loading and resolving sources.
 type Loader struct {
 	configRepoPath string // Path to the tai config repo (for relative path resolution)
-	cacheDir       string // Root cache dir (e.g. ~/.cache/tai); required for command sources
+	cacheDir       string // Root cache dir (e.g. ~/.cache/tai); required for fetched sources
 }
 
 // NewLoader creates a new source loader.
@@ -76,7 +78,7 @@ func NewLoader(configRepoPath string) *Loader {
 	return &Loader{configRepoPath: configRepoPath}
 }
 
-// SetCacheDir sets the root cache directory command sources materialize
+// SetCacheDir sets the root cache directory fetched sources materialize
 // into. Injected (rather than defaulted) so tests can use temp dirs.
 func (l *Loader) SetCacheDir(dir string) {
 	l.cacheDir = dir
@@ -107,8 +109,8 @@ func (l *Loader) Load(src config.Source) (*LoadedSource, error) {
 	// Verify path exists
 	info, err := os.Stat(resolvedPath)
 	if err != nil {
-		if src.IsCommand() && os.IsNotExist(err) {
-			// A command source with no cache yet must not fail the load -
+		if src.NeedsFetch() && os.IsNotExist(err) {
+			// A fetched source with no cache yet must not fail the load -
 			// the config repo is loaded eagerly on every CLI invocation,
 			// including the install/refresh that would populate the cache.
 			// Asset resolution reports the missing fetch instead.
@@ -141,7 +143,7 @@ func (l *Loader) Load(src config.Source) (*LoadedSource, error) {
 
 // resolvePath resolves the source path to an absolute filesystem path.
 func (l *Loader) resolvePath(src config.Source) (string, error) {
-	if src.IsCommand() {
+	if src.NeedsFetch() {
 		return l.sourceCachePath(src)
 	}
 
@@ -158,14 +160,14 @@ func (l *Loader) resolvePath(src config.Source) (string, error) {
 	return path, nil
 }
 
-// sourceCachePath returns the cache directory a command source materializes
+// sourceCachePath returns the cache directory a fetched source materializes
 // into: <cacheDir>/sources/<repoKey>/<name>. The repoKey namespaces caches
-// per config repo - two repos can declare same-named command sources with
-// different commands, and switching the active config must not let one
-// repo's fetch poison another's.
+// per config repo - two repos can declare same-named fetched sources with
+// different commands or URLs, and switching the active config must not let
+// one repo's fetch poison another's.
 func (l *Loader) sourceCachePath(src config.Source) (string, error) {
 	if l.cacheDir == "" {
-		return "", fmt.Errorf("source %q: no cache directory configured for command sources", src.Name)
+		return "", fmt.Errorf("source %q: no cache directory configured for fetched sources", src.Name)
 	}
 	return filepath.Join(l.cacheDir, "sources", l.repoKey(), src.Name), nil
 }
@@ -175,14 +177,15 @@ func (l *Loader) repoKey() string {
 	return hex.EncodeToString(sum[:])[:12]
 }
 
-// Refresh materializes a command source by running its fetch command. The
-// command writes into a staging directory (exposed as TAI_DEST_DIR) that is
-// atomically swapped into the source's cache path on success; on failure the
-// previous cache content is left intact. version is surfaced to the script
-// as TAI_VERSION.
+// Refresh materializes a fetched source into its cache path. A command source
+// runs its argv against a staging directory (exposed as TAI_DEST_DIR); a url
+// source downloads its single file into one. Either way the staging directory
+// is atomically swapped into the cache path on success, and on failure the
+// previous cache content is left intact. version is surfaced to command
+// scripts as TAI_VERSION and to url fetches as the User-Agent.
 func (l *Loader) Refresh(src config.Source, version string) error {
-	if !src.IsCommand() {
-		return fmt.Errorf("source %q is not a command source", src.Name)
+	if !src.NeedsFetch() {
+		return fmt.Errorf("source %q cannot be fetched (type %q); only 'command' and 'url' sources are fetched", src.Name, src.Type)
 	}
 	cachePath, err := l.sourceCachePath(src)
 	if err != nil {
@@ -192,6 +195,13 @@ func (l *Loader) Refresh(src config.Source, version string) error {
 	// Stage next to the cache path (same filesystem) so the swap is a true
 	// atomic rename rather than the cross-device copy fallback.
 	stagingParent := filepath.Join(l.cacheDir, "staging")
+
+	if src.IsURL() {
+		if err := l.fetchURLSource(src, cachePath, stagingParent, version); err != nil {
+			return fmt.Errorf("fetching source %q: %w", src.Name, err)
+		}
+		return nil
+	}
 
 	err = cmdexec.FetchInto(cmdexec.Spec{
 		Argv:    src.Command,
@@ -206,6 +216,41 @@ func (l *Loader) Refresh(src config.Source, version string) error {
 		return fmt.Errorf("fetching source %q: %w", src.Name, err)
 	}
 	return nil
+}
+
+// fetchURLSource downloads a url source's single file into a staging
+// directory and swaps that directory into cachePath.
+//
+// It builds a directory rather than writing the file straight to its final
+// path for two reasons: a url source is modelled as a one-file directory so
+// everything downstream can walk it like any other source, and staging plus
+// swap is what makes a failed fetch leave the previous content intact - the
+// same contract cmdexec.FetchInto gives command sources.
+func (l *Loader) fetchURLSource(src config.Source, cachePath, stagingParent, version string) error {
+	if err := os.MkdirAll(stagingParent, 0755); err != nil {
+		return fmt.Errorf("creating staging parent: %w", err)
+	}
+	staging, err := os.MkdirTemp(stagingParent, "tai-url-")
+	if err != nil {
+		return fmt.Errorf("creating staging dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(staging) }()
+
+	client := &http.Client{
+		Timeout:       src.ResolvedTimeout(),
+		CheckRedirect: fetch.DefaultClient().CheckRedirect,
+	}
+	userAgent := "tai"
+	if version != "" {
+		userAgent = "tai/" + version
+	}
+
+	dest := filepath.Join(staging, src.ResolvedFilename())
+	if err := fetch.ToFile(client, src.URL, dest, userAgent); err != nil {
+		return err
+	}
+
+	return cmdexec.SwapInto(staging, cachePath)
 }
 
 // discoverAssets discovers all assets in a loaded source.

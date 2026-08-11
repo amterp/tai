@@ -1,9 +1,14 @@
 package e2e
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -28,6 +33,14 @@ type patchEnv struct {
 // newPatchEnv builds the config repo. exclude may be empty.
 func newPatchEnv(t *testing.T, exclude ...string) *patchEnv {
 	t.Helper()
+	return newPatchEnvWith(t, "", exclude...)
+}
+
+// newPatchEnvWith is newPatchEnv plus extra `sources:` entries, for tests that
+// need a fetched source alongside the local "upstream" one. extraSources is
+// appended verbatim and must already be indented as a sources list item.
+func newPatchEnvWith(t *testing.T, extraSources string, exclude ...string) *patchEnv {
+	t.Helper()
 	env := testutil.NewTestEnv(t)
 
 	upstream := filepath.Join(env.Root, "upstream")
@@ -51,6 +64,7 @@ sources:
 		}
 		cfg += "      - \"" + e + "\"\n"
 	}
+	cfg += extraSources
 	env.SetupTaiConfig(cfg)
 	env.SetupProfile("test", "name: test\ntarget: claude\nbundles:\n  - test\n")
 
@@ -77,13 +91,30 @@ func (e *patchEnv) writeUpstream(rel, content string) {
 
 func (e *patchEnv) writePatch(name, content string) {
 	e.T.Helper()
-	e.WriteConfigRepoFile(filepath.Join("patches", "upstream", name+".yaml"), content)
+	e.writePatchIn("upstream", name, content)
 }
 
-// installOnce runs the real pipeline: load sources, build patched views,
-// resolve the profile, install. Mirrors what the CLI does per invocation.
+// writePatchIn writes a patch into the patch dir of a named source.
+func (e *patchEnv) writePatchIn(sourceName, name, content string) {
+	e.T.Helper()
+	e.WriteConfigRepoFile(filepath.Join("patches", sourceName, name+".yaml"), content)
+}
+
+// installOnce runs the real pipeline: fetch remote sources, load them, build
+// patched views, resolve the profile, install. Mirrors what the CLI does per
+// invocation, including the ordering - a source has to be fetched before its
+// view can be built from it.
 func (e *patchEnv) installOnce(t *testing.T) (*install.InstallResult, error) {
 	t.Helper()
+
+	for _, src := range e.taiCfg.Sources {
+		if !src.NeedsFetch() {
+			continue
+		}
+		if err := e.loader.Refresh(src, "test"); err != nil {
+			return nil, err
+		}
+	}
 
 	sources, err := e.loader.LoadAll(e.taiCfg.Sources)
 	if err != nil {
@@ -357,4 +388,102 @@ func TestE2EReferencingAnExcludedAssetExplainsWhy(t *testing.T) {
 	if !strings.Contains(err.Error(), "excluded by source") {
 		t.Errorf("err = %v, want it to name the exclusion rather than report 'not found'", err)
 	}
+}
+
+// TestE2EPatchedURLSourceInstallsPatched is the motivating case for the `url`
+// source type: patch a single file pulled from a remote host, and reach it
+// from a skill via a `from:`/`path:` include.
+//
+// The include is the point of the test. resolveSourceInclude reads through
+// ContentPath, so the patched bytes have to reach the skill without the
+// include pipeline knowing patches exist.
+func TestE2EPatchedURLSourceInstallsPatched(t *testing.T) {
+	served := "# Guide\n\nAlways install with npm.\n"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(served))
+	}))
+	defer server.Close()
+
+	env := newPatchEnvWith(t, `  - name: upstream-guide
+    type: url
+    url: `+server.URL+`/GUIDE.md
+    patches: patches/upstream-guide/
+`)
+
+	env.WriteConfigRepoFile(filepath.Join("assets", "skills", "mine", "SKILL.md"),
+		"---\nname: mine\ndescription: Mine\n---\n\nBody\n")
+	env.WriteConfigRepoFile(filepath.Join("assets", "skills", "mine", "tai.yaml"),
+		"include:\n  - from: upstream-guide\n    path: GUIDE.md\n    dest: refs/guide.md\n")
+	env.SetupBundle("test", "name: test\nassets:\n  - type: skill\n    path: local:skills/mine\n")
+
+	env.writePatchIn("upstream-guide", "use-pnpm", `version: 1
+file: GUIDE.md
+edits:
+  - find: Always install with npm.
+    replace: Always install with pnpm.
+`)
+
+	if _, err := env.installOnce(t); err != nil {
+		t.Fatalf("install failed: %v", err)
+	}
+
+	got := env.ReadTargetFile(filepath.Join("skills", "mine", "refs", "guide.md"))
+	if !strings.Contains(got, "pnpm") {
+		t.Errorf("included content = %q, want it patched", got)
+	}
+
+	// The cache holds what upstream actually said. Blessed-snapshot drift
+	// detection compares against it, so patching it in place would make tai
+	// compare its own output to itself and never report drift again.
+	cached := env.ReadFile(filepath.Join(env.CacheDir, "sources", repoKeyFor(env.ConfigRepo), "upstream-guide", "GUIDE.md"))
+	if cached != served {
+		t.Errorf("cached upstream = %q, want the pristine %q", cached, served)
+	}
+}
+
+// TestE2EPatchedCommandSourceInstallsPatched covers the command-source arm of
+// the fetch lifecycle. Patch coverage was local-source only, so nothing
+// exercised a patched view built over content that had to be fetched first.
+func TestE2EPatchedCommandSourceInstallsPatched(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("command source e2e requires POSIX sh")
+	}
+
+	env := newPatchEnvWith(t, `  - name: fetched
+    type: command
+    command:
+      - sh
+      - -c
+      - 'mkdir -p "$TAI_DEST_DIR/personas" && printf -- "---\nname: remote\ndescription: Remote\n---\n\nAlways install with npm.\n" > "$TAI_DEST_DIR/personas/remote.md"'
+    patches: patches/fetched/
+`)
+
+	env.SetupBundle("test", "name: test\nassets:\n  - type: persona\n    path: fetched:personas/remote.md\n")
+	env.writePatchIn("fetched", "use-pnpm", `version: 1
+file: personas/remote.md
+edits:
+  - find: Always install with npm.
+    replace: Always install with pnpm.
+`)
+
+	if _, err := env.installOnce(t); err != nil {
+		t.Fatalf("install failed: %v", err)
+	}
+
+	if got := env.ReadTargetFile(filepath.Join("output-styles", "remote.md")); !strings.Contains(got, "pnpm") {
+		t.Errorf("installed content = %q, want it patched", got)
+	}
+
+	cached := env.ReadFile(filepath.Join(env.CacheDir, "sources", repoKeyFor(env.ConfigRepo), "fetched", "personas", "remote.md"))
+	if !strings.Contains(cached, "npm.") || strings.Contains(cached, "pnpm") {
+		t.Errorf("fetched cache = %q, want it left pristine", cached)
+	}
+}
+
+// repoKeyFor mirrors source.Loader.repoKey, which is unexported. Kept as a
+// literal reimplementation rather than exported for tests: the cache layout is
+// something these tests should assert against, not inherit.
+func repoKeyFor(configRepo string) string {
+	sum := sha256.Sum256([]byte(configRepo))
+	return hex.EncodeToString(sum[:])[:12]
 }
