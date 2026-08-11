@@ -14,6 +14,7 @@ import (
 	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/configasset"
+	"github.com/amterp/tai/internal/fetch"
 	"github.com/amterp/tai/internal/frontmatter"
 	"github.com/amterp/tai/internal/pathutil"
 	"github.com/amterp/tai/internal/source"
@@ -93,7 +94,7 @@ func NewInstaller(manifestStore *ManifestStore, configRepo string, sources map[s
 		manifestStore: manifestStore,
 		configRepo:    configRepo,
 		sources:       sources,
-		httpClient:    DefaultHTTPClient(),
+		httpClient:    fetch.DefaultClient(),
 		logger:        noopLogger{},
 	}
 }

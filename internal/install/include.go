@@ -2,26 +2,17 @@ package install
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/fetch"
 	"github.com/amterp/tai/internal/pathutil"
 	"github.com/amterp/tai/internal/source"
-)
-
-const (
-	// DefaultHTTPTimeout is the default timeout for HTTP requests when fetching URL includes.
-	DefaultHTTPTimeout = 30 * time.Second
-
-	// MaxIncludeSize is the maximum size in bytes for a single URL include (10MB).
-	MaxIncludeSize = 10 * 1024 * 1024
 )
 
 // IncludeResolver handles resolving skill includes from sources, URLs, and commands.
@@ -129,23 +120,8 @@ func (r *IncludeResolver) resolveSourceInclude(inc config.Include, targetSkillPa
 
 // resolveURLInclude fetches a file from a URL and writes it to the destination.
 func (r *IncludeResolver) resolveURLInclude(inc config.Include, targetSkillPath string) error {
-	// Security: Validate URL scheme
-	parsed, err := url.Parse(inc.URL)
-	if err != nil {
-		return fmt.Errorf("invalid URL %q: %w", inc.URL, err)
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("URL %q has invalid scheme %q (must be http or https)", inc.URL, parsed.Scheme)
-	}
-
-	resp, err := r.httpClient.Get(inc.URL)
-	if err != nil {
-		return fmt.Errorf("fetching %q: %w", inc.URL, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("fetching %q: HTTP %d %s", inc.URL, resp.StatusCode, http.StatusText(resp.StatusCode))
+	if _, err := fetch.ParseURL(inc.URL); err != nil {
+		return err
 	}
 
 	destPath, err := r.computeDestPath(inc.Dest, "", inc.URL, targetSkillPath)
@@ -158,25 +134,7 @@ func (r *IncludeResolver) resolveURLInclude(inc config.Include, targetSkillPath 
 		return fmt.Errorf("creating destination directory: %w", err)
 	}
 
-	// Create destination file
-	destFile, err := os.Create(destPath)
-	if err != nil {
-		return fmt.Errorf("creating destination file %q: %w", destPath, err)
-	}
-	defer func() { _ = destFile.Close() }()
-
-	// Security: Limit download size to prevent resource exhaustion
-	limitedReader := io.LimitReader(resp.Body, MaxIncludeSize+1)
-	written, err := io.Copy(destFile, limitedReader)
-	if err != nil {
-		return fmt.Errorf("writing to %q: %w", destPath, err)
-	}
-	if written > MaxIncludeSize {
-		_ = os.Remove(destPath) // Clean up oversized file
-		return fmt.Errorf("URL %q exceeds maximum size of %d bytes", inc.URL, MaxIncludeSize)
-	}
-
-	return nil
+	return fetch.ToFile(r.httpClient, inc.URL, destPath, "")
 }
 
 // computeDestPath determines the final destination path.
@@ -229,21 +187,4 @@ func extractFilename(srcPath, srcURL string) (string, error) {
 	}
 
 	return filename, nil
-}
-
-// DefaultHTTPClient returns an HTTP client with sensible defaults for fetching includes.
-func DefaultHTTPClient() *http.Client {
-	return &http.Client{
-		Timeout: DefaultHTTPTimeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			// Security: Limit redirects and validate scheme after redirect
-			if len(via) >= 10 {
-				return fmt.Errorf("too many redirects")
-			}
-			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
-				return fmt.Errorf("redirect to non-HTTP scheme %q not allowed", req.URL.Scheme)
-			}
-			return nil
-		},
-	}
 }

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/fetch"
 	"github.com/amterp/tai/internal/source"
 )
 
@@ -410,11 +411,11 @@ func TestResolveURLInclude(t *testing.T) {
 	})
 
 	t.Run("oversized response rejected", func(t *testing.T) {
-		// Create a server that returns more than MaxIncludeSize bytes
+		// Create a server that returns more than fetch.MaxBytes bytes
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			// Write slightly more than MaxIncludeSize
-			data := make([]byte, MaxIncludeSize+1000)
+			// Write slightly more than fetch.MaxBytes
+			data := make([]byte, fetch.MaxBytes+1000)
 			_, _ = w.Write(data)
 		}))
 		defer server.Close()
@@ -865,16 +866,4 @@ func mustReadFile(t *testing.T, path string) []byte {
 		t.Fatalf("reading %s: %v", path, err)
 	}
 	return b
-}
-
-func TestDefaultHTTPClient(t *testing.T) {
-	client := DefaultHTTPClient()
-
-	if client.Timeout != DefaultHTTPTimeout {
-		t.Errorf("Timeout = %v, want %v", client.Timeout, DefaultHTTPTimeout)
-	}
-
-	if client.CheckRedirect == nil {
-		t.Error("CheckRedirect should be configured")
-	}
 }
