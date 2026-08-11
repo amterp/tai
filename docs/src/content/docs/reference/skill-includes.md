@@ -108,6 +108,25 @@ include:
 
 Only `http://` and `https://` URLs are allowed. Other schemes are rejected.
 
+A URL include copies the remote file through untouched. If you need to **edit** what you pull in - and to be told when the remote file changes underneath your edit - declare it as a [url source](/tai/concepts/sources/#url-source) with `patches:` and reach it with a source-based include instead:
+
+```yaml
+# tai.yaml
+sources:
+  - name: upstream-guide
+    type: url
+    url: https://raw.githubusercontent.com/example/repo/main/file.md
+    patches: patches/upstream-guide/
+
+# assets/skills/my-skill/tai.yaml
+include:
+  - from: upstream-guide
+    path: file.md
+    dest: examples/example.md
+```
+
+Source-based includes read the source's patched content, so the skill receives the edited file. See [Patching imported assets](/tai/guides/patching-imported-assets/).
+
 ## Destination semantics
 
 The `dest` field determines where the included file or directory is placed within the skill directory.

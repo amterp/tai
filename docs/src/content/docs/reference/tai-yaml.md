@@ -50,10 +50,14 @@ Optional. A list of locations that provide assets. Each source makes its assets 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `name` | string | yes | | Unique identifier for this source. Used in `source:path` references. Must be a plain name (no path separators, `.`, or `..`). |
-| `path` | string | local/tai-repo | | Filesystem path to the source directory. Supports `~` expansion. Rejected for `command` sources. |
-| `type` | string | no | `local` | Source type: `local`, `tai-repo`, or `command`. |
+| `path` | string | local/tai-repo | | Filesystem path to the source directory. Supports `~` expansion. Rejected for `command` and `url` sources. |
+| `type` | string | no | `local` | Source type: `local`, `tai-repo`, `command`, or `url`. |
 | `command` | string list | command | | Argv list that fetches the source's assets into `$TAI_DEST_DIR`. Only valid with `type: command`. |
-| `timeout` | string | no | `30s` | Duration bound for `command` (e.g. `"60s"`, `"2m"`). Only valid with `type: command`. |
+| `url` | string | url | | The http(s) URL of the single file to download. Only valid with `type: url`. |
+| `filename` | string | no | URL basename | Name the downloaded file is stored under. Must be a plain name. Only valid with `type: url`. |
+| `timeout` | string | no | `30s` | Duration bound for the fetch (e.g. `"60s"`, `"2m"`). Only valid with `type: command` or `type: url`. |
+| `patches` | string | no | | Config-repo-relative directory of patch files applied to this source's content. See [Patches](/tai/concepts/patches/). |
+| `exclude` | string list | no | `[]` | Glob patterns for files this source does not carry at all. Patterns are source-relative. |
 
 ### Source types
 
@@ -62,6 +66,7 @@ Optional. A list of locations that provide assets. Each source makes its assets 
 | `local` | A directory containing asset files directly. Assets are read from the directory root. |
 | `tai-repo` | Another tai config repo. Assets are read from its `assets/` subdirectory. |
 | `command` | Assets are fetched by running `command` and cached under `~/.cache/tai/sources/`. See [Sources](/tai/concepts/sources/) for the fetch contract and freshness rules. |
+| `url` | A single file downloaded over http(s) and cached under `~/.cache/tai/sources/`. Carries no assets; exists to be reached by a skill include and patched. See [Sources](/tai/concepts/sources/). |
 
 ### The implicit local source
 
@@ -138,9 +143,11 @@ Tai validates `tai.yaml` on load and fails fast with a clear error if:
 
 - `version` is missing or not `1`
 - A source has no `name`, or the name contains path separators or is `.`/`..`
-- A `local` or `tai-repo` source has no `path`, or sets `command`/`timeout`
-- A `command` source has no `command`, sets `path`, has an empty argv element, or has a non-positive/unparseable `timeout`
-- A source `type` is not `local`, `tai-repo`, or `command`
+- A `local` or `tai-repo` source has no `path`, or sets `command`/`url`/`filename`/`timeout`
+- A `command` source has no `command`, sets `path`/`url`/`filename`, has an empty argv element, or has a non-positive/unparseable `timeout`
+- A `url` source has no `url`, uses a scheme other than http/https, sets `path`/`command`, has a `filename` that is not a plain name, or has a URL with no derivable filename and no `filename` set
+- A source `type` is not `local`, `tai-repo`, `command`, or `url`
+- A `patches` or `exclude` value is an absolute path or contains `..`
 - Two sources share the same `name`
 
 ## Minimal example

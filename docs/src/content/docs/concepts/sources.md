@@ -78,6 +78,54 @@ Freshness works like this:
 
 Command sources run arbitrary code with your environment - treat a config repo that declares them the same as running its code.
 
+### URL source
+
+A url source downloads a single file over http or https. Reach for it instead of a command source wrapping `curl` when you want one remote document - most often because you intend to [patch](/tai/concepts/patches/) it.
+
+```yaml
+sources:
+  - name: upstream-guide
+    type: url
+    url: https://raw.githubusercontent.com/foo/bar/main/GUIDE.md
+    patches: patches/upstream-guide/
+```
+
+The file is stored in the source's cache directory under its filename, so the source is a **directory holding one file**:
+
+```
+~/.cache/tai/sources/<repo-key>/upstream-guide/
+  GUIDE.md
+```
+
+That shape is deliberate: it lets the rest of tai treat a url source like any other. Patched views build from it, `tai patch` operates on it, and a skill reaches the file with an ordinary [include](/tai/reference/skill-includes/):
+
+```yaml
+# assets/skills/mine/tai.yaml
+include:
+  - from: upstream-guide
+    path: GUIDE.md
+    dest: refs/guide.md
+```
+
+The include receives the source's *patched* content. That combination - a url source with `patches:`, reached by an include - is how you keep a local edit on a document someone else controls.
+
+By default the file is stored under the URL's basename. Set `filename:` when the URL has none:
+
+```yaml
+  - name: upstream-guide
+    type: url
+    url: https://example.com/api/raw?doc=42
+    filename: GUIDE.md
+```
+
+Tai rejects the config at load time if it cannot derive a filename and you have not set one, rather than failing part-way through an install.
+
+A url source carries **no assets** - it has no `personas/`, `skills/`, or other asset directory, so `tai list assets` shows nothing for it. That is the intended configuration, not a mistake. The source exists to be named by an include's `from:` and by `patches:`.
+
+Freshness matches command sources exactly: fetched before every install, fetched by `tai refresh`, served from cache by read-only commands, and never fetched under `--dry-run`. A failed fetch leaves the previous cache intact, and an unreachable URL fails the install rather than quietly installing yesterday's content.
+
+Requests carry a `tai/<version>` user agent, follow at most 10 redirects, and are capped at 10MB. Unlike a command source, a url source runs no code.
+
 ## Source priority
 
 Sources are resolved in declaration order. **Later sources override earlier ones** when asset paths conflict. List base/default sources first and overrides last.

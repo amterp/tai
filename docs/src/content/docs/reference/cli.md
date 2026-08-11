@@ -313,7 +313,7 @@ If no profiles are currently installed, the command exits with an error message.
 
 ## tai refresh
 
-Fetch command sources into the cache without installing anything.
+Fetch remote sources into the cache without installing anything. Applies to `command` and `url` sources.
 
 ```bash
 tai refresh [source]
@@ -321,16 +321,114 @@ tai refresh [source]
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `source` | no | Command source to fetch. If omitted, fetches all command sources. |
+| `source` | no | Source to fetch. If omitted, fetches every source that needs fetching. |
 
 Use this on a fresh machine (read-only commands like `tai list assets` need the cache populated) or to update the cache without touching targets. `tai install` and `tai reinstall` refresh automatically, so an explicit refresh before installing is not required.
 
-Naming a source that is not a command source is an error. A failed fetch leaves the previous cache intact.
+Naming a source that is not fetched (a `local` or `tai-repo` source) is an error. A failed fetch leaves the previous cache intact.
 
 ```bash
-tai refresh            # Fetch all command sources
+tai refresh            # Fetch all command and url sources
 tai refresh company    # Fetch just the "company" source
 ```
+
+## tai patch
+
+Manage local edits on content from sources you do not control. See [Patches](/tai/concepts/patches/) for the concept and [Patching imported assets](/tai/guides/patching-imported-assets/) for the workflow.
+
+```bash
+tai patch <list|diff|bless|workspace|regenerate>
+```
+
+Patches are named `source:name`, where `name` is the patch file's path within the source's patch directory, minus the extension. A bare name is accepted wherever it is unambiguous.
+
+### tai patch list
+
+Show every declared patch and whether it still applies.
+
+```bash
+tai patch list
+```
+
+```bash
+tai patch list
+# Patches:
+#   upstream:use-pnpm    we standardized on pnpm (upstream:skills/rad/SKILL.md)  ok
+#   upstream:drop-telem  (upstream:skills/rad/SKILL.md)                          unblessed
+```
+
+| Status | Meaning |
+|--------|---------|
+| `ok` | Applies cleanly; upstream matches the blessed snapshot |
+| `ok, upstream drifted` | Applies cleanly, but upstream differs from the snapshot |
+| `unblessed` | Applies cleanly; no snapshot recorded yet |
+| `BROKEN` | An edit could not be applied. The reason is shown inline. |
+| `target file missing` | The source does not carry the file the patch targets |
+| `source not fetched` | A command or url source whose fetch has not run - try `tai refresh` |
+
+### tai patch diff
+
+Show what changed upstream since the patch was blessed.
+
+```bash
+tai patch diff <name>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `name` | yes | Patch name, bare or `source:name` |
+
+Compares the blessed snapshot against the current pristine upstream file. Errors if the patch has never been blessed - there is nothing to compare against.
+
+### tai patch bless
+
+Record the current upstream content as reviewed.
+
+```bash
+tai patch bless <name>
+tai patch bless --all
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `name` | one of | Patch name, bare or `source:name` |
+| `--all` | one of | Bless every patch that applies cleanly |
+
+Writes a `.blessed` snapshot next to the patch file, inside your config repo. Commit it so drift detection travels with the repo.
+
+Tai refuses to bless a patch that does not apply, targets a missing file, or belongs to an unfetched source - recording a snapshot in those states would bake in a broken patch and silence the warning that would prompt a fix. Under `--all` those become per-patch warnings and the rest still get blessed.
+
+### tai patch workspace
+
+Build an editable copy of a source for authoring or repairing patches.
+
+```bash
+tai patch workspace <source>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `source` | yes | Source whose patches you want to edit |
+
+Creates a directory under `~/.cache/tai/workspaces/` containing the source's content with its patches applied. Edit files there, then run `tai patch regenerate`. Patches that could not be applied are reported and left out, so you can re-make their changes by hand.
+
+When an install fails on a broken patch, tai leaves the workspace in place already - the error message names its path.
+
+### tai patch regenerate
+
+Rewrite a patch from your workspace edits.
+
+```bash
+tai patch regenerate <name>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `name` | yes | Patch name, bare or `source:name` |
+
+Diffs the workspace file against the pristine source (plus any sibling patches on the same file), derives `find`/`replace` edits, widens context until each `find` matches exactly once, and verifies the result reproduces your edits byte-for-byte before writing.
+
+Review the rewritten patch, then `tai patch bless` it.
 
 ## tai uninstall
 
