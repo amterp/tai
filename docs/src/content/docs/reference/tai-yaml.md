@@ -11,13 +11,12 @@ The `tai.yaml` file at the root of your config repo is the entry point tai uses 
 version: 1
 
 sources:
-  # Another local directory providing assets
+  # A directory of assets: personas/, skills/ ... sit at its top level
   - name: work-shared
     path: ~/work/ai-common
 
-  # Another tai config repo (uses its assets/ directory)
+  # Another tai config repo: reference its assets as team-repo:assets/...
   - name: team-repo
-    type: tai-repo
     path: ~/team-tai-config
 
 default_profile: work
@@ -50,8 +49,8 @@ Optional. A list of locations that provide assets. Each source makes its assets 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `name` | string | yes | | Unique identifier for this source. Used in `source:path` references. Must be a plain name (no path separators, `.`, or `..`). |
-| `path` | string | local/tai-repo | | Filesystem path to the source directory. Supports `~` expansion. Rejected for `command` and `url` sources. |
-| `type` | string | no | `local` | Source type: `local`, `tai-repo`, `command`, or `url`. |
+| `path` | string | local | | Filesystem path to the source root. Supports `~` expansion. Rejected for `command` and `url` sources. |
+| `type` | string | no | `local` | Source type: `local`, `command`, or `url`. |
 | `command` | string list | command | | Argv list that fetches the source's assets into `$TAI_DEST_DIR`. Only valid with `type: command`. |
 | `url` | string | url | | The http(s) URL of the single file to download. Only valid with `type: url`. |
 | `filename` | string | no | URL basename | Name the downloaded file is stored under. Must be a plain name. Only valid with `type: url`. |
@@ -63,14 +62,17 @@ Optional. A list of locations that provide assets. Each source makes its assets 
 
 | Type | Description |
 |------|-------------|
-| `local` | A directory containing asset files directly. Assets are read from the directory root. |
-| `tai-repo` | Another tai config repo. Assets are read from its `assets/` subdirectory. |
-| `command` | Assets are fetched by running `command` and cached under `~/.cache/tai/sources/`. See [Sources](/tai/concepts/sources/) for the fetch contract and freshness rules. |
-| `url` | A single file downloaded over http(s) and cached under `~/.cache/tai/sources/`. Carries no assets; exists to be reached by a skill include and patched. See [Sources](/tai/concepts/sources/). |
+| `local` | A directory already on disk. |
+| `command` | A directory produced by running `command`, cached under `~/.cache/tai/sources/`. See [Sources](/tai/concepts/sources/) for the fetch contract and freshness rules. |
+| `url` | A single file downloaded over http(s) and cached under `~/.cache/tai/sources/`, as a directory holding that one file. Carries no assets; exists to be reached by a skill include and patched. See [Sources](/tai/concepts/sources/). |
+
+Whichever it is, a source is a directory and references are literal paths from its root. Nothing is appended, so a source pointed at a config repo takes `assets/...` references while one pointed at a bare folder of asset type directories does not.
+
+A source also offers any bundles in `<root>/bundles/` for import as `source:bundle-name`. See [Bundles](/tai/concepts/bundles/#importing-bundles-from-other-sources).
 
 ### The implicit local source
 
-Every config repo has an implicit source named `local` that points to the `./assets` directory relative to the config repo root. You do not need to declare it - tai adds it automatically with the lowest priority.
+Every config repo has an implicit source named `local` pointing at the config repo root. You do not need to declare it - tai adds it automatically with the lowest priority.
 
 ```yaml
 # These two configurations are equivalent:
@@ -82,7 +84,7 @@ version: 1
 version: 1
 sources:
   - name: local
-    path: ./assets
+    path: .
 ```
 
 You only need to explicitly declare the `local` source if you want to override its path:
@@ -90,7 +92,7 @@ You only need to explicitly declare the `local` source if you want to override i
 ```yaml
 sources:
   - name: local
-    path: ./my-custom-assets-dir
+    path: ./my-custom-root
 ```
 
 ### Source priority
@@ -121,12 +123,11 @@ Paths support tilde (`~`) expansion for the home directory. Relative paths are r
 ```yaml
 sources:
   - name: local
-    path: ./assets                # Relative to config repo
+    path: .                       # Relative to config repo
   - name: shared
-    path: ~/work/ai-common       # Absolute via tilde expansion
+    path: ~/work/ai-common        # Absolute via tilde expansion
   - name: team
-    type: tai-repo
-    path: ~/team-tai-config       # Reads from ~/team-tai-config/assets/
+    path: ~/team-tai-config       # Referenced as team:assets/...
 ```
 
 ## default_profile
@@ -143,10 +144,10 @@ Tai validates `tai.yaml` on load and fails fast with a clear error if:
 
 - `version` is missing or not `1`
 - A source has no `name`, or the name contains path separators or is `.`/`..`
-- A `local` or `tai-repo` source has no `path`, or sets `command`/`url`/`filename`/`timeout`
+- A `local` source has no `path`, or sets `command`/`url`/`filename`/`timeout`
 - A `command` source has no `command`, sets `path`/`url`/`filename`, has an empty argv element, or has a non-positive/unparseable `timeout`
 - A `url` source has no `url`, uses a scheme other than http/https, sets `path`/`command`, has a `filename` that is not a plain name, or has a URL with no derivable filename and no `filename` set
-- A source `type` is not `local`, `tai-repo`, `command`, or `url`
+- A source `type` is not `local`, `command`, or `url` (`tai-repo` was removed; point `path` at the same directory and write `assets/` in the reference)
 - A `patches` or `exclude` value is an absolute path or contains `..`
 - Two sources share the same `name`
 
@@ -158,4 +159,4 @@ The smallest valid `tai.yaml`:
 version: 1
 ```
 
-This creates a config repo with only the implicit `local` source pointing to `./assets`. You can define bundles and profiles without any additional sources.
+This creates a config repo with only the implicit `local` source, pointing at the repo root. You can define bundles and profiles without any additional sources.

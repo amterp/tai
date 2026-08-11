@@ -16,13 +16,13 @@ description: Essential assets for daily development
 
 assets:
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: delegate
-    path: delegates/code-reviewer.md
+    path: assets/delegates/code-reviewer.md
   - type: skill
-    path: skills/deploy-checklist
+    path: assets/skills/deploy-checklist
   - type: file
-    path: files/project-instructions.md
+    path: assets/files/project-instructions.md
     dest: ""
 ```
 
@@ -44,9 +44,9 @@ description: Foundational persona and delegate
 
 assets:
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: delegate
-    path: delegates/code-reviewer.md
+    path: assets/delegates/code-reviewer.md
 ```
 
 ```yaml
@@ -56,9 +56,9 @@ description: Operations and deployment tooling
 
 assets:
   - type: skill
-    path: skills/deploy-checklist
+    path: assets/skills/deploy-checklist
   - type: delegate
-    path: delegates/incident-responder.md
+    path: assets/delegates/incident-responder.md
 ```
 
 ```yaml
@@ -72,7 +72,7 @@ bundles:
 
 assets:
   - type: persona
-    path: personas/brainstormer.md
+    path: assets/personas/brainstormer.md
 ```
 
 When you include `full-setup` in a profile, tai resolves it by expanding `base` and `ops` first, then adding `brainstormer.md`. The result is the union of all assets.
@@ -110,7 +110,7 @@ description: Later entries override earlier ones
 
 assets:
   - type: persona
-    path: personas/senior-swe.md               # This gets overridden
+    path: assets/personas/senior-swe.md               # This gets overridden
   - type: persona
     path: work-shared:personas/senior-swe.md   # This wins (same path, later entry)
 ```
@@ -127,7 +127,7 @@ bundles:
 
 assets:
   - type: persona
-    path: personas/custom.md    # Applied last (wins over everything)
+    path: assets/personas/custom.md    # Applied last (wins over everything)
 ```
 
 In profiles, the same rule applies - later bundles override earlier ones:
@@ -154,13 +154,13 @@ description: Standard team assets
 
 assets:
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: delegate
-    path: delegates/code-reviewer.md
+    path: assets/delegates/code-reviewer.md
   - type: delegate
-    path: delegates/quick-summarizer.md
+    path: assets/delegates/quick-summarizer.md
   - type: file
-    path: files/team-standards.md
+    path: assets/files/team-standards.md
     dest: ""
 ```
 
@@ -178,11 +178,11 @@ bundles:
 
 assets:
   - type: skill
-    path: skills/deploy-checklist
+    path: assets/skills/deploy-checklist
   - type: delegate
-    path: delegates/db-migration-helper.md
+    path: assets/delegates/db-migration-helper.md
   - type: statusline
-    path: statuslines/detailed.yaml
+    path: assets/statuslines/detailed.yaml
 ```
 
 ### The frontend bundle
@@ -199,9 +199,9 @@ bundles:
 
 assets:
   - type: skill
-    path: skills/component-generator
+    path: assets/skills/component-generator
   - type: delegate
-    path: delegates/accessibility-checker.md
+    path: assets/delegates/accessibility-checker.md
 ```
 
 ### The lead bundle
@@ -219,9 +219,9 @@ bundles:
 
 assets:
   - type: persona
-    path: personas/tech-lead.md
+    path: assets/personas/tech-lead.md
   - type: skill
-    path: skills/council-participant
+    path: assets/skills/council-participant
 ```
 
 When tai resolves `lead`, it expands `backend` (which includes `core`), then `frontend` (which also includes `core`). The core assets appear once - deduplicated via tai's diamond resolution. The result is the union of all unique assets from all bundles, plus the lead-specific persona and skill.

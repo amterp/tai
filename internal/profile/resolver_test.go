@@ -52,6 +52,16 @@ func setupTestEnv(t *testing.T) (*testutil.TestEnv, map[string]*source.LoadedSou
 	return env, sources, bundles
 }
 
+// bundleRefs builds a `bundles:` list from bare names, the shape nearly every
+// test uses.
+func bundleRefs(names ...string) []config.BundleEntry {
+	entries := make([]config.BundleEntry, len(names))
+	for i, name := range names {
+		entries[i] = config.BundleEntry{Name: name}
+	}
+	return entries
+}
+
 func TestResolverResolveSimple(t *testing.T) {
 	_, sources, bundles := setupTestEnv(t)
 
@@ -59,7 +69,7 @@ func TestResolverResolveSimple(t *testing.T) {
 		"work": {
 			Name:    "work",
 			Target:  "claude",
-			Bundles: []string{"core"},
+			Bundles: bundleRefs("core"),
 		},
 	}
 
@@ -87,7 +97,7 @@ func TestResolverResolveMultipleBundles(t *testing.T) {
 		"full": {
 			Name:    "full",
 			Target:  "claude",
-			Bundles: []string{"core", "extras"},
+			Bundles: bundleRefs("core", "extras"),
 		},
 	}
 
@@ -109,7 +119,7 @@ func TestResolverResolveWithDirectAssets(t *testing.T) {
 		"mixed": {
 			Name:    "mixed",
 			Target:  "claude",
-			Bundles: []string{"core"},
+			Bundles: bundleRefs("core"),
 			Assets: []config.AssetEntry{
 				{Type: "file", Path: "files/README.md", Dest: ""},
 			},
@@ -135,7 +145,7 @@ func TestResolverResolveWithOptions(t *testing.T) {
 		"custom": {
 			Name:    "custom",
 			Target:  "claude",
-			Bundles: []string{"core"},
+			Bundles: bundleRefs("core"),
 			Options: map[string]any{
 				"some_flag":     true,
 				"another_value": "test",
@@ -187,7 +197,7 @@ func TestResolverResolveOverrideLogging(t *testing.T) {
 		"test": {
 			Name:    "test",
 			Target:  "claude",
-			Bundles: []string{"base", "override"},
+			Bundles: bundleRefs("base", "override"),
 		},
 	}
 
@@ -228,7 +238,7 @@ func TestResolverResolveMissingBundle(t *testing.T) {
 		"bad": {
 			Name:    "bad",
 			Target:  "claude",
-			Bundles: []string{"nonexistent"},
+			Bundles: bundleRefs("nonexistent"),
 		},
 	}
 
@@ -246,7 +256,7 @@ func TestResolverResolveMissingDirectAsset(t *testing.T) {
 		"bad": {
 			Name:    "bad",
 			Target:  "claude",
-			Bundles: []string{"core"},
+			Bundles: bundleRefs("core"),
 			Assets: []config.AssetEntry{
 				{Type: "persona", Path: "personas/nonexistent.md"},
 			},
@@ -264,8 +274,8 @@ func TestResolverListProfiles(t *testing.T) {
 	_, sources, bundles := setupTestEnv(t)
 
 	profiles := map[string]*config.Profile{
-		"personal": {Name: "personal", Target: "claude", Bundles: []string{"core"}},
-		"work":     {Name: "work", Target: "claude", Bundles: []string{"core", "extras"}},
+		"personal": {Name: "personal", Target: "claude", Bundles: bundleRefs("core")},
+		"work":     {Name: "work", Target: "claude", Bundles: bundleRefs("core", "extras")},
 	}
 
 	resolver := NewResolver(profiles, bundles, sources)
@@ -288,7 +298,7 @@ func TestResolverGetProfile(t *testing.T) {
 	_, sources, bundles := setupTestEnv(t)
 
 	profiles := map[string]*config.Profile{
-		"test": {Name: "test", Target: "claude", Bundles: []string{"core"}},
+		"test": {Name: "test", Target: "claude", Bundles: bundleRefs("core")},
 	}
 
 	resolver := NewResolver(profiles, bundles, sources)
@@ -316,14 +326,14 @@ func TestResolverPropagatesPostInstall(t *testing.T) {
 		"hooked": {
 			Name:               "hooked",
 			Target:             "claude",
-			Bundles:            []string{"core"},
+			Bundles:            bundleRefs("core"),
 			PostInstall:        []string{"sh", "-c", "./notify.sh"},
 			PostInstallTimeout: "90s",
 		},
 		"plain": {
 			Name:    "plain",
 			Target:  "claude",
-			Bundles: []string{"core"},
+			Bundles: bundleRefs("core"),
 		},
 	}
 

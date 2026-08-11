@@ -143,9 +143,9 @@ per asset to override:
 scope: user
 assets:
   - type: hook
-    path: hooks/format.yaml
+    path: assets/hooks/format.yaml
   - type: hook
-    path: hooks/repo-lint.yaml
+    path: assets/hooks/repo-lint.yaml
     scope: project    # this one goes in ./.claude/settings.json
 ```
 
@@ -265,12 +265,13 @@ reads no `.claude.json` from the project directory.
 version: 1
 
 sources:
-  # "local" source is implicit (points to ./assets)
+  # "local" source is implicit (points to this repo's root)
+  # A source's path is a ROOT: nothing is appended, and every reference is a
+  # literal path from it. So a config repo's assets read as <src>:assets/...
   - name: work-shared
-    path: ~/work/ai-common
+    path: ~/work/ai-common          # personas/, skills/ ... at its top level
   - name: personal
-    type: tai-repo        # References another tai config repo
-    path: ~/personal-tai-config
+    path: ~/personal-tai-config     # a config repo: personal:assets/...
   # Command source: fetches its whole asset tree by running a command.
   # Use for private repos behind SSH/token auth. Argv runs with NO shell;
   # wrap in ["sh","-c",...] for shell features. Script must write the asset
@@ -294,6 +295,13 @@ default_profile: personal
 ```
 
 **Source priority:** Later sources override earlier ones on path conflicts.
+
+**Source types:** `local` (default), `command`, or `url`. `type: tai-repo` was
+removed - it appended `/assets` for you; write the `assets/` prefix in the
+reference instead.
+
+**Bundles from a source:** anything in `<root>/bundles/` is importable as
+`source:bundle-name`. See "Importing bundles" below.
 
 **Command sources:** materialize into `~/.cache/tai/sources/`. `tai install`
 and `tai reinstall` re-fetch them automatically; `tai refresh [source]`
@@ -328,17 +336,19 @@ path that is all query string) - tai rejects the config otherwise.
 name: core
 description: Essential assets for daily work
 
-# Each asset requires explicit type and path
+# Each asset requires explicit type and path.
+# Paths are relative to the SOURCE ROOT - for your own repo that is the repo
+# itself, hence the assets/ prefix.
 assets:
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: delegate
-    path: delegates/code-reviewer.md
+    path: assets/delegates/code-reviewer.md
   - type: file
-    path: files/CLAUDE.md
-    dest: ""                       # Required for file type; empty = target root
+    path: assets/files/CLAUDE.md
+    dest: ""                              # Required for file type; empty = target root
   - type: skill
-    path: skills/my-skill          # Reference skill by directory name
+    path: assets/skills/my-skill          # Reference skill by directory name
 
 # Include other bundles
 bundles:
@@ -349,6 +359,37 @@ bundles:
 #   - type: persona
 #     path: work-shared:personas/company-style.md
 ```
+
+### Importing bundles
+
+A `bundles:` entry can name a source, pulling in that source's bundle instead of
+restating its contents. An entry is a bare name or a mapping; the mapping form
+exists for `exclude`.
+
+```yaml
+bundles:
+  - core                        # this repo's bundles/core.yaml
+  - work:work-tools             # the work source's bundles/work-tools.yaml
+  - name: work:extras
+    exclude:
+      - assets/skills/beagle    # this machine cannot use it
+```
+
+Imports are read at install time, so assets added upstream arrive on the next
+install with nothing to change locally. Copying a bundle instead makes a
+snapshot that goes stale without ever erroring.
+
+Inside an imported bundle, unprefixed asset paths and unprefixed included bundle
+names resolve against **that bundle's own repo** - upstream's
+`assets/skills/dredge` keeps meaning upstream's file even if you hold one at the
+same path. A `source:`-prefixed reference resolves in **your** `tai.yaml`, so
+you must declare any third source an imported bundle reaches into.
+
+Exclusions apply to the import's fully resolved contents, reaching assets that
+came via a nested include. A pattern matching nothing warns rather than failing.
+For "never take this from that source at all", use the source's own `exclude:`
+in `tai.yaml`; it filters imported bundles quietly, while naming an excluded
+asset in your own config stays a hard error.
 
 ### Profile Definition
 
@@ -365,7 +406,7 @@ bundles:
 # Individual assets (in addition to bundles)
 assets:
   - type: persona
-    path: personas/brainstormer.md
+    path: assets/personas/brainstormer.md
 
 # Optional: argv run after a successful install - notifications, follow-up
 # scripts, or post-processing installed files. Env: TAI_TARGET,
@@ -466,7 +507,7 @@ Use these for target-aware file destinations:
 ```yaml
 assets:
   - type: file
-    path: files/AGENTS.md
+    path: assets/files/AGENTS.md
     dest: "{{ target_agents_file }}"  # -> CLAUDE.md for Claude, AGENTS.md for Codex
 ```
 
@@ -555,19 +596,20 @@ Assets can declare dependencies on other assets using the `depends` field. When 
 name: Code Review
 description: Reviews code with specialized reviewers
 depends:
-  - delegates/bug-hunter.md
-  - delegates/code-reviewer.md
-  - skills/council-participant
+  - assets/delegates/bug-hunter.md
+  - assets/delegates/code-reviewer.md
+  - assets/skills/council-participant
 ---
 ```
 
-**Syntax:** Each dependency is a path in `type-dir/name` format:
+**Syntax:** A dependency is a path from its source root, ending in
+`<type-dir>/<name>` - the directory holding the asset is what names its type:
 
 ```yaml
 depends:
-  - delegates/bug-hunter.md              # from local source
-  - skills/council-participant           # directory-based skill
-  - other-source:delegates/helper.md     # from named source
+  - assets/delegates/bug-hunter.md         # from local source
+  - assets/skills/council-participant      # directory-based skill
+  - other-source:delegates/helper.md       # from named source
 ```
 
 **Resolution rules:**
@@ -600,11 +642,11 @@ Files get no frontmatter handling - nothing is parsed or stripped, so a leading 
 # In a bundle or profile
 assets:
   - type: file
-    path: files/CLAUDE.md
+    path: assets/files/CLAUDE.md
     dest: ""              # Empty = target root (~/.claude/CLAUDE.md)
 
   - type: file
-    path: files/config.json
+    path: assets/files/config.json
     dest: "config"        # Goes to ~/.claude/config/config.json
 ```
 
@@ -712,7 +754,7 @@ Include grep patterns for large files so agents can search efficiently.
 3. **Create** the directory structure under `assets/skills/`
 4. **Write** SKILL.md starting with a comprehensive description
 5. **Add** supporting files (scripts, references) as needed
-6. **Reference** in a bundle: `- type: skill` / `path: skills/my-skill`
+6. **Reference** in a bundle: `- type: skill` / `path: assets/skills/my-skill`
 7. **Install** and test: `tai install <profile>`
 
 ## Description Guidelines
@@ -993,7 +1035,7 @@ assets:
 ```yaml
 assets:
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: skill
     path: work-shared:skills/rad
 ```
@@ -1026,7 +1068,7 @@ assets:
 ```yaml
 assets:
   - type: file
-    path: files/CLAUDE.md
+    path: assets/files/CLAUDE.md
     dest: ""              # Required: empty = target root
 ```
 

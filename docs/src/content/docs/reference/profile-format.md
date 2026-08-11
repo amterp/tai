@@ -18,9 +18,9 @@ bundles:
 
 assets:
   - type: persona
-    path: personas/brainstormer.md
+    path: assets/personas/brainstormer.md
   - type: statusline
-    path: statuslines/detailed.yaml
+    path: assets/statuslines/detailed.yaml
 
 options:
   # Adapter-specific settings (reserved for future use)
@@ -35,7 +35,7 @@ scope: user
 | `name` | string | yes | | Profile identifier. Must match the filename (without extension). |
 | `description` | string | no | | Human-readable description. |
 | `target` | string | yes | | Target to install to (`claude`, `codex`, or `opencode`). |
-| `bundles` | list of strings | no | | Bundle names to include. |
+| `bundles` | list | no | | Bundles to include; same [entry forms](/tai/reference/bundle-format/#entry-forms) as a bundle's own list. |
 | `assets` | list of [asset entries](#assets) | no | | Direct asset references. |
 | `options` | map | no | | Adapter-specific settings (reserved for future use). |
 | `scope` | string | no | `user` | Default installation scope for config assets. |
@@ -71,12 +71,15 @@ If the target name does not match a registered adapter, tai exits with an error.
 
 ## bundles
 
-Optional. A list of bundle names to resolve and include.
+Optional. The bundles to resolve and include. Entries take the same forms as in a bundle's own `bundles:` list - a bare name, a `source:name` import, or a mapping carrying `exclude`. See [bundle format](/tai/reference/bundle-format/#entry-forms).
 
 ```yaml
 bundles:
   - core
-  - work-extras
+  - work:work-tools
+  - name: work:extras
+    exclude:
+      - assets/skills/beagle
 ```
 
 Bundles are resolved in declaration order. When the same asset path appears in multiple bundles, the **later bundle's version wins**. Tai logs an info message when such overrides occur.
@@ -88,9 +91,9 @@ Optional. Direct asset references, using the same format as [bundle asset entrie
 ```yaml
 assets:
   - type: persona
-    path: personas/brainstormer.md
+    path: assets/personas/brainstormer.md
   - type: file
-    path: files/CLAUDE.md
+    path: assets/files/CLAUDE.md
     dest: ""
 ```
 
@@ -111,7 +114,7 @@ bundles:
   - overrides       # Resolved second
 assets:
   - type: persona
-    path: personas/custom.md   # Highest priority
+    path: assets/personas/custom.md   # Highest priority
 ```
 
 ## options
@@ -145,9 +148,9 @@ Individual assets can override it:
 scope: user
 assets:
   - type: statusline
-    path: statuslines/detailed.yaml
+    path: assets/statuslines/detailed.yaml
   - type: mcp
-    path: mcps/repo-tools.yaml
+    path: assets/mcps/repo-tools.yaml
     scope: project    # this one is shared with the repo
 ```
 

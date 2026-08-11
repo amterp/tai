@@ -237,7 +237,7 @@ File assets can use template variables in the `dest` field:
 ```yaml
 assets:
   - type: file
-    path: files/agents.md
+    path: assets/files/agents.md
     dest: "{{ target_agents_file }}"
 ```
 

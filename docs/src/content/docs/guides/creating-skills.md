@@ -277,7 +277,7 @@ description: Operations and deployment tooling
 
 assets:
   - type: skill
-    path: skills/deploy-checklist
+    path: assets/skills/deploy-checklist
 ```
 
 Note that skills are referenced by their directory name, not the `SKILL.md` file.

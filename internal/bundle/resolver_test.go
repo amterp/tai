@@ -30,6 +30,16 @@ func setupTestEnv(t *testing.T) (*testutil.TestEnv, map[string]*source.LoadedSou
 	return env, map[string]*source.LoadedSource{"local": ls}
 }
 
+// bundleRefs builds a `bundles:` list from bare names, the shape nearly every
+// test uses.
+func bundleRefs(names ...string) []config.BundleEntry {
+	entries := make([]config.BundleEntry, len(names))
+	for i, name := range names {
+		entries[i] = config.BundleEntry{Name: name}
+	}
+	return entries
+}
+
 func TestResolverResolveSimple(t *testing.T) {
 	_, sources := setupTestEnv(t)
 
@@ -69,7 +79,7 @@ func TestResolverResolveWithIncludes(t *testing.T) {
 		},
 		"extended": {
 			Name:    "extended",
-			Bundles: []string{"base"},
+			Bundles: bundleRefs("base"),
 			Assets: []config.AssetEntry{
 				{Type: "delegate", Path: "delegates/code-reviewer.md"},
 			},
@@ -94,15 +104,15 @@ func TestResolverResolveCircularReference(t *testing.T) {
 	bundles := map[string]*config.Bundle{
 		"a": {
 			Name:    "a",
-			Bundles: []string{"b"},
+			Bundles: bundleRefs("b"),
 		},
 		"b": {
 			Name:    "b",
-			Bundles: []string{"c"},
+			Bundles: bundleRefs("c"),
 		},
 		"c": {
 			Name:    "c",
-			Bundles: []string{"a"}, // Circular!
+			Bundles: bundleRefs("a"), // Circular!
 		},
 	}
 
@@ -129,21 +139,21 @@ func TestResolverResolveDiamondDependency(t *testing.T) {
 		},
 		"b": {
 			Name:    "b",
-			Bundles: []string{"a"},
+			Bundles: bundleRefs("a"),
 			Assets: []config.AssetEntry{
 				{Type: "delegate", Path: "delegates/code-reviewer.md"},
 			},
 		},
 		"c": {
 			Name:    "c",
-			Bundles: []string{"a"},
+			Bundles: bundleRefs("a"),
 			Assets: []config.AssetEntry{
 				{Type: "file", Path: "files/README.md", Dest: ""},
 			},
 		},
 		"d": {
 			Name:    "d",
-			Bundles: []string{"b", "c"},
+			Bundles: bundleRefs("b", "c"),
 		},
 	}
 
@@ -241,7 +251,7 @@ func TestResolverResolveMultiple(t *testing.T) {
 	}
 
 	resolver := NewResolver(bundles, sources)
-	resolved, overrides, err := resolver.ResolveMultiple([]string{"core", "extras"})
+	resolved, overrides, err := resolver.ResolveMultiple(bundleRefs("core", "extras"))
 	if err != nil {
 		t.Fatalf("ResolveMultiple failed: %v", err)
 	}
@@ -285,7 +295,7 @@ func TestResolverResolveMultipleWithOverride(t *testing.T) {
 	}
 
 	resolver := NewResolver(bundles, sources)
-	resolved, overrides, err := resolver.ResolveMultiple([]string{"base", "override"})
+	resolved, overrides, err := resolver.ResolveMultiple(bundleRefs("base", "override"))
 	if err != nil {
 		t.Fatalf("ResolveMultiple failed: %v", err)
 	}

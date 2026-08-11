@@ -153,6 +153,40 @@ func TestAssetContentResolverInvalidPath(t *testing.T) {
 	}
 }
 
+// An include reference is a path from the source root like any other, so the
+// asset type comes from the directory holding it. A repo-rooted source puts
+// its assets under assets/, and that prefix must not be read as the type.
+func TestAssetContentResolverInfersTypeUnderAssetsPrefix(t *testing.T) {
+	tmpDir := t.TempDir()
+	personaDir := filepath.Join(tmpDir, "repo", "assets", "personas")
+	if err := os.MkdirAll(personaDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(personaDir, "test.md"), `---
+name: Test Persona
+---
+
+Persona body.
+`)
+
+	loader := source.NewLoader(tmpDir)
+	sources, err := loader.LoadAll([]config.Source{
+		{Name: "local", Path: filepath.Join(tmpDir, "repo")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := NewAssetContentResolver(sources)
+
+	content, err := resolver.ResolveAssetContent("assets/personas/test.md")
+	if err != nil {
+		t.Fatalf("ResolveAssetContent() error = %v", err)
+	}
+	if !strings.Contains(string(content), "Persona body.") {
+		t.Errorf("content = %q, want the frontmatter-stripped body", content)
+	}
+}
+
 func TestAssetContentResolverRejectsBinaryContent(t *testing.T) {
 	srcDir, resolver := setupResolverTest(t)
 

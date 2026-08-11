@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -461,30 +462,81 @@ func runListBundles() {
 	s := loadState()
 	requireActiveConfig(s)
 
-	if len(s.Bundles) == 0 {
-		out.Info("No bundles defined.")
-		return
+	printed := false
+	if len(s.Bundles) > 0 {
+		out.List("Bundles:", bundleListItems(s.Bundles, ""))
+		printed = true
 	}
 
-	names := make([]string, 0, len(s.Bundles))
-	for name := range s.Bundles {
+	// Bundles offered by other sources are importable as "source:name", so
+	// list them too - otherwise you have to already know a name to use it.
+	activeBundles := filepath.Clean(filepath.Join(s.GlobalConfig.ActiveConfig, source.BundlesDirName))
+	for _, name := range sortedSourceNames(s.Sources) {
+		src := s.Sources[name]
+
+		// A source pointed at the active repo - the implicit "local" one, most
+		// often - offers the very bundles listed above. Printing that directory
+		// twice under two names reads as two sets of bundles.
+		if filepath.Clean(src.BundlesPath()) == activeBundles {
+			continue
+		}
+
+		// A source awaiting its first fetch has nothing to list yet. That is an
+		// ordinary state for a url or command source, so omit it the way
+		// `tai list assets` does rather than warning about it every time.
+		if src.RequireMaterialized() != nil {
+			continue
+		}
+
+		bundles, err := src.LoadBundles()
+		if err != nil {
+			// One unreadable source must not take out the whole listing.
+			out.Warning(fmt.Sprintf("Could not read bundles from source %q: %v. "+
+				"Bundles it offers cannot be imported until this is fixed; check the source's bundles/ dir for malformed YAML.", name, err))
+			continue
+		}
+		if len(bundles) == 0 {
+			continue
+		}
+		out.List(name+":", bundleListItems(bundles, name+":"))
+		printed = true
+	}
+
+	if !printed {
+		out.Info("No bundles defined.")
+	}
+}
+
+// bundleListItems renders a bundle map for listing, prefixing each name with
+// the reference form it is imported by.
+func bundleListItems(bundles map[string]*config.Bundle, prefix string) []output.ListItem {
+	names := make([]string, 0, len(bundles))
+	for name := range bundles {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 
 	items := make([]output.ListItem, 0, len(names))
 	for _, name := range names {
-		b := s.Bundles[name]
-		desc := b.Description
+		desc := bundles[name].Description
 		if desc == "" {
 			desc = "(no description)"
 		}
 		items = append(items, output.ListItem{
-			Name:        name,
+			Name:        prefix + name,
 			Description: desc,
 		})
 	}
-	out.List("Bundles:", items)
+	return items
+}
+
+func sortedSourceNames(sources map[string]*source.LoadedSource) []string {
+	names := make([]string, 0, len(sources))
+	for name := range sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func runListProfiles() {
@@ -595,11 +647,12 @@ func runShowBundle(name string) {
 		fatal("resolving bundle: %v", err)
 	}
 
-	b := s.Bundles[name]
 	pairs := []output.KeyValuePair{
 		{Key: "Bundle", Value: resolved.Name},
 	}
-	if b.Description != "" {
+	// An imported bundle is not in the active repo's map, so this lookup only
+	// finds local ones. The resolver already proved the bundle exists.
+	if b, ok := s.Bundles[name]; ok && b.Description != "" {
 		pairs = append(pairs, output.KeyValuePair{Key: "Description", Value: b.Description})
 	}
 	pairs = append(pairs, output.KeyValuePair{Key: "Assets", Value: strconv.Itoa(len(resolved.Assets))})

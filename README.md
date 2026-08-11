@@ -86,12 +86,11 @@ The manifest for your config repo:
 version: 1
 
 sources:
-  # "local" source is implicit (points to ./assets)
+  # "local" source is implicit (points to this repo's root)
   # Add additional sources as needed:
   - name: work-shared
     path: ~/work/ai-common
   - name: personal
-    type: tai-repo
     path: ~/personal-tai-config
   # Command sources fetch assets by running a command - e.g. cloning a
   # private repo. tai re-fetches on install; 'tai refresh' fetches manually.
@@ -122,9 +121,9 @@ description: Essential assets for daily work
 
 assets:
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: delegate
-    path: delegates/code-reviewer.md
+    path: assets/delegates/code-reviewer.md
   - type: doc
     path: docs/CLAUDE.md
 
@@ -158,7 +157,7 @@ bundles:
 # Can also include individual assets
 assets:
   - type: persona
-    path: personas/brainstormer.md
+    path: assets/personas/brainstormer.md
 
 # Optional: run a command after a successful install (notifications,
 # follow-up scripts, post-processing installed files). Failure doesn't undo
@@ -299,7 +298,7 @@ Adapters provide target-specific variables (prefixed with `target_`), enabling f
 # bundles/core.yaml
 assets:
   - type: file
-    path: files/AGENTS.md
+    path: assets/files/AGENTS.md
     dest: "{{target_agents_file}}"  # CLAUDE.md for Claude, AGENTS.md for Codex
 ```
 
@@ -436,10 +435,10 @@ claude  # Ready to use
 ### Editing an Asset
 
 ```bash
-tai locate personas/senior-swe.md
+tai locate assets/personas/senior-swe.md
 # → /Users/me/my-tai-config/assets/personas/senior-swe.md
 
-vim "$(tai locate personas/senior-swe.md)"
+vim "$(tai locate assets/personas/senior-swe.md)"
 tai install personal  # Re-install to apply changes
 ```
 
@@ -457,15 +456,30 @@ tai status          # Profile: work
 # work-tai-config/tai.yaml
 sources:
   - name: local
-    path: ./assets
+    path: .
   - name: personal
-    type: tai-repo
     path: ~/personal-tai-config
   - name: company
     path: ~/work/company-ai-config
 ```
 
-Assets from later sources override earlier ones when paths conflict. Tai logs these overrides as info messages.
+A source's `path` is a root, and references are literal paths from it - so a config repo's assets read as `personal:assets/personas/senior-swe.md`. Assets from later sources override earlier ones when paths conflict. Tai logs these overrides as info messages.
+
+### Importing Bundles From Another Repo
+
+A source also offers whatever bundles live in its `bundles/` directory, so a shared bundle can be referenced instead of copied:
+
+```yaml
+# work-tai-config/profiles/work.yaml
+bundles:
+  - work-local
+  - personal:core                 # read from ~/personal-tai-config at install time
+  - name: company:standards
+    exclude:
+      - assets/skills/beagle      # this machine cannot use it
+```
+
+An import stays current: assets added to `personal:core` upstream arrive on your next install with nothing to update on your side. Inside an imported bundle, unprefixed paths resolve against that bundle's own repo, so upstream's references keep meaning upstream's files.
 
 ## Supported Targets
 
@@ -545,7 +559,7 @@ Reference skills in bundles by directory name:
 ```yaml
 assets:
   - type: skill
-    path: skills/my-skill
+    path: assets/skills/my-skill
 ```
 
 ### Skill Includes

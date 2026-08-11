@@ -16,17 +16,19 @@ description: Essential assets for daily work
 
 assets:
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: delegate
-    path: delegates/code-reviewer.md
+    path: assets/delegates/code-reviewer.md
   - type: skill
-    path: skills/council-participant
+    path: assets/skills/council-participant
   - type: file
-    path: files/CLAUDE.md
+    path: assets/files/CLAUDE.md
     dest: ""
   - type: statusline
-    path: statuslines/detailed.yaml
+    path: assets/statuslines/detailed.yaml
 ```
+
+Paths are relative to the [source](/tai/concepts/sources/) root, which for your own repo is the repo itself - hence the `assets/` prefix.
 
 ## Valid asset types
 
@@ -55,7 +57,7 @@ bundles:
 
 assets:
   - type: persona
-    path: personas/brainstormer.md
+    path: assets/personas/brainstormer.md
 ```
 
 When `full-setup` is resolved, it includes everything from `core` and `work-extras`, plus the additional `brainstormer` persona.
@@ -77,6 +79,36 @@ assets:
 ```
 
 Here `work-shared` is a source defined in `tai.yaml` that points to a shared directory or another tai config repo.
+
+## Importing bundles from other sources
+
+A `bundles:` entry takes the same `source:name` form, importing a bundle from a source that keeps a `bundles/` directory at its root:
+
+```yaml
+# profiles/dev.yaml
+bundles:
+  - my-local-bundle
+  - work:work-tools      # from the "work" source's bundles/work-tools.yaml
+```
+
+The import stays live. Add a skill to `work-tools` upstream and it lands on your next install, with nothing to update on your side. That is the point: a hand-copied bundle is a snapshot, and snapshots go stale without ever erroring.
+
+An imported bundle's unprefixed paths resolve against **its own** repo, not yours. When `work-tools` says `assets/skills/dredge`, it means work's copy, even if you have a file at the same path. A prefixed path such as `recl:assets/skills/recl` resolves in **your** `tai.yaml`, so you must declare that source too - tai says so by name if you have not.
+
+### Excluding assets from an import
+
+Machines differ. A bundle you otherwise want may carry one asset that cannot work where you are installing it:
+
+```yaml
+bundles:
+  - name: work:work-tools
+    exclude:
+      - assets/skills/beagle
+```
+
+Everything else keeps flowing through automatically. Exclusions apply to the import's fully resolved contents, so they reach assets that arrived via a nested include. A pattern matching nothing warns rather than failing - upstream may simply have deleted the asset, which is the outcome you wanted anyway.
+
+For "never take this from that source at all", use the source's own `exclude:` in `tai.yaml` instead. Both drop the asset; the source-level one covers every bundle you import from it.
 
 ## Diamond dependency deduplication
 
@@ -107,11 +139,11 @@ description: Essential assets for daily work
 
 assets:
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: delegate
-    path: delegates/code-reviewer.md
+    path: assets/delegates/code-reviewer.md
   - type: file
-    path: files/CLAUDE.md
+    path: assets/files/CLAUDE.md
     dest: ""
 
 ---
@@ -126,7 +158,7 @@ assets:
   - type: delegate
     path: work-shared:delegates/security-reviewer.md
   - type: statusline
-    path: statuslines/detailed.yaml
+    path: assets/statuslines/detailed.yaml
 
 ---
 
@@ -140,5 +172,5 @@ bundles:
 
 assets:
   - type: skill
-    path: skills/council-participant
+    path: assets/skills/council-participant
 ```

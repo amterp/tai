@@ -52,7 +52,7 @@ For example, a single file asset can install to the right filename for each targ
 ```yaml
 assets:
   - type: file
-    path: files/agents.md
+    path: assets/files/agents.md
     dest: "{{ target_agents_file }}"
     # Resolves to CLAUDE.md for Claude, AGENTS.md for Codex
 ```

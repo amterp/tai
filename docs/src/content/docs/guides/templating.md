@@ -259,7 +259,7 @@ Reference it in a bundle:
 ```yaml
 assets:
   - type: file
-    path: files/project-wrapper.md
+    path: assets/files/project-wrapper.md
     dest: "CLAUDE.md"
 ```
 
@@ -276,7 +276,7 @@ The `dest` field on file assets also supports template variables:
 ```yaml
 assets:
   - type: file
-    path: files/agents-file.md
+    path: assets/files/agents-file.md
     dest: "{{ target_agents_file }}"
 ```
 

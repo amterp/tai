@@ -17,14 +17,14 @@ bundles:
 
 assets:
   - type: persona
-    path: personas/brainstormer.md
+    path: assets/personas/brainstormer.md
   - type: delegate
     path: work-shared:delegates/security-reviewer.md
   - type: file
-    path: files/CLAUDE.md
+    path: assets/files/CLAUDE.md
     dest: ""
   - type: statusline
-    path: statuslines/detailed.yaml
+    path: assets/statuslines/detailed.yaml
 ```
 
 ## Fields
@@ -33,7 +33,7 @@ assets:
 |-------|------|----------|-------------|
 | `name` | string | yes | Bundle identifier. Must match the filename (without extension). |
 | `description` | string | no | Human-readable description of the bundle's purpose. |
-| `bundles` | list of strings | no | Names of other bundles to include. |
+| `bundles` | list | no | Other bundles to include; see [entry forms](#entry-forms). |
 | `assets` | list of [asset entries](#asset-entry-format) | no | Individual asset references. |
 
 A bundle must have at least one of `bundles` or `assets` to be useful, but neither is strictly required by validation.
@@ -59,13 +59,37 @@ description: Essential assets for daily development
 
 ## bundles
 
-Optional. A list of other bundle names to include. This enables composition - you can build complex bundles from simpler ones.
+Optional. A list of other bundles to include. This enables composition - you can build complex bundles from simpler ones.
 
 ```yaml
 bundles:
   - core
   - work-extras
 ```
+
+### Entry forms
+
+An entry is either a bare name or a mapping. The mapping form exists for `exclude`; everything else reads better bare.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Bundle name, or `source:name` to import from another source. |
+| `exclude` | string list | no | Root-relative paths or globs to drop from this import. |
+
+```yaml
+bundles:
+  - core                     # this repo's bundles/core.yaml
+  - work:work-tools          # the "work" source's bundles/work-tools.yaml
+  - name: work:extras
+    exclude:
+      - assets/skills/beagle
+```
+
+### Imported bundles
+
+A `source:name` entry resolves against that source's `bundles/` directory. Inside an imported bundle, unprefixed asset paths and unprefixed included bundle names resolve against **that bundle's own repo**, so upstream's `assets/skills/dredge` keeps meaning upstream's file. A prefixed path resolves in **your** `tai.yaml`, which must therefore declare any third source the imported bundle reaches into.
+
+Exclusions apply to the import's fully resolved contents, reaching assets that arrived through a nested include. A pattern that matches nothing warns rather than failing: upstream may have deleted the asset, which already satisfies the intent. Patterns follow the same rules as a source's `exclude:` - see [tai.yaml](/tai/reference/tai-yaml/).
 
 ### Resolution order
 
@@ -78,7 +102,7 @@ bundles:
   - overrides  # Resolved second (overrides base on conflict)
 assets:
   - type: persona
-    path: personas/custom.md  # Appended last (highest priority)
+    path: assets/personas/custom.md  # Appended last (highest priority)
 ```
 
 ### Cycle detection
@@ -118,7 +142,7 @@ Without a source prefix, the path resolves against the `local` source:
 ```yaml
 assets:
   - type: persona
-    path: personas/senior-swe.md   # Resolves to local:personas/senior-swe.md
+    path: assets/personas/senior-swe.md   # local source, i.e. this repo
 ```
 
 #### Source-qualified paths
@@ -171,3 +195,5 @@ Tai validates bundles on load and fails fast if:
 - An asset entry uses an invalid `type`
 - An asset entry uses `dest` on a non-file type
 - A `dest` value is an absolute path or contains path traversal (`..`)
+- A `bundles` entry has no name, or names a source but no bundle
+- A `bundles` entry's `exclude` pattern is empty, absolute, or contains an interior `**`

@@ -3,7 +3,7 @@ package install
 import (
 	"fmt"
 	"os"
-	"strings"
+	"path"
 	"unicode/utf8"
 
 	"github.com/amterp/tai/internal/config"
@@ -52,10 +52,11 @@ func (r *AssetContentResolver) ResolveAssetContent(ref string) ([]byte, error) {
 		return nil, err
 	}
 
-	// Infer asset type from the first path segment (e.g. "personas/" -> "persona")
 	assetType := inferAssetType(assetPath)
 	if assetType == "" {
-		return nil, fmt.Errorf("cannot infer asset type from path %q (expected personas/, delegates/, skills/, or files/ prefix)", assetPath)
+		return nil, fmt.Errorf("cannot infer asset type from path %q: it must end in <type-dir>/<name>, "+
+			"where the type dir is one of personas/, delegates/, skills/, or files/ "+
+			"(e.g. assets/personas/senior-swe.md)", assetPath)
 	}
 
 	// Only file-shaped assets can be included
@@ -89,12 +90,14 @@ func (r *AssetContentResolver) ResolveAssetContent(ref string) ([]byte, error) {
 	return parsed.Body, nil
 }
 
-// inferAssetType determines the singular asset type from an asset path's
-// directory prefix (e.g. "personas/foo.md" -> "persona").
+// inferAssetType determines the singular asset type from the directory holding
+// the asset (e.g. "assets/personas/foo.md" and "personas/foo.md" both give
+// "persona"). Reading the first segment instead would tie the type to how deep
+// the source root sits, which is not something a reference should encode.
 func inferAssetType(assetPath string) string {
-	parts := strings.SplitN(assetPath, "/", 2)
-	if len(parts) < 2 {
+	dir := path.Dir(assetPath)
+	if dir == "." || dir == "/" {
 		return ""
 	}
-	return config.AssetTypeFromDirName(parts[0])
+	return config.AssetTypeFromDirName(path.Base(dir))
 }

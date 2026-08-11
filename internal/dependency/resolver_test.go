@@ -395,6 +395,70 @@ name: Helper
 	}
 }
 
+// A dependency path is a path from its source root, like every other asset
+// reference. The asset type comes from the directory holding it, so a repo
+// layout (assets/delegates/...) says "delegate" just as a bare one does.
+func TestResolveDepUnderAssetsPrefix(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	setupAsset(t, filepath.Join(tmpDir, "assets"), "personas", "lead.md", `---
+name: Lead
+depends:
+  - assets/delegates/helper.md
+---
+`)
+	setupAsset(t, filepath.Join(tmpDir, "assets"), "delegates", "helper.md", `---
+name: Helper
+---
+`)
+
+	resolver := NewResolver(loadSources(t, tmpDir))
+	persona := &config.Asset{
+		Type:       config.AssetTypePersona,
+		Name:       "lead.md",
+		SourceName: "local",
+		SourcePath: filepath.Join(tmpDir, "assets", "personas", "lead.md"),
+	}
+
+	result, err := resolver.Resolve([]*config.Asset{persona})
+	if err != nil {
+		t.Fatalf("Resolve failed: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("len(result) = %d, want 2 (the dependency was not pulled in)", len(result))
+	}
+	if result[0].Name != "helper.md" || result[0].Type != config.AssetTypeDelegate {
+		t.Errorf("result[0] = %s/%s, want delegate/helper.md", result[0].Type, result[0].Name)
+	}
+}
+
+func TestResolveDepWithoutTypeDirectoryErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	setupAsset(t, tmpDir, "personas", "lead.md", `---
+name: Lead
+depends:
+  - helper.md
+---
+`)
+
+	resolver := NewResolver(loadSources(t, tmpDir))
+	persona := &config.Asset{
+		Type:       config.AssetTypePersona,
+		Name:       "lead.md",
+		SourceName: "local",
+		SourcePath: filepath.Join(tmpDir, "personas", "lead.md"),
+	}
+
+	_, err := resolver.Resolve([]*config.Asset{persona})
+	if err == nil {
+		t.Fatal("expected an error for a path with no asset type directory")
+	}
+	if !strings.Contains(err.Error(), "type-dir") {
+		t.Errorf("error should say what shape a dependency path takes, got: %v", err)
+	}
+}
+
 func TestResolveFileTypeNoDeps(t *testing.T) {
 	tmpDir := t.TempDir()
 

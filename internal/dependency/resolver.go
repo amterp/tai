@@ -4,6 +4,7 @@ package dependency
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -222,22 +223,22 @@ func (r *Resolver) extractDeps(asset *config.Asset) ([]frontmatter.DependencyEnt
 }
 
 // resolveDepRef resolves a dependency reference to an asset.
-// The dep.Path format is "type-dir/name" or "source:type-dir/name".
-// Examples: "delegates/bug-hunter.md", "other-source:skills/my-skill"
+// The dep.Path is a source-root-relative path, optionally source-qualified.
+// Examples: "assets/delegates/bug-hunter.md", "other-source:skills/my-skill"
 func (r *Resolver) resolveDepRef(dep frontmatter.DependencyEntry, defaultSource string) (*config.Asset, error) {
 	// Parse source and asset path
 	sourceName, assetPath := config.ParseAssetReference(dep.Path)
 
-	// Extract type from the first path segment (e.g., "delegates" -> "delegate")
-	parts := strings.SplitN(assetPath, "/", 2)
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid dependency path %q: must be type-dir/name (e.g., delegates/bug-hunter.md)", dep.Path)
-	}
-
-	typeDir := parts[0]
+	// The type comes from the directory holding the asset, which is the last
+	// segment of its parent path: "assets/delegates/x.md" and "delegates/x.md"
+	// both say "delegate". Reading the first segment instead would tie the type
+	// to how deep the source root happens to sit.
+	typeDir := path.Base(path.Dir(assetPath))
 	assetType := config.AssetTypeFromDirName(typeDir)
 	if !config.IsValidAssetType(assetType) {
-		return nil, fmt.Errorf("invalid dependency path %q: unknown type directory %q", dep.Path, typeDir)
+		return nil, fmt.Errorf("invalid dependency path %q: %q is not an asset type directory. "+
+			"A dependency is a path from its source root, ending in <type-dir>/<name> "+
+			"(e.g. assets/delegates/bug-hunter.md)", dep.Path, typeDir)
 	}
 
 	// If no source specified and we have a default, check local first then fall back

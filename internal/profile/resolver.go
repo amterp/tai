@@ -63,6 +63,7 @@ func NewResolver(
 func (r *Resolver) SetLogger(logger Logger) {
 	r.logger = logger
 	r.depResolver.SetLogger(logger)
+	r.bundleResolver.SetLogger(logger)
 }
 
 // Resolve resolves a profile by name.

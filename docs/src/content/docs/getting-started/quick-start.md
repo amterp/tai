@@ -78,9 +78,9 @@ description: Essential assets for daily development
 
 assets:
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: delegate
-    path: delegates/code-reviewer.md
+    path: assets/delegates/code-reviewer.md
 ```
 
 ### A profile

@@ -67,13 +67,13 @@ List configured sources.
 tai list sources
 ```
 
-Shows each source's name, type (`local` or `tai-repo`), and path.
+Shows each source's name, type (`local`, `command`, or `url`), and path.
 
 ```
 Sources:
-  local       local     ./assets
+  local       local     .
   work-shared local     ~/work/ai-common
-  team-repo   tai-repo  ~/team-tai-config
+  team-repo   local     ~/team-tai-config
 ```
 
 ### tai list bundles
@@ -84,13 +84,17 @@ List available bundles.
 tai list bundles
 ```
 
-Shows each bundle's name and description.
+Shows this repo's bundles, then those offered by each source, grouped under the source name. A grouped entry is written exactly as shown, so it can be pasted into a `bundles:` list.
 
 ```
 Bundles:
-  core          Essential assets for daily work
-  work-extras   Additional assets from work sources
+  core                Essential assets for daily work
+  work-extras         Additional assets from work sources
+team-repo:
+  team-repo:standards Required company assets
 ```
+
+A source whose `bundles/` directory cannot be read produces a warning and is skipped, rather than taking out the whole listing.
 
 ### tai list profiles
 
@@ -178,7 +182,7 @@ tai show bundle <name>
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `name` | yes | Bundle name to inspect |
+| `name` | yes | Bundle name to inspect, optionally source-qualified (`source:name`) |
 
 Resolves nested bundles and shows the flattened asset list.
 
@@ -208,7 +212,7 @@ tai locate <asset-path>
 If no source is specified, resolves against the `local` source.
 
 ```bash
-tai locate personas/senior-swe.md
+tai locate assets/personas/senior-swe.md
 # /Users/you/my-tai-config/assets/personas/senior-swe.md
 
 tai locate work-shared:personas/company-style.md

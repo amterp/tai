@@ -99,7 +99,7 @@ Source file (`assets/personas/senior-swe.md`):
 name: Senior SWE
 description: Experienced software engineer.
 depends:
-  - delegates/code-reviewer.md
+  - assets/delegates/code-reviewer.md
 ---
 
 You are a senior software engineer...
@@ -148,25 +148,25 @@ Assets can declare dependencies on other assets using the `depends` field. When 
 
 ### Syntax
 
-Each dependency is a path string in the format `type-dir/name` or `source:type-dir/name`:
+A dependency is a path from its source root, optionally source-qualified - the same form a bundle entry uses:
 
 ```yaml
 ---
 name: Code Review
 description: Request a code review with specialized reviewers.
 depends:
-  - delegates/bug-hunter.md
-  - delegates/code-reviewer.md
-  - delegates/performance-reviewer.md
-  - skills/council-participant
+  - assets/delegates/bug-hunter.md
+  - assets/delegates/code-reviewer.md
+  - assets/delegates/performance-reviewer.md
+  - assets/skills/council-participant
   - other-source:delegates/helper.md
 ---
 ```
 
-The type directory in the path determines the asset type:
+The directory holding the asset names its type, so the same directory name means the same type wherever the source root sits:
 
-| Path prefix | Asset type |
-|------------|-----------|
+| Directory | Asset type |
+|-----------|-----------|
 | `personas/` | persona |
 | `delegates/` | delegate |
 | `skills/` | skill |
@@ -189,7 +189,7 @@ A skill like `code-review` that orchestrates multiple specialized delegates does
 # bundles/core.yaml
 assets:
   - type: skill
-    path: skills/code-review   # Automatically pulls in its depends
+    path: assets/skills/code-review   # Automatically pulls in its depends
 ```
 
 ### Limitations

@@ -48,7 +48,7 @@ Reference it in a bundle with a templated `dest`:
 # bundles/core.yaml
 assets:
   - type: file
-    path: files/agents-file.md
+    path: assets/files/agents-file.md
     dest: "{{ target_agents_file }}"
 ```
 
@@ -69,7 +69,7 @@ You can combine target variables with static paths:
 ```yaml
 assets:
   - type: file
-    path: files/notes.md
+    path: assets/files/notes.md
     dest: "{{ target_name }}-config"    # Resolves to "claude-config" or "codex-config" (directory)
 ```
 
@@ -182,15 +182,15 @@ When installed to **Codex**, the output includes common guidelines and the perso
 # bundles/core.yaml
 assets:
   - type: file
-    path: files/project-instructions.md
+    path: assets/files/project-instructions.md
     dest: "{{ target_agents_file }}"
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: file
-    path: files/common-guidelines.md
+    path: assets/files/common-guidelines.md
     dest: ""
   - type: file
-    path: files/claude-tool-tips.md
+    path: assets/files/claude-tool-tips.md
     dest: ""
 ```
 
@@ -227,11 +227,11 @@ description: Development assets for all targets
 
 assets:
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: delegate
-    path: delegates/code-reviewer.md
+    path: assets/delegates/code-reviewer.md
   - type: file
-    path: files/project-instructions.md
+    path: assets/files/project-instructions.md
     dest: "{{ target_agents_file }}"
 ```
 

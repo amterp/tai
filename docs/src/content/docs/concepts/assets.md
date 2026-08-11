@@ -67,10 +67,10 @@ Loose files copied as-is to the target. Unlike other file assets, the `file` typ
 # In a bundle or profile
 assets:
   - type: file
-    path: files/CLAUDE.md
+    path: assets/files/CLAUDE.md
     dest: ""              # Empty string = target root directory
   - type: file
-    path: files/config.json
+    path: assets/files/config.json
     dest: "config"        # Goes to <target-dir>/config/config.json
 ```
 

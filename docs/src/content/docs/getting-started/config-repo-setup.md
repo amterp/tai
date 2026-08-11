@@ -45,7 +45,6 @@ sources:
     path: ~/work/ai-common
 
   - name: team-repo
-    type: tai-repo
     path: ~/team-tai-config
 
 default_profile: work
@@ -68,7 +67,7 @@ When a bundle references an asset path without a source prefix, it resolves agai
 ```yaml
 # These are equivalent:
 - type: persona
-  path: personas/senior-swe.md
+  path: assets/personas/senior-swe.md
 
 - type: persona
   path: local:personas/senior-swe.md
@@ -103,9 +102,9 @@ description: Essential assets for daily work
 
 assets:
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: delegate
-    path: delegates/code-reviewer.md
+    path: assets/delegates/code-reviewer.md
 ```
 
 Bundles can include other bundles for composition. See [Bundles](/tai/concepts/bundles/) for details.

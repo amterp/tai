@@ -22,10 +22,17 @@ type TaiConfig struct {
 }
 
 // Source represents a location that provides assets.
+//
+// A source is a directory root. Nothing is appended to Path and no layout is
+// inferred from it: every reference names a literal path from the root, so
+// `assets/skills/rad` reaches exactly that. tai looks in two conventional
+// places on its own - `<root>/bundles/` for importable bundles, and the asset
+// type dirs for `tai list assets` - and neither affects how a written path
+// resolves.
 type Source struct {
 	Name string `yaml:"name"`
-	Type string `yaml:"type"` // "local" (default), "tai-repo", "command", or "url"
-	Path string `yaml:"path"` // local/tai-repo only
+	Type string `yaml:"type"` // "local" (default), "command", or "url"
+	Path string `yaml:"path"` // local only
 
 	// Command materializes the source ("command" type only). The argv list is
 	// executed with a tai-provided staging directory (via the TAI_DEST_DIR env
@@ -70,29 +77,37 @@ func (s *Source) HasPatches() bool {
 	return s.Patches != ""
 }
 
-// IsExcluded reports whether a source-relative path is excluded.
+// MatchesExcludePattern reports whether one exclusion pattern drops a
+// root-relative path. Shared by a source's own `exclude:` list and by a bundle
+// import's, which express the same thing at different scopes.
 //
 // A pattern matches the path itself or any of its parent directories, so
-// `skills/legacy-*` excludes that directory and everything beneath it - the
-// behavior people expect from excluding a directory, without needing `**`. A
-// trailing `/**` is accepted and stripped for familiarity.
+// `assets/skills/legacy-*` excludes that directory and everything beneath it -
+// the behavior people expect from excluding a directory, without needing `**`.
+// A trailing `/**` is accepted and stripped for familiarity.
 //
-// Wildcards are `path.Match`, so they do not span separators: `skills/*` matches
-// `skills/rad` but not `skills/a/b`. Subtree exclusion comes from the
-// parent-directory walk above, not from a wildcard. An interior `**` cannot
-// match anything and is rejected when the config is parsed, rather than being
-// accepted and silently carrying the file it was meant to drop.
-func (s *Source) IsExcluded(rel string) bool {
-	if len(s.Exclude) == 0 {
-		return false
-	}
+// Wildcards are `path.Match`, so they do not span separators: `assets/skills/*`
+// matches `assets/skills/rad` but not `assets/skills/a/b`. Subtree exclusion
+// comes from the parent-directory walk above, not from a wildcard. An interior
+// `**` cannot match anything and is rejected when the config is parsed, rather
+// than being accepted and silently carrying the file it was meant to drop.
+func MatchesExcludePattern(pattern, rel string) bool {
+	pattern = strings.TrimSuffix(path.Clean(filepath.ToSlash(pattern)), "/**")
 	rel = path.Clean(filepath.ToSlash(rel))
+	for candidate := rel; candidate != "." && candidate != "/"; candidate = path.Dir(candidate) {
+		if ok, err := path.Match(pattern, candidate); err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
+// IsExcluded reports whether a root-relative path is dropped by this source's
+// `exclude:` patterns. See MatchesExcludePattern for what a pattern expresses.
+func (s *Source) IsExcluded(rel string) bool {
 	for _, pattern := range s.Exclude {
-		pattern = strings.TrimSuffix(path.Clean(filepath.ToSlash(pattern)), "/**")
-		for candidate := rel; candidate != "." && candidate != "/"; candidate = path.Dir(candidate) {
-			if ok, err := path.Match(pattern, candidate); err == nil && ok {
-				return true
-			}
+		if MatchesExcludePattern(pattern, rel) {
+			return true
 		}
 	}
 	return false
@@ -181,13 +196,49 @@ func (ae *AssetEntry) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+// BundleEntry references a bundle from a `bundles:` list, in a profile or in
+// another bundle.
+type BundleEntry struct {
+	// Name is a bare bundle name resolved against the referencing bundle's own
+	// repo, or "source:name" to import one from another source's bundles/ dir.
+	Name string `yaml:"name"`
+
+	// Exclude drops assets from this import alone. Patterns match the same
+	// root-relative paths as a source's `exclude:` list and apply to the
+	// import's fully resolved asset set, so they reach through nested includes:
+	// what matters is what lands on disk, not which nesting level introduced
+	// it. Machines genuinely differ, and carving one asset out here beats
+	// mirroring the whole bundle to drop it - mirrors are what this feature
+	// exists to stop.
+	Exclude []string `yaml:"exclude"`
+}
+
+// UnmarshalYAML accepts a bare name as well as the mapping form. Almost every
+// entry carries no exclusions, and `- core` should not have to become
+// `- name: core`.
+func (be *BundleEntry) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		be.Name = node.Value
+		return nil
+	}
+
+	// Avoid infinite recursion by decoding into a plain struct.
+	type raw BundleEntry
+	var r raw
+	if err := node.Decode(&r); err != nil {
+		return err
+	}
+	*be = BundleEntry(r)
+	return nil
+}
+
 // Bundle represents a named collection of assets.
 type Bundle struct {
-	Version     int          `yaml:"version,omitempty"` // Schema version (optional, defaults to 1)
-	Name        string       `yaml:"name"`
-	Description string       `yaml:"description"`
-	Bundles     []string     `yaml:"bundles"` // Included bundles (bundle names)
-	Assets      []AssetEntry `yaml:"assets"`  // Structured asset entries
+	Version     int           `yaml:"version,omitempty"` // Schema version (optional, defaults to 1)
+	Name        string        `yaml:"name"`
+	Description string        `yaml:"description"`
+	Bundles     []BundleEntry `yaml:"bundles"` // Included bundles
+	Assets      []AssetEntry  `yaml:"assets"`  // Structured asset entries
 }
 
 // Profile represents a bundle bound to a specific target.
@@ -196,7 +247,7 @@ type Profile struct {
 	Name        string            `yaml:"name"`
 	Description string            `yaml:"description"`
 	Target      string            `yaml:"target"` // e.g., "claude", "opencode"
-	Bundles     []string          `yaml:"bundles"`
+	Bundles     []BundleEntry     `yaml:"bundles"`
 	Assets      []AssetEntry      `yaml:"assets"`  // Direct asset references
 	Options     map[string]any    `yaml:"options"` // Adapter-specific options
 	Vars        map[string]string `yaml:"vars"`    // Template variables (overrides tai.yaml vars)
@@ -267,6 +318,7 @@ type Asset struct {
 	Name       string // Filename or directory name
 	SourceName string // Source this asset came from
 	SourcePath string // Full filesystem path to the asset
+	RelPath    string // Path within its source, as the reference wrote it
 	IsDir      bool   // True for directory assets (any type can be a directory)
 	Dest       string // Target destination path (used by "file" type)
 	Scope      string // Per-asset scope override (config assets); empty inherits

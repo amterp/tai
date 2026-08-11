@@ -51,26 +51,44 @@ func TestLoaderLoad(t *testing.T) {
 	}
 
 	// Check discovered assets
-	if len(ls.Assets["personas"]) != 2 {
-		t.Errorf("len(personas) = %d, want 2", len(ls.Assets["personas"]))
+	assertDiscovers(t, ls,
+		"personas/senior-swe.md",
+		"personas/brainstormer.md",
+		"delegates/code-reviewer.md",
+		"skills/my-skill",
+		"files/README.md",
+	)
+}
+
+// assertDiscovers checks that a source discovered exactly the given
+// root-relative asset paths.
+func assertDiscovers(t *testing.T, ls *LoadedSource, want ...string) {
+	t.Helper()
+
+	got := ls.ListAllAssets()
+	found := make(map[string]bool, len(got))
+	for _, path := range got {
+		found[path] = true
 	}
-	if len(ls.Assets["delegates"]) != 1 {
-		t.Errorf("len(delegates) = %d, want 1", len(ls.Assets["delegates"]))
+
+	for _, path := range want {
+		if !found[path] {
+			t.Errorf("asset %q not discovered; got %v", path, got)
+		}
 	}
-	if len(ls.Assets["skills"]) != 1 {
-		t.Errorf("len(skills) = %d, want 1", len(ls.Assets["skills"]))
-	}
-	if len(ls.Assets["files"]) != 1 {
-		t.Errorf("len(files) = %d, want 1", len(ls.Assets["files"]))
+	if len(got) != len(want) {
+		t.Errorf("discovered %d assets, want %d; got %v", len(got), len(want), got)
 	}
 }
 
-func TestLoaderLoadTaiRepo(t *testing.T) {
+// A source pointed at a config repo root keeps its assets under assets/. The
+// path is taken literally - nothing is appended - so the reference carries the
+// assets/ prefix and discovery reports it that way too.
+func TestLoaderLoadRepoRoot(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 
-	// Create a separate "tai repo" directory structure
-	taiRepoPath := filepath.Join(env.Root, "external-tai-repo")
-	assetsPath := filepath.Join(taiRepoPath, "assets", "personas")
+	repoPath := filepath.Join(env.Root, "external-tai-repo")
+	assetsPath := filepath.Join(repoPath, "assets", "personas")
 	if err := os.MkdirAll(assetsPath, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -79,28 +97,51 @@ func TestLoaderLoadTaiRepo(t *testing.T) {
 	}
 
 	loader := NewLoader(env.ConfigRepo)
-
-	src := config.Source{
-		Name: "external",
-		Type: "tai-repo",
-		Path: taiRepoPath,
-	}
-
-	ls, err := loader.Load(src)
+	ls, err := loader.Load(config.Source{Name: "external", Type: "local", Path: repoPath})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	// tai-repo sources should point to assets/ subdirectory
-	expectedPath := filepath.Join(taiRepoPath, "assets")
-	if ls.ResolvedPath != expectedPath {
-		t.Errorf("ResolvedPath = %q, want %q", ls.ResolvedPath, expectedPath)
+	if ls.ResolvedPath != repoPath {
+		t.Errorf("ResolvedPath = %q, want %q (the path, untouched)", ls.ResolvedPath, repoPath)
 	}
 
-	// Should find the external persona
-	if len(ls.Assets["personas"]) != 1 {
-		t.Errorf("len(personas) = %d, want 1", len(ls.Assets["personas"]))
+	assertDiscovers(t, ls, "assets/personas/external.md")
+
+	if _, ok := ls.GetAsset("assets/personas/external.md"); !ok {
+		t.Error("GetAsset should resolve the path discovery reported")
 	}
+	if _, ok := ls.GetAsset("personas/external.md"); ok {
+		t.Error("GetAsset must not silently strip or add an assets/ prefix")
+	}
+}
+
+// Both layouts enumerate: a repo keeps assets under assets/, a plain asset
+// folder has the type dirs at its top level, and one source can hold both
+// without either shadowing the other.
+func TestLoaderDiscoversBothLayouts(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	root := filepath.Join(env.Root, "mixed")
+	for _, dir := range []string{
+		filepath.Join(root, "personas"),
+		filepath.Join(root, "assets", "personas"),
+	} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "p.md"), []byte("# P"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	loader := NewLoader(env.ConfigRepo)
+	ls, err := loader.Load(config.Source{Name: "mixed", Type: "local", Path: root})
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	assertDiscovers(t, ls, "personas/p.md", "assets/personas/p.md")
 }
 
 func TestLoaderLoadAll(t *testing.T) {
@@ -592,6 +633,69 @@ func TestLoaderURLSource(t *testing.T) {
 	})
 }
 
+func TestLoadBundles(t *testing.T) {
+	t.Run("reads bundles from the source root", func(t *testing.T) {
+		env := testutil.NewTestEnv(t)
+		repo := filepath.Join(env.Root, "producer")
+		if err := os.MkdirAll(filepath.Join(repo, "bundles"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, "bundles", "tools.yaml"),
+			[]byte("name: work-tools\ndescription: Work tooling\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		ls, err := NewLoader(env.ConfigRepo).Load(config.Source{Name: "work", Type: "local", Path: repo})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		bundles, err := ls.LoadBundles()
+		if err != nil {
+			t.Fatalf("LoadBundles() error = %v", err)
+		}
+		// Keyed by the bundle's `name:` field, not its filename.
+		if _, ok := bundles["work-tools"]; !ok {
+			t.Errorf("bundle not found by name; got %v", bundles)
+		}
+	})
+
+	t.Run("no bundles dir is not an error", func(t *testing.T) {
+		env := testutil.NewTestEnv(t)
+		ls, err := NewLoader(env.ConfigRepo).Load(config.Source{Name: "local", Type: "local", Path: "./assets"})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		bundles, err := ls.LoadBundles()
+		if err != nil {
+			t.Fatalf("offering no bundles must not be an error: %v", err)
+		}
+		if len(bundles) != 0 {
+			t.Errorf("len(bundles) = %d, want 0", len(bundles))
+		}
+	})
+
+	t.Run("unfetched command source reports the missing fetch", func(t *testing.T) {
+		env := testutil.NewTestEnv(t)
+		loader := NewLoader(env.ConfigRepo)
+		loader.SetCacheDir(env.CacheDir)
+
+		ls, err := loader.Load(config.Source{
+			Name: "remote", Type: config.SourceTypeCommand, Command: []string{"sh", "-c", "true"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := ls.LoadBundles(); err == nil {
+			t.Fatal("expected an error before the first fetch")
+		} else if !strings.Contains(err.Error(), "tai refresh") {
+			t.Errorf("error should hint at 'tai refresh', got: %v", err)
+		}
+	})
+}
+
 func TestLoaderExcludeHidesAssets(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 
@@ -616,13 +720,7 @@ func TestLoaderExcludeHidesAssets(t *testing.T) {
 	}
 
 	// Excluded assets must not appear in discovery.
-	personas := ls.Assets["personas"]
-	if len(personas) != 1 || personas[0] != "keeper.md" {
-		t.Errorf("personas = %v, want [keeper.md]", personas)
-	}
-	if len(ls.Assets["skills"]) != 0 {
-		t.Errorf("skills = %v, want none", ls.Assets["skills"])
-	}
+	assertDiscovers(t, ls, "personas/keeper.md")
 
 	// ...nor be reachable by naming them directly. They are still on disk, so
 	// this only holds because GetAsset checks exclusions explicitly.

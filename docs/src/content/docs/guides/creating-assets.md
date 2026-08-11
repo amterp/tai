@@ -207,7 +207,7 @@ description: Essential project assets
 
 assets:
   - type: file
-    path: files/project-instructions.md
+    path: assets/files/project-instructions.md
     dest: ""              # Empty string = target root (~/.claude/)
 ```
 
@@ -298,13 +298,13 @@ description: Essential assets for daily development
 
 assets:
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: delegate
-    path: delegates/code-reviewer.md
+    path: assets/delegates/code-reviewer.md
   - type: delegate
-    path: delegates/quick-summarizer.md
+    path: assets/delegates/quick-summarizer.md
   - type: file
-    path: files/project-instructions.md
+    path: assets/files/project-instructions.md
     dest: ""
 ```
 

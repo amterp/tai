@@ -5,51 +5,65 @@ description: Sources provide assets that bundles and profiles reference - local 
 
 Sources are locations that provide [assets](/tai/concepts/assets/). They are defined in `tai.yaml` and referenced by [bundles](/tai/concepts/bundles/) and [profiles](/tai/concepts/profiles/) when specifying asset paths.
 
+## A source is a directory root
+
+`path` points at a directory, and every reference is a literal path from it. Nothing is appended and no layout is guessed, so what you write is what tai opens.
+
+```yaml
+sources:
+  - name: work
+    path: ~/work-tai-config    # the repo root
+```
+
+```yaml
+assets:
+  - type: skill
+    path: work:assets/skills/dredge    # ~/work-tai-config/assets/skills/dredge
+```
+
+That is why a config repo carries `assets/` in its references: the repo root holds `assets/`, `bundles/`, and `profiles/` side by side, and pointing a source at the root is what makes all three reachable. A folder that holds asset type directories at its top level needs no such prefix.
+
+```yaml
+sources:
+  - name: team
+    path: ~/work/ai-common      # personas/, skills/ ... sit directly here
+```
+
+```yaml
+assets:
+  - type: persona
+    path: team:personas/company-style.md
+```
+
 ## The implicit `local` source
 
-Every config repo has an implicit source called `local` that points to the `./assets` directory in the config repo. You do not need to declare it - tai adds it automatically.
+Every config repo has an implicit source called `local` pointing at the repo itself. You do not need to declare it.
 
 ```
-my-tai-config/
+my-tai-config/          <-- This is the "local" source
   tai.yaml
-  assets/          <-- This is the "local" source
+  assets/
     personas/
-    delegates/
     skills/
-    files/
-    statuslines/
+  bundles/
+  profiles/
 ```
 
-When a bundle references `personas/senior-swe.md` without a source prefix, it resolves to `local`, which means `./assets/personas/senior-swe.md`.
-
-You only need to explicitly declare the `local` source if you want to override its default path.
+A bundle referencing `assets/personas/senior-swe.md` with no source prefix resolves to `local`. Declare the source yourself only to point it somewhere else.
 
 ## Source types
 
-### Local directory
+Three, differing only in where the directory comes from - and in the url source's case, in what it holds.
 
-A local directory source points to a folder on disk that contains assets organized in the standard `personas/`, `delegates/`, `skills/`, etc. structure.
+### Local
 
-```yaml
-sources:
-  - name: work-shared
-    path: ~/work/ai-common
-```
-
-The directory at `~/work/ai-common` should contain asset subdirectories directly (not nested under an `assets/` folder).
-
-### Tai repo
-
-A tai-repo source points to another tai config repo. Tai uses that repo's `assets/` directory as the source.
+A directory already on disk. This is the default, so `type` can be omitted.
 
 ```yaml
 sources:
-  - name: personal
-    type: tai-repo
-    path: ~/personal-tai-config
+  - name: work
+    path: ~/work-tai-config
 ```
-
-This makes `~/personal-tai-config/assets/` available as the `personal` source. The difference from a plain local directory is that tai knows to look inside the `assets/` subdirectory.
 
 ### Command source
 
@@ -133,7 +147,7 @@ Sources are resolved in declaration order. **Later sources override earlier ones
 ```yaml
 sources:
   - name: local        # Base assets
-    path: ./assets
+    path: .
   - name: work-shared  # Can override local assets
     path: ~/work/ai-common
 ```
@@ -145,14 +159,18 @@ Bundles and profiles reference assets from specific sources using the `source:pa
 ```yaml
 assets:
   - type: persona
-    path: personas/senior-swe.md              # Defaults to "local" source
+    path: assets/personas/senior-swe.md          # Defaults to "local" source
   - type: persona
     path: work-shared:personas/company-style.md  # Explicit source
   - type: delegate
-    path: personal:delegates/pair-programmer.md  # From tai-repo source
+    path: personal:assets/delegates/pair-programmer.md
 ```
 
 The source name before the colon must match a source defined in `tai.yaml`.
+
+## Bundles from other sources
+
+A source that keeps a `bundles/` directory at its root offers those bundles for import, so a consumer names a bundle instead of copying its contents. See [Bundles](/tai/concepts/bundles/#importing-bundles-from-other-sources).
 
 ## Configuration examples
 
@@ -166,7 +184,7 @@ version: 1
 default_profile: personal
 ```
 
-All assets live in `./assets/` and bundles reference them without a source prefix.
+All assets live in `./assets/` and bundles reference them as `assets/...` without a source prefix.
 
 ### Multi-source setup
 
@@ -181,7 +199,6 @@ sources:
     path: ~/work/ai-common
 
   - name: personal
-    type: tai-repo
     path: ~/personal-tai-config
 
 default_profile: work

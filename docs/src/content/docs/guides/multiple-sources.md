@@ -63,18 +63,17 @@ The directory at `~/work/ai-common` must contain asset subdirectories:
         └── SKILL.md
 ```
 
-### Tai-repo source
+### Another config repo
 
-A tai-repo source points to another tai config repo and uses its `assets/` directory:
+Point a source at a config repo root and its assets are reachable under `assets/`:
 
 ```yaml
 sources:
   - name: personal
-    type: tai-repo
     path: ~/personal-tai-config
 ```
 
-Tai looks for `assets/` inside the specified path. This lets you reference another person's (or your own) full tai config repo without restructuring it.
+References then read `personal:assets/personas/senior-swe.md`. Nothing is appended for you, which is also what puts that repo's `bundles/` within reach - see [importing bundles](#importing-bundles) below.
 
 ## Configuring sources in tai.yaml
 
@@ -85,7 +84,7 @@ Here is a complete example with multiple sources:
 version: 1
 
 sources:
-  # The implicit local source (./assets) is always available.
+  # The implicit local source (this repo) is always available.
   # No need to declare it unless overriding.
 
   # Another local directory with shared team assets
@@ -94,7 +93,6 @@ sources:
 
   # Your personal tai config repo
   - name: personal
-    type: tai-repo
     path: ~/personal-tai-config
 
 default_profile: work
@@ -124,7 +122,7 @@ description: Combined work configuration
 assets:
   # From the implicit local source (no prefix needed)
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
 
   # From the team source
   - type: delegate
@@ -134,10 +132,67 @@ assets:
 
   # From the personal source
   - type: delegate
-    path: personal:delegates/quick-summarizer.md
+    path: personal:assets/delegates/quick-summarizer.md
 ```
 
 Without a source prefix, the path resolves against the `local` source. The prefix syntax works everywhere assets are referenced - in bundles, profiles, and `depends` fields.
+
+## Importing bundles
+
+Referencing another repo's assets one at a time means restating its bundles in yours. That works exactly once. When the other repo adds a skill to a bundle, your copy does not change and nothing errors - it is a valid bundle, just an old one. Drift like this is quiet by construction, and you find it when you go looking for a skill that should have been there.
+
+Import the bundle instead:
+
+```yaml
+# ~/work-tai-config/profiles/work.yaml
+bundles:
+  - full-work           # this repo's own bundle
+  - personal:core       # ~/personal-tai-config/bundles/core.yaml
+```
+
+Now `personal:core` is read from the personal repo at install time. Whatever it contains today is what you get.
+
+A source offers whatever is in `<root>/bundles/`. `tai list bundles` shows them grouped by source, so you can see what is importable before writing the reference.
+
+### Imported bundles keep their own bearings
+
+`core` was written for the personal repo, so its unprefixed paths mean *that* repo:
+
+```yaml
+# ~/personal-tai-config/bundles/core.yaml
+assets:
+  - type: persona
+    path: assets/personas/senior-swe.md   # personal's copy, always
+```
+
+This holds even if your work repo has a file at the same path. The same applies to bundles that `core` itself includes.
+
+The exception is a prefixed path. If `core` reaches into a third source with `recl:assets/skills/recl`, that name is looked up in **your** `tai.yaml`, because yours is the only one tai loads. Declare a source called `recl` too, or the install fails - naming the missing source and, where it can read the origin repo's `tai.yaml`, what that repo points it at.
+
+### Dropping assets you cannot use
+
+Machines differ. If a bundle carries a skill that cannot work where you are installing it, carve it out at the import:
+
+```yaml
+bundles:
+  - name: work:work-tools
+    exclude:
+      - assets/skills/beagle
+```
+
+The rest keeps flowing through automatically, which is the whole point - mirroring the bundle to drop one asset brings back the drift you were escaping.
+
+Two scopes are available, and they answer different questions. `exclude` on the import means "not from this bundle". `exclude` on the source in `tai.yaml` means "never from this source at all", covering every bundle you import from it:
+
+```yaml
+sources:
+  - name: work
+    path: ~/work-tai-config
+    exclude:
+      - assets/skills/beagle
+```
+
+A source exclusion filters imported bundles quietly, logging what it dropped. Naming an excluded asset in your *own* config is still an error - that is a contradiction you wrote, rather than one you inherited.
 
 ## Complete worked example
 
@@ -195,7 +250,6 @@ sources:
   - name: team
     path: ~/work/team-ai-config
   - name: personal
-    type: tai-repo
     path: ~/personal-tai-config
 
 default_profile: work
@@ -234,15 +288,15 @@ bundles:
 assets:
   # Personal assets pulled from the personal source
   - type: persona
-    path: personal:personas/senior-swe.md
+    path: personal:assets/personas/senior-swe.md
   - type: delegate
-    path: personal:delegates/quick-summarizer.md
+    path: personal:assets/delegates/quick-summarizer.md
 
   # Local work-specific assets
   - type: delegate
-    path: delegates/project-helper.md
+    path: assets/delegates/project-helper.md
   - type: file
-    path: files/work-instructions.md
+    path: assets/files/work-instructions.md
     dest: ""
 ```
 
@@ -278,9 +332,9 @@ All coming together into a single, consistent installation.
 
 Bundles reference sources by name. If you rename a source in `tai.yaml`, update all bundles that reference it. Tai will fail fast if a bundle references a source that doesn't exist.
 
-### Use tai-repo for full config repos
+### Import bundles rather than copying them
 
-If you are referencing another tai config repo (one with its own `tai.yaml`, `bundles/`, etc.), use `type: tai-repo`. Tai will look for the `assets/` directory inside it.
+Restating another repo's bundle in yours works until that bundle changes. Import it instead - see below.
 
 For plain directories that just contain asset folders, use the default type (local directory) without specifying `type`.
 

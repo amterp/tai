@@ -37,11 +37,13 @@ func ParseTaiConfig(path string) (*TaiConfig, error) {
 		}
 	}
 	if !hasLocal {
-		// Add implicit local source at the beginning (lowest priority)
+		// Add implicit local source at the beginning (lowest priority).
+		// It roots at the config repo itself, not at ./assets: a source is a
+		// directory root, and the repo's bundles/ has to be reachable from it.
 		implicitLocal := Source{
 			Name: "local",
 			Type: "local",
-			Path: "./assets",
+			Path: ".",
 		}
 		config.Sources = append([]Source{implicitLocal}, config.Sources...)
 	}
@@ -77,7 +79,15 @@ func validateTaiConfig(config *TaiConfig) error {
 		}
 
 		switch config.Sources[i].Type {
-		case "local", "tai-repo":
+		case "tai-repo":
+			// Removed: it appended "/assets" to the path, which put a source's
+			// bundles/ outside anything tai could address. Sources are plain
+			// directory roots now, so the append is the caller's to write.
+			return fmt.Errorf("source %q: type 'tai-repo' has been removed. "+
+				"Sources are plain directory roots: drop the 'type' line, keep 'path' as-is, "+
+				"and prefix this source's asset references with 'assets/' "+
+				"(e.g. '%s:skills/foo' becomes '%s:assets/skills/foo')", s.Name, s.Name, s.Name)
+		case "local":
 			if s.Path == "" {
 				return fmt.Errorf("source %q: missing path", s.Name)
 			}
@@ -140,7 +150,7 @@ func validateTaiConfig(config *TaiConfig) error {
 				return fmt.Errorf("source %q: %w", s.Name, err)
 			}
 		default:
-			return fmt.Errorf("source %q: invalid type %q (expected 'local', 'tai-repo', 'command', or 'url')", s.Name, s.Type)
+			return fmt.Errorf("source %q: invalid type %q (expected 'local', 'command', or 'url')", s.Name, s.Type)
 		}
 
 		// Patches and exclusions apply to every source type.
@@ -226,9 +236,44 @@ func validateBundle(bundle *Bundle, path string) error {
 		return fmt.Errorf("bundle at %s: missing name", path)
 	}
 
+	for i, entry := range bundle.Bundles {
+		if err := validateBundleEntry(entry, i); err != nil {
+			return fmt.Errorf("bundle %q: %w", bundle.Name, err)
+		}
+	}
+
 	for i, entry := range bundle.Assets {
 		if err := validateAssetEntry(entry, i); err != nil {
 			return fmt.Errorf("bundle %q: %w", bundle.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// validateBundleEntry validates a single entry in a `bundles:` list.
+func validateBundleEntry(entry BundleEntry, index int) error {
+	if strings.TrimSpace(entry.Name) == "" {
+		return fmt.Errorf("bundle[%d]: missing name", index)
+	}
+
+	sourceName, bundleName, qualified := ParseBundleReference(entry.Name)
+	if qualified && sourceName == "" {
+		return fmt.Errorf("bundle[%d]: reference %q has an empty source name; write 'source:bundle' or a bare bundle name", index, entry.Name)
+	}
+	if bundleName == "" {
+		return fmt.Errorf("bundle[%d]: reference %q names a source but no bundle", index, entry.Name)
+	}
+
+	for j, pattern := range entry.Exclude {
+		if strings.TrimSpace(pattern) == "" {
+			return fmt.Errorf("bundle[%d]: exclude[%d] is empty", index, j)
+		}
+		if err := validateRelPath(pattern, "exclude pattern"); err != nil {
+			return fmt.Errorf("bundle[%d]: %w", index, err)
+		}
+		if err := validateExcludePattern(pattern); err != nil {
+			return fmt.Errorf("bundle[%d]: exclude[%d]: %w", index, j, err)
 		}
 	}
 
@@ -268,6 +313,12 @@ func validateProfile(profile *Profile, path string) error {
 	if profile.Scope != "" && !IsValidScope(profile.Scope) {
 		return fmt.Errorf("profile %q: invalid scope %q; must be one of: %s",
 			profile.Name, profile.Scope, strings.Join(ValidScopes(), ", "))
+	}
+
+	for i, entry := range profile.Bundles {
+		if err := validateBundleEntry(entry, i); err != nil {
+			return fmt.Errorf("profile %q: %w", profile.Name, err)
+		}
 	}
 
 	for i, entry := range profile.Assets {
@@ -365,6 +416,19 @@ func ParseAssetReference(ref string) (sourceName, assetPath string) {
 		return ref[:idx], ref[idx+1:]
 	}
 	return "local", ref
+}
+
+// ParseBundleReference parses a bundle reference into source and bundle name.
+// Format: "source:name" or just "name".
+//
+// Unlike ParseAssetReference there is no default source, hence the qualified
+// return: an unprefixed name resolves against whichever repo the referencing
+// bundle itself came from, and only the resolver knows what that is.
+func ParseBundleReference(ref string) (sourceName, bundleName string, qualified bool) {
+	if idx := strings.Index(ref, ":"); idx != -1 {
+		return ref[:idx], ref[idx+1:], true
+	}
+	return "", ref, false
 }
 
 // LoadBundlesFromDir loads all bundle files from a directory.

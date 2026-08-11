@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/amterp/tai/internal/cmdexec"
@@ -19,8 +22,12 @@ import (
 // LoadedSource represents a source with its resolved path and discovered assets.
 type LoadedSource struct {
 	config.Source
-	ResolvedPath string              // Absolute filesystem path
-	Assets       map[string][]string // dir name (e.g. "personas") -> list of asset names
+	ResolvedPath string // Absolute filesystem path to the source root
+
+	// Assets lists every discovered asset as a root-relative path
+	// (e.g. "assets/skills/rad") - the same form a bundle entry names, so
+	// `tai list assets` output can be pasted straight into one.
+	Assets []string
 
 	// Materialized reports whether ResolvedPath exists on disk. It is false
 	// only for fetched sources whose fetch has not run yet - Load tolerates
@@ -37,6 +44,49 @@ type LoadedSource struct {
 	// `tai locate` keeps pointing at the checkout the user can actually edit
 	// rather than at a cache directory the next install replaces.
 	ViewPath string
+
+	// bundles caches LoadBundles' result. Loading is lazy rather than part of
+	// Load: the config repo is loaded on every CLI invocation, and a malformed
+	// bundle in a source nobody imports from should not break every command.
+	bundles     map[string]*config.Bundle
+	bundlesErr  error
+	bundlesRead bool
+}
+
+// BundlesDirName is where a source keeps the bundles it offers for import.
+// Bundles are addressed by name rather than by path, so unlike assets this
+// directory is a convention tai knows rather than something a reference spells
+// out - a bundle's identity is its `name:` field, not its filename.
+const BundlesDirName = "bundles"
+
+// BundlesPath is the directory this source's importable bundles live in.
+func (ls *LoadedSource) BundlesPath() string {
+	return filepath.Join(ls.ContentPath(), BundlesDirName)
+}
+
+// LoadBundles returns the bundles this source offers for import, keyed by
+// name. A source with no bundles/ directory returns an empty map rather than
+// an error: offering no bundles is ordinary, and the resolver reports the
+// missing bundle by name, which is the more useful message.
+func (ls *LoadedSource) LoadBundles() (map[string]*config.Bundle, error) {
+	if ls.bundlesRead {
+		return ls.bundles, ls.bundlesErr
+	}
+	ls.bundlesRead = true
+
+	if err := ls.RequireMaterialized(); err != nil {
+		ls.bundlesErr = err
+		return nil, err
+	}
+
+	bundles, err := config.LoadBundlesFromDir(ls.BundlesPath())
+	if err != nil {
+		ls.bundlesErr = fmt.Errorf("loading bundles from source %q: %w", ls.Name, err)
+		return nil, ls.bundlesErr
+	}
+
+	ls.bundles = bundles
+	return bundles, nil
 }
 
 // ContentPath is where this source's content should be read from: the patched
@@ -117,7 +167,6 @@ func (l *Loader) Load(src config.Source) (*LoadedSource, error) {
 			return &LoadedSource{
 				Source:       src,
 				ResolvedPath: resolvedPath,
-				Assets:       make(map[string][]string),
 			}, nil
 		}
 		return nil, fmt.Errorf("source path does not exist: %s", resolvedPath)
@@ -129,7 +178,6 @@ func (l *Loader) Load(src config.Source) (*LoadedSource, error) {
 	ls := &LoadedSource{
 		Source:       src,
 		ResolvedPath: resolvedPath,
-		Assets:       make(map[string][]string),
 		Materialized: true,
 	}
 
@@ -142,6 +190,11 @@ func (l *Loader) Load(src config.Source) (*LoadedSource, error) {
 }
 
 // resolvePath resolves the source path to an absolute filesystem path.
+//
+// A source is a plain directory root and nothing is appended to it: every
+// reference names a literal path from here, so `assets/skills/rad` reaches
+// exactly that. Interpreting the path per source type is what made bundles
+// unreachable, since they sit outside whatever tai decided the asset root was.
 func (l *Loader) resolvePath(src config.Source) (string, error) {
 	if src.NeedsFetch() {
 		return l.sourceCachePath(src)
@@ -150,11 +203,6 @@ func (l *Loader) resolvePath(src config.Source) (string, error) {
 	path, err := pathutil.MakeAbsolute(src.Path, l.configRepoPath)
 	if err != nil {
 		return "", fmt.Errorf("resolving path: %w", err)
-	}
-
-	// For tai-repo sources, point to assets/ subdirectory
-	if src.Type == "tai-repo" {
-		path = filepath.Join(path, "assets")
 	}
 
 	return path, nil
@@ -253,24 +301,39 @@ func (l *Loader) fetchURLSource(src config.Source, cachePath, stagingParent, ver
 	return cmdexec.SwapInto(staging, cachePath)
 }
 
-// discoverAssets discovers all assets in a loaded source.
-func (l *Loader) discoverAssets(ls *LoadedSource) error {
-	for _, assetType := range config.ValidAssetTypes() {
-		dirName := config.AssetTypeDirName(assetType)
-		assetDir := filepath.Join(ls.ResolvedPath, dirName)
-		assets, err := l.discoverAssetsInDir(assetDir, assetType)
-		if err != nil {
-			return err
-		}
+// assetSearchRoots are the source-relative directories under which tai looks
+// for asset type directories when listing a source's contents.
+//
+// Both layouts exist: a tai config repo keeps its assets under assets/, while a
+// plain directory of assets has the type dirs at its top level. Scanning both
+// is not an ambiguity to resolve, because nothing here feeds resolution - a
+// bundle entry names a literal path from the source root, and each result is
+// reported as exactly that path. This only decides what `tai list assets`
+// enumerates.
+var assetSearchRoots = []string{"", "assets"}
 
-		kept := assets[:0]
-		for _, name := range assets {
-			if !ls.IsExcluded(dirName + "/" + name) {
-				kept = append(kept, name)
+// discoverAssets discovers all assets in a loaded source, as root-relative
+// paths.
+func (l *Loader) discoverAssets(ls *LoadedSource) error {
+	var found []string
+	for _, searchRoot := range assetSearchRoots {
+		for _, assetType := range config.ValidAssetTypes() {
+			relDir := path.Join(searchRoot, config.AssetTypeDirName(assetType))
+			names, err := l.discoverAssetsInDir(filepath.Join(ls.ResolvedPath, relDir), assetType)
+			if err != nil {
+				return err
+			}
+
+			for _, name := range names {
+				rel := relDir + "/" + name
+				if !ls.IsExcluded(rel) {
+					found = append(found, rel)
+				}
 			}
 		}
-		ls.Assets[dirName] = kept
 	}
+	sort.Strings(found)
+	ls.Assets = found
 	return nil
 }
 
@@ -390,17 +453,13 @@ func (ls *LoadedSource) ResolveAsset(assetPath, assetType string) (*config.Asset
 		Name:       assetName,
 		SourceName: ls.Name,
 		SourcePath: fullPath,
+		RelPath:    filepath.ToSlash(assetPath),
 		IsDir:      info.IsDir(),
 	}, nil
 }
 
-// ListAllAssets returns all assets in this source as a flat list of paths.
+// ListAllAssets returns every discovered asset as a root-relative path.
+// The result is a copy, so callers are free to sort or filter it.
 func (ls *LoadedSource) ListAllAssets() []string {
-	var all []string
-	for dirName, names := range ls.Assets {
-		for _, name := range names {
-			all = append(all, filepath.Join(dirName, name))
-		}
-	}
-	return all
+	return slices.Clone(ls.Assets)
 }

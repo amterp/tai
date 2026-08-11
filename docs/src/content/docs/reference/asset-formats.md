@@ -146,10 +146,10 @@ Files are referenced in bundles and profiles with a required `dest` field:
 ```yaml
 assets:
   - type: file
-    path: files/CLAUDE.md
+    path: assets/files/CLAUDE.md
     dest: ""              # Empty string = target root directory
   - type: file
-    path: files/config.json
+    path: assets/files/config.json
     dest: "config"        # Goes to <target-dir>/config/config.json
 ```
 

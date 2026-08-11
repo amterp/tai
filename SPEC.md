@@ -188,15 +188,14 @@ sources:
   # explicitly defined. It points to ./assets in the config repo. You only
   # need to declare it if you want to override the path.
   - name: local
-    path: ./assets
+    path: .
 
-  # Another local directory
+  # A directory of assets: personas/, skills/ ... at its top level
   - name: work-shared
     path: ~/work/ai-common
 
-  # Another tai config repo (uses its assets/ directory)
+  # Another tai config repo: referenced as personal:assets/...
   - name: personal
-    type: tai-repo
     path: ~/personal-tai-config
 
   # A command source: an argv-list command materializes the source's entire
@@ -220,6 +219,36 @@ sources:
 # Default profile to use when none specified
 default_profile: personal
 ```
+
+#### A Source Is a Directory Root
+
+`path` names a directory, and every reference is a literal path from it. tai
+appends nothing and infers no layout, so `work:assets/skills/dredge` opens
+exactly `<work path>/assets/skills/dredge`.
+
+This is why a config repo's own assets are referenced as `assets/...`: the root
+holds `assets/`, `bundles/`, and `profiles/` side by side, and pointing a source
+at the root is what makes all three reachable. A directory that keeps asset type
+directories at its top level takes no such prefix.
+
+The earlier `type: tai-repo` appended `/assets` to the path. That was removed:
+it put a repo's `bundles/` outside anything a reference could address, and it
+made a path's meaning depend on a field elsewhere in the file. Sources are now
+`local`, `command`, or `url`, and a config still declaring `tai-repo` is a load
+error naming the fix.
+
+Two directories are conventions tai knows, both for things it discovers rather
+than resolves:
+
+| Directory | Used for |
+|-----------|----------|
+| `<root>/bundles/` | Bundles this source offers for import as `source:name` |
+| `<root>/<type-dir>/` and `<root>/assets/<type-dir>/` | What `tai list assets` enumerates |
+
+Listing scans both asset locations because both layouts exist; there is no
+ambiguity to settle, since each result prints as the literal path it is
+referenced by. Bundles stay addressed by name rather than path because a
+bundle's identity is its `name:` field, not its filename.
 
 #### Command Sources
 
@@ -335,14 +364,14 @@ description: Essential assets for daily work
 # Path uses source:path syntax (source defaults to "local" if omitted).
 assets:
   - type: persona
-    path: personas/senior-swe.md
+    path: assets/personas/senior-swe.md
   - type: delegate
-    path: delegates/code-reviewer.md
+    path: assets/delegates/code-reviewer.md
   - type: file
-    path: files/CLAUDE.md
+    path: assets/files/CLAUDE.md
     dest: ""           # Empty dest = target root
   - type: file
-    path: files/RFC2119.md
+    path: assets/files/RFC2119.md
     dest: ""           # Empty dest = target root
 ```
 
@@ -371,8 +400,76 @@ bundles:
 # Plus additional individual assets
 assets:
   - type: persona
-    path: personas/brainstormer.md
+    path: assets/personas/brainstormer.md
 ```
+
+#### Importing Bundles From Other Sources
+
+A `bundles:` entry may name a source, importing that bundle from the source's
+`bundles/` directory. An entry is a bare name or a mapping; the mapping form
+exists for `exclude`.
+
+```yaml
+bundles:
+  - core                        # This repo's bundles/core.yaml
+  - work:work-tools             # The work source's bundles/work-tools.yaml
+  - name: work:extras
+    exclude:
+      - assets/skills/beagle
+```
+
+The problem this solves is drift. Without imports, sharing a bundle across
+repos means restating it in each consumer, and a restatement is a snapshot: when
+the origin gains an asset, the copy stays valid and stays wrong, with nothing to
+notice. An import is read at install time, so it cannot go stale.
+
+Resolution rules:
+
+| Reference inside a bundle | Resolves against |
+|---------------------------|------------------|
+| Unprefixed asset path | The bundle's own repo |
+| Unprefixed included bundle name | The bundle's own repo |
+| `source:`-prefixed anything | The **consumer's** `tai.yaml` |
+
+The first two are what let an imported bundle keep working: its author wrote
+`assets/skills/dredge` meaning their repo, and it has to keep meaning that once
+someone else imports it, even if the consumer holds a file at the same path.
+
+Prefixes are the exception because the consumer's `tai.yaml` is the only one tai
+loads. An imported bundle reaching into a third source therefore requires the
+consumer to declare that source under the same name. tai reports a missing one
+by name, quoting how the origin repo defines it when that repo's `tai.yaml` is
+readable - what to add, not just what is absent.
+
+Cycle detection keys on the qualified name, so a local `core` and a `work:core`
+are distinct bundles.
+
+##### Exclusions
+
+Two scopes drop an asset, answering different questions:
+
+| Where | Means |
+|-------|-------|
+| `exclude` on a `bundles:` entry | Not from this bundle |
+| `exclude` on a source in `tai.yaml` | Never from this source at all |
+
+Per-import exclusions match the same root-relative paths as a source's, and
+apply to the import's fully resolved asset set, so they reach assets that
+arrived through a nested include: what a user is expressing is "this must not
+land on my machine", not "not at this nesting level".
+
+A pattern matching nothing warns rather than failing. Upstream may have deleted
+the asset, which already satisfies the intent, and failing a consumer's install
+over someone else's deletion costs more than a stale line does. This departs
+from the fail-loud rule patches follow because the failure modes invert: a
+silently dropped patch reintroduces rejected content, while a redundant
+exclusion drops nothing.
+
+A source-level exclusion behaves differently depending on who wrote the
+reference. One the user wrote is a hard error - a contradiction inside their own
+config. One an imported bundle wrote is filtered and logged, since the user
+never made that reference and never gets to edit it. Without the split, source
+exclusions and bundle imports could not be used together at all.
 
 ### Profile Definition
 
@@ -394,7 +491,7 @@ bundles:
 # Can also include individual assets directly
 assets:
   - type: persona
-    path: personas/brainstormer.md
+    path: assets/personas/brainstormer.md
 
 # Optional: adapter-specific settings (passed to adapter during install/run)
 options:
@@ -559,11 +656,11 @@ The `file` type copies content exactly as-is—no frontmatter parsing, no transf
 ```yaml
 assets:
   - type: file
-    path: files/CLAUDE.md
+    path: assets/files/CLAUDE.md
     dest: ""              # Required: empty = target root (~/.claude/)
 
   - type: file
-    path: files/config.json
+    path: assets/files/config.json
     dest: "config"        # Goes to ~/.claude/config/config.json
 ```
 
@@ -1505,7 +1602,7 @@ These variables enable target-aware assets. For example, a single "global instru
 # bundles/core.yaml
 assets:
   - type: file
-    path: files/AGENTS.md
+    path: assets/files/AGENTS.md
     dest: "{{ target_agents_file }}"  # Resolves to CLAUDE.md for Claude, AGENTS.md for Codex
 ```
 
@@ -1518,11 +1615,11 @@ File assets can use template variables in the `dest` field:
 ```yaml
 assets:
   - type: file
-    path: files/agents.md
+    path: assets/files/agents.md
     dest: "{{ target_agents_file }}"  # Full path (has extension)
 
   - type: file
-    path: files/config.json
+    path: assets/files/config.json
     dest: "{{ target_name }}-config"  # Directory path (no extension)
 ```
 
@@ -2107,9 +2204,8 @@ tai status
 # work-tai-config/tai.yaml
 sources:
   - name: local
-    path: ./assets
+    path: .
   - name: personal
-    type: tai-repo
     path: ~/personal-tai-config
   - name: company
     path: ~/work/company-ai-config
@@ -2120,9 +2216,11 @@ sources:
 name: full-work
 target: claude
 bundles:
-  - personal:core        # From personal tai repo
-  - company-standards    # From company source
-  - local-overrides      # Local customizations
+  - personal:core        # Imported from the personal repo's bundles/
+  - company-standards    # Defined in this repo
+  - name: company:extras # Imported, minus one asset this machine cannot use
+    exclude:
+      - assets/skills/beagle
 ```
 
 ## MVP Scope
@@ -2157,6 +2255,7 @@ bundles:
   - [x] Entry-level merge and surgical removal
   - [x] Scope handling (user/project/local)
   - [x] Config entry manifest tracking
+- [x] **Bundle imports across sources** (`source:bundle-name`, with per-import `exclude`)
 - [ ] Git remote sources
 - [ ] `--add-dir` runtime injection (vs. installing to ~/.claude)
 - [ ] Merge strategies (append/prepend/template) - beyond {{ existing }}

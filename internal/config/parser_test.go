@@ -13,10 +13,11 @@ func TestParseTaiConfig(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 
 	tests := []struct {
-		name    string
-		content string
-		wantErr bool
-		check   func(*testing.T, *TaiConfig)
+		name            string
+		content         string
+		wantErr         bool
+		wantErrContains string // Substring the error must carry, when set
+		check           func(*testing.T, *TaiConfig)
 	}{
 		{
 			name: "valid minimal config",
@@ -58,21 +59,18 @@ sources:
 			},
 		},
 		{
-			name: "config with tai-repo source",
+			// Removed rather than ignored: it silently appended "/assets" to
+			// the path, and a config still carrying it would resolve every
+			// asset one directory off without saying so.
+			name: "tai-repo source is rejected with a migration hint",
 			content: `version: 1
 sources:
   - name: personal
     type: tai-repo
     path: ~/personal-tai-config
 `,
-			check: func(t *testing.T, c *TaiConfig) {
-				if len(c.Sources) != 2 { // implicit local + personal
-					t.Errorf("len(sources) = %d, want 2", len(c.Sources))
-				}
-				if c.Sources[1].Type != "tai-repo" {
-					t.Errorf("source.type = %q, want 'tai-repo'", c.Sources[1].Type)
-				}
-			},
+			wantErr:        true,
+			wantErrContains: "assets/",
 		},
 		{
 			name: "invalid version",
@@ -403,6 +401,8 @@ sources:
 			if tt.wantErr {
 				if err == nil {
 					t.Error("expected error, got nil")
+				} else if tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("error %q should mention %q", err, tt.wantErrContains)
 				}
 				return
 			}
@@ -463,6 +463,57 @@ assets:
 					t.Errorf("len(assets) = %d, want 1", len(b.Assets))
 				}
 			},
+		},
+		{
+			// Both entry shapes coexist in one list: nearly every entry is a
+			// bare name, and requiring `name:` on all of them to allow
+			// exclusions on one would be a poor trade.
+			name: "bundles list mixes bare names and mappings",
+			content: `name: mixed
+bundles:
+  - core
+  - work:work-tools
+  - name: work:extras
+    exclude:
+      - assets/skills/beagle
+`,
+			check: func(t *testing.T, b *Bundle) {
+				want := []BundleEntry{
+					{Name: "core"},
+					{Name: "work:work-tools"},
+					{Name: "work:extras", Exclude: []string{"assets/skills/beagle"}},
+				}
+				if len(b.Bundles) != len(want) {
+					t.Fatalf("len(bundles) = %d, want %d", len(b.Bundles), len(want))
+				}
+				for i, w := range want {
+					got := b.Bundles[i]
+					if got.Name != w.Name {
+						t.Errorf("bundles[%d].Name = %q, want %q", i, got.Name, w.Name)
+					}
+					if strings.Join(got.Exclude, ",") != strings.Join(w.Exclude, ",") {
+						t.Errorf("bundles[%d].Exclude = %v, want %v", i, got.Exclude, w.Exclude)
+					}
+				}
+			},
+		},
+		{
+			name: "bundle reference naming a source but no bundle",
+			content: `name: broken
+bundles:
+  - work:
+`,
+			wantErr: true,
+		},
+		{
+			name: "bundle exclusion with an interior ** is rejected",
+			content: `name: broken
+bundles:
+  - name: work:tools
+    exclude:
+      - assets/**/beagle
+`,
+			wantErr: true,
 		},
 		{
 			name: "bundle with source prefix",

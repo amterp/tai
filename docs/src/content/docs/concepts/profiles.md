@@ -21,7 +21,7 @@ bundles:
 
 assets:
   - type: persona
-    path: personas/brainstormer.md
+    path: assets/personas/brainstormer.md
 
 options:
   # Adapter-specific settings (passed to the adapter during install)
@@ -60,9 +60,9 @@ bundles:
 
 assets:
   - type: persona
-    path: personas/brainstormer.md
+    path: assets/personas/brainstormer.md
   - type: file
-    path: files/README.md
+    path: assets/files/README.md
     dest: ""
 ```
 
@@ -135,7 +135,7 @@ bundles:
 
 assets:
   - type: persona
-    path: personas/brainstormer.md
+    path: assets/personas/brainstormer.md
 
 ---
 
@@ -150,7 +150,7 @@ bundles:
 
 assets:
   - type: file
-    path: files/RFC2119.md
+    path: assets/files/RFC2119.md
     dest: ""
 
 options: {}
