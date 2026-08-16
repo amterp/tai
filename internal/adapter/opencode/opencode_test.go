@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/frontmatter"
 )
 
 func TestAdapterName(t *testing.T) {
@@ -405,5 +406,51 @@ func TestAdapterProvideVariables(t *testing.T) {
 	}
 	if vars["target_agents_file"] != "AGENTS.md" {
 		t.Errorf("target_agents_file = %q, want 'AGENTS.md'", vars["target_agents_file"])
+	}
+}
+
+func TestAdapterTransformNativeMerged(t *testing.T) {
+	a := New("")
+	asset := &config.ResolvedAsset{
+		Asset:    config.Asset{Type: config.AssetTypeDelegate},
+		Metadata: map[string]string{"name": "reviewer", "description": "Reviews code"},
+		Native: frontmatter.Native{
+			"opencode": {"tools": map[string]any{"read": true, "write": false}},
+			"claude":   {"tools": "Read, Grep"},
+		},
+		Content: []byte("# Reviewer\n"),
+	}
+
+	got, err := a.TransformContent(asset)
+	if err != nil {
+		t.Fatalf("TransformContent failed: %v", err)
+	}
+
+	// OpenCode's boolean-map tools format, which is why tai's `tools` string
+	// is not rendered here in the first place.
+	want := "---\ndescription: Reviews code\nmode: subagent\ntools:\n  read: true\n  write: false\n---\n\n# Reviewer\n"
+	if string(got) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", string(got), want)
+	}
+}
+
+func TestAdapterTransformPersonaNativeOnly(t *testing.T) {
+	a := New("")
+	asset := &config.ResolvedAsset{
+		Asset:    config.Asset{Type: config.AssetTypePersona},
+		Metadata: map[string]string{},
+		Native:   frontmatter.Native{"opencode": {"temperature": 0.2}},
+		Content:  []byte("# Bare persona\n"),
+	}
+
+	got, err := a.TransformContent(asset)
+	if err != nil {
+		t.Fatalf("TransformContent failed: %v", err)
+	}
+
+	// Native alone is enough to earn a frontmatter block.
+	want := "---\ntemperature: 0.2\n---\n\n# Bare persona\n"
+	if string(got) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", string(got), want)
 	}
 }

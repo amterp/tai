@@ -582,10 +582,40 @@ You are a senior software engineer...
 | `tools` | — | optional | optional |
 | `model` | — | optional | optional |
 | `depends` | optional | optional | optional |
+| `native` | optional | optional | optional |
 
-Unknown fields are silently ignored. Schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file.
+Any other field is dropped, with a warning naming it. Schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file.
 
 **Note:** The `file` type has no frontmatter requirements - nothing is parsed or stripped from the top of the file.
+
+### Per-Target Frontmatter
+
+Targets read fields tai has no word for - Claude alone reads
+`disable-model-invocation`, `user-invocable`, `allowed-tools`, `effort`,
+`argument-hint`, `paths` and `hooks`. Put those under `native`, keyed by
+target name; tai merges them verbatim over the frontmatter it generated:
+
+```yaml
+---
+name: parallel-work
+description: Use when several sessions build features in sibling worktrees
+native:
+  claude:
+    disable-model-invocation: true
+    allowed-tools: [Read, Bash]
+---
+```
+
+Installing to Claude writes all four fields. Installing to any other target
+writes `name` and `description` only, since `native.claude` is not addressed
+to them. It is the same escape hatch hooks and MCP servers use.
+
+- A field only one target understands goes here. A concept several targets
+  share can become a tai field instead - written once, translated per target,
+  which is what `tools` and `model` already are.
+- A native field beats the tai field of the same name, keeping its position.
+- A misspelled target name (`native.cluade`) warns and names the real targets.
+- Lists, maps and booleans render as YAML, so nested fields keep their shape.
 
 ### Asset Dependencies
 
@@ -694,6 +724,8 @@ Instructions for the agent...
 | `name` | Yes | Human-readable display name |
 | `description` | No | Under 1024 chars; triggers skill activation |
 | `tools` | No | Comma-separated list of tools the skill may use |
+| `model` | No | Model to run this skill with |
+| `native` | No | Per-target fields; see **Per-Target Frontmatter** above |
 
 ## Core Principles
 

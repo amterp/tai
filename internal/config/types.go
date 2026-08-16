@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/amterp/tai/internal/frontmatter"
 )
 
 // TaiConfig represents the top-level tai.yaml configuration file.
@@ -338,21 +340,29 @@ func (a *Asset) ConfigName() string {
 //     The adapter's TransformContent receives this stripped body and may
 //     prepend target-specific frontmatter (e.g., Claude's name/description/tools).
 //     After TransformContent, Content holds the final bytes to write to disk.
-//   - Metadata holds the parsed tai frontmatter fields (name, description, tools).
-//     The adapter reads Metadata to produce target frontmatter.
-//     Unknown fields are silently ignored during validation.
+//   - Metadata holds the parsed tai frontmatter fields (name, description,
+//     tools, model). The adapter reads Metadata to produce target frontmatter.
+//     A field outside tai's vocabulary is dropped, with a warning.
+//   - Native holds per-target fields the author wrote for a specific target.
+//     The adapter merges its own entry over the frontmatter it generated.
 //
 // For directory assets (skills), Content and Metadata are nil; the directory is
 // copied and SKILL.md is transformed separately via transformSkillMd.
 type ResolvedAsset struct {
 	Asset
-	Content     []byte            // Body after tai frontmatter stripped; final installed bytes after transform
-	Metadata    map[string]string // Parsed tai frontmatter fields (nil for directories)
-	TargetPath  string            // Where this should be installed (target-relative)
-	Checksum    string            // SHA-256 checksum of final content
-	BackupPath  string            // Path to backup file (for {{existing}} templated files)
-	IsTemplated bool              // Whether this asset uses templating
-	FileMode    fs.FileMode       // Source file permissions (zero means default 0644)
+	Content     []byte             // Body after tai frontmatter stripped; final installed bytes after transform
+	Metadata    map[string]string  // Parsed tai frontmatter fields (nil for directories)
+	Native      frontmatter.Native // Per-target frontmatter fields, keyed by target name
+	TargetPath  string             // Where this should be installed (target-relative)
+	Checksum    string             // SHA-256 checksum of final content
+	BackupPath  string             // Path to backup file (for {{existing}} templated files)
+	IsTemplated bool               // Whether this asset uses templating
+	FileMode    fs.FileMode        // Source file permissions (zero means default 0644)
+
+	// Warnings are raised while resolving this asset - a frontmatter field
+	// that could not be installed, say. The installer drains them into the
+	// install result.
+	Warnings []string
 }
 
 // AssetType constants (singular form).

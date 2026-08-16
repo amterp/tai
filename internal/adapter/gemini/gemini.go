@@ -133,15 +133,12 @@ func (a *Adapter) TransformContent(asset *config.ResolvedAsset) ([]byte, error) 
 // transformSkill renders Gemini skill frontmatter (name + description).
 // Used for both skills and personas (which are mapped to skills).
 func (a *Adapter) transformSkill(asset *config.ResolvedAsset) []byte {
-	fields := map[string]string{fm.FieldName: asset.Metadata[fm.FieldName]}
-	order := []string{fm.FieldName}
+	var fields fm.Fields
+	fields.Set(fm.FieldName, asset.Metadata[fm.FieldName])
+	fields.SetString(fm.FieldDescription, asset.Metadata[fm.FieldDescription])
+	fields.Merge(asset.Native[a.Name()])
 
-	if desc := asset.Metadata[fm.FieldDescription]; desc != "" {
-		fields[fm.FieldDescription] = desc
-		order = append(order, fm.FieldDescription)
-	}
-
-	return fm.Render(fields, order, asset.Content)
+	return fm.Render(fields, asset.Content)
 }
 
 // Run invokes gemini with the given arguments.

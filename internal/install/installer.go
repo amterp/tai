@@ -683,6 +683,11 @@ func (i *Installer) installFileAsset(ctx *installContext, ra resolvedFileAsset, 
 		}
 	}
 
+	// Collected after the install, not before: a directory asset's main file is
+	// only parsed once the directory has been copied and its includes resolved,
+	// so its frontmatter warnings do not exist until then.
+	result.Warnings = append(result.Warnings, ra.resolved.Warnings...)
+
 	// Track what's happening. Absence outranks the checksum comparison: a file
 	// that was gone and is back has changed, and the manifest checksum it would
 	// otherwise be judged against describes a copy nobody can see any more.
@@ -1347,7 +1352,10 @@ func (i *Installer) resolveAsset(
 		}
 
 		resolved.Metadata = parsed.Metadata
+		resolved.Native = parsed.Native
 		resolved.Content = parsed.Body
+		resolved.Warnings = append(resolved.Warnings,
+			frontmatterWarnings(parsed, asset.Type, asset.Name, adap.Name(), adapter.TargetNames())...)
 
 		// Let the adapter transform content (e.g., add target-specific frontmatter)
 		transformed, err := adap.TransformContent(resolved)
@@ -1548,7 +1556,7 @@ func (i *Installer) transformMainFileFromSource(resolved *config.ResolvedAsset, 
 		return fmt.Errorf("reading %s: %w", mainFileName, err)
 	}
 
-	transformed, err := i.transformMainFileContent(content, resolved.Type, resolved.Name, mainFileName, nil, adap, engine)
+	transformed, err := i.transformMainFileContent(resolved, content, mainFileName, nil, adap, engine)
 	if err != nil {
 		return err
 	}
@@ -1580,7 +1588,7 @@ func (i *Installer) transformMainFileInPlace(resolved *config.ResolvedAsset, dir
 		return fmt.Errorf("reading %s: %w", mainFileName, err)
 	}
 
-	transformed, err := i.transformMainFileContent(content, resolved.Type, resolved.Name, mainFileName, fieldMapping, adap, engine)
+	transformed, err := i.transformMainFileContent(resolved, content, mainFileName, fieldMapping, adap, engine)
 	if err != nil {
 		return err
 	}
@@ -1590,7 +1598,12 @@ func (i *Installer) transformMainFileInPlace(resolved *config.ResolvedAsset, dir
 
 // transformMainFileContent parses, validates, and transforms main file content.
 // This is the shared logic used by both transformMainFileFromSource and transformMainFileInPlace.
-func (i *Installer) transformMainFileContent(content []byte, assetType, assetName, mainFileName string, fieldMapping map[string]string, adap adapter.Adapter, engine *template.Engine) ([]byte, error) {
+//
+// Warnings about the main file's frontmatter are recorded on resolved, which
+// the installer drains once the asset is installed.
+func (i *Installer) transformMainFileContent(resolved *config.ResolvedAsset, content []byte, mainFileName string, fieldMapping map[string]string, adap adapter.Adapter, engine *template.Engine) ([]byte, error) {
+	assetType, assetName := resolved.Type, resolved.Name
+
 	// Apply template processing before frontmatter parsing.
 	// {{ existing }} is not supported in directory assets - there's no
 	// single target file to read existing content from.
@@ -1641,6 +1654,9 @@ func (i *Installer) transformMainFileContent(content []byte, assetType, assetNam
 		return nil, fmt.Errorf("%s %s/%s: %w", assetType, assetName, mainFileName, err)
 	}
 
+	resolved.Warnings = append(resolved.Warnings,
+		frontmatterWarnings(parsed, assetType, assetName, adap.Name(), adapter.TargetNames())...)
+
 	// Build a synthetic ResolvedAsset so the adapter can transform it
 	synthetic := &config.ResolvedAsset{
 		Asset: config.Asset{
@@ -1649,6 +1665,7 @@ func (i *Installer) transformMainFileContent(content []byte, assetType, assetNam
 		},
 		Content:  parsed.Body,
 		Metadata: parsed.Metadata,
+		Native:   parsed.Native,
 	}
 
 	transformed, err := adap.TransformContent(synthetic)

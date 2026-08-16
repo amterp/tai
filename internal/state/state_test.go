@@ -4,9 +4,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
+	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/testutil"
 )
 
@@ -405,4 +408,19 @@ bundles:
 			t.Error("expected error refreshing unknown source")
 		}
 	})
+}
+
+// adapter.TargetNames() is written by hand, because the registry only holds
+// adapters the current binary linked in. This package imports all four, so it
+// is where the two can be compared.
+func TestRegistryMatchesTargetNames(t *testing.T) {
+	registered := adapter.DefaultRegistry.List()
+	sort.Strings(registered)
+
+	declared := adapter.TargetNames()
+
+	if !slices.Equal(registered, declared) {
+		t.Errorf("adapter.TargetNames() = %v, registry has %v - update targetNames in internal/adapter",
+			declared, registered)
+	}
 }

@@ -104,15 +104,16 @@ func resolveDescription(metadata map[string]string) string {
 // transformPersona renders OpenCode agent frontmatter for a persona.
 // OpenCode agents are named by filename, so name is omitted.
 func (a *Adapter) transformPersona(asset *config.ResolvedAsset) []byte {
-	desc := resolveDescription(asset.Metadata)
-	if desc == "" {
+	var fields fm.Fields
+	fields.SetString(fm.FieldDescription, resolveDescription(asset.Metadata))
+	fields.Merge(asset.Native[a.Name()])
+
+	// Nothing to say: leave the body without an empty frontmatter block.
+	if fields.Len() == 0 {
 		return asset.Content
 	}
 
-	fields := map[string]string{fm.FieldDescription: desc}
-	order := []string{fm.FieldDescription}
-
-	return fm.Render(fields, order, asset.Content)
+	return fm.Render(fields, asset.Content)
 }
 
 // transformDelegate renders OpenCode agent frontmatter for a delegate.
@@ -120,40 +121,25 @@ func (a *Adapter) transformPersona(asset *config.ResolvedAsset) []byte {
 // to distinguish from primary agents. Tools are omitted because OpenCode
 // uses a structurally incompatible format (boolean map vs comma string).
 func (a *Adapter) transformDelegate(asset *config.ResolvedAsset) []byte {
-	desc := resolveDescription(asset.Metadata)
+	var fields fm.Fields
+	fields.SetString(fm.FieldDescription, resolveDescription(asset.Metadata))
+	fields.Set(fieldMode, "subagent")
+	fields.SetString(fm.FieldModel, asset.Metadata[fm.FieldModel])
+	fields.Merge(asset.Native[a.Name()])
 
-	fields := map[string]string{
-		fieldMode: "subagent",
-	}
-	order := []string{}
-
-	if desc != "" {
-		fields[fm.FieldDescription] = desc
-		order = append(order, fm.FieldDescription)
-	}
-	order = append(order, fieldMode)
-
-	if model := asset.Metadata[fm.FieldModel]; model != "" {
-		fields[fm.FieldModel] = model
-		order = append(order, fm.FieldModel)
-	}
-
-	return fm.Render(fields, order, asset.Content)
+	return fm.Render(fields, asset.Content)
 }
 
 // transformSkill renders OpenCode skill frontmatter (name + description).
 // Tools and model are omitted - OpenCode skills use the same minimal
 // frontmatter as Codex skills, not the extended Claude format.
 func (a *Adapter) transformSkill(asset *config.ResolvedAsset) []byte {
-	fields := map[string]string{fm.FieldName: asset.Metadata[fm.FieldName]}
-	order := []string{fm.FieldName}
+	var fields fm.Fields
+	fields.Set(fm.FieldName, asset.Metadata[fm.FieldName])
+	fields.SetString(fm.FieldDescription, asset.Metadata[fm.FieldDescription])
+	fields.Merge(asset.Native[a.Name()])
 
-	if desc := asset.Metadata[fm.FieldDescription]; desc != "" {
-		fields[fm.FieldDescription] = desc
-		order = append(order, fm.FieldDescription)
-	}
-
-	return fm.Render(fields, order, asset.Content)
+	return fm.Render(fields, asset.Content)
 }
 
 // Run invokes opencode with the given arguments.

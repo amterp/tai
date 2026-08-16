@@ -3,6 +3,7 @@ package adapter
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/template"
@@ -121,3 +122,19 @@ func (r *Registry) List() []string {
 // DefaultRegistry is the global registry with all built-in adapters.
 // Adapters register themselves via init().
 var DefaultRegistry = NewRegistry()
+
+// targetNames is every target tai supports, in sorted order.
+//
+// Registration happens in each adapter's init(), so DefaultRegistry only holds
+// the ones whose package the caller happened to link in. That makes it the
+// wrong thing to answer "is 'codex' a target tai knows?" - a caller that never
+// imported the codex package would be told no. Which targets exist is a fixed
+// fact about tai, so it is written down as one. TestRegistryMatchesTargetNames
+// in internal/state keeps the two in step.
+var targetNames = []string{"claude", "codex", "gemini", "opencode"}
+
+// TargetNames returns every target tai supports, whether or not its adapter is
+// linked into the current binary.
+func TargetNames() []string {
+	return slices.Clone(targetNames)
+}

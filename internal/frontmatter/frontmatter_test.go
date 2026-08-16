@@ -121,15 +121,20 @@ func TestParseBodyImmediatelyAfterClosing(t *testing.T) {
 	}
 }
 
-func TestRender(t *testing.T) {
-	fields := map[string]string{
-		"name":        "Senior SWE",
-		"description": "A senior engineer role",
+// stringFields builds Fields from key/value pairs, in the order given.
+func stringFields(pairs ...string) Fields {
+	var f Fields
+	for i := 0; i < len(pairs); i += 2 {
+		f.Set(pairs[i], pairs[i+1])
 	}
-	body := []byte("# Content\n")
-	order := []string{"name", "description"}
+	return f
+}
 
-	result := Render(fields, order, body)
+func TestRender(t *testing.T) {
+	fields := stringFields("name", "Senior SWE", "description", "A senior engineer role")
+	body := []byte("# Content\n")
+
+	result := Render(fields, body)
 	expected := "---\nname: Senior SWE\ndescription: A senior engineer role\n---\n\n# Content\n"
 
 	if string(result) != expected {
@@ -138,8 +143,7 @@ func TestRender(t *testing.T) {
 }
 
 func TestRenderEmptyBody(t *testing.T) {
-	fields := map[string]string{"name": "Test"}
-	result := Render(fields, []string{"name"}, nil)
+	result := Render(stringFields("name", "Test"), nil)
 	expected := "---\nname: Test\n---\n"
 
 	if string(result) != expected {
@@ -147,16 +151,75 @@ func TestRenderEmptyBody(t *testing.T) {
 	}
 }
 
-func TestRenderUnorderedFields(t *testing.T) {
-	fields := map[string]string{
-		"zebra": "last",
-		"alpha": "first",
-	}
-	result := Render(fields, nil, []byte("body"))
-	expected := "---\nalpha: first\nzebra: last\n---\n\nbody"
+func TestFieldsSetReplacesInPlace(t *testing.T) {
+	fields := stringFields("name", "Test", "description", "Original", "tools", "Read")
+	fields.Set("description", "Replaced")
+
+	result := Render(fields, nil)
+	expected := "---\nname: Test\ndescription: Replaced\ntools: Read\n---\n"
 
 	if string(result) != expected {
 		t.Errorf("Render = %q, want %q", string(result), expected)
+	}
+}
+
+func TestFieldsSetStringSkipsEmpty(t *testing.T) {
+	var fields Fields
+	fields.Set("name", "Test")
+	fields.SetString("description", "")
+
+	if fields.Len() != 1 {
+		t.Errorf("Len = %d, want 1", fields.Len())
+	}
+}
+
+func TestFieldsMergeAppendsSorted(t *testing.T) {
+	fields := stringFields("name", "Test")
+	fields.Merge(map[string]any{"zebra": "last", "alpha": "first"})
+
+	result := Render(fields, []byte("body"))
+	expected := "---\nname: Test\nalpha: first\nzebra: last\n---\n\nbody"
+
+	if string(result) != expected {
+		t.Errorf("Render = %q, want %q", string(result), expected)
+	}
+}
+
+func TestFieldsMergeOverridesInPlace(t *testing.T) {
+	fields := stringFields("name", "Test", "description", "tai's description", "tools", "Read")
+	fields.Merge(map[string]any{"description": "the target's own description"})
+
+	result := Render(fields, nil)
+	expected := "---\nname: Test\ndescription: the target's own description\ntools: Read\n---\n"
+
+	if string(result) != expected {
+		t.Errorf("Render = %q, want %q", string(result), expected)
+	}
+}
+
+func TestRenderNestedValues(t *testing.T) {
+	fields := stringFields("name", "Test")
+	fields.Merge(map[string]any{
+		"disable-model-invocation": true,
+		"allowed-tools":            []any{"Read", "Bash"},
+		"hooks":                    map[string]any{"stop": "cleanup.sh"},
+	})
+
+	rendered := Render(fields, []byte("body\n"))
+	parsed, err := Parse(rendered)
+	if err != nil {
+		t.Fatalf("Render produced invalid YAML: %v\nOutput was:\n%s", err, rendered)
+	}
+
+	// Nested values survive as YAML structure, not as Go's %v formatting.
+	for _, want := range []string{"allowed-tools:\n  - Read\n  - Bash", "hooks:\n  stop: cleanup.sh", "disable-model-invocation: true"} {
+		if !strings.Contains(string(rendered), want) {
+			t.Errorf("rendered output missing %q, got:\n%s", want, rendered)
+		}
+	}
+
+	if string(parsed.Body) != "body\n" {
+		t.Errorf("Body = %q, want %q", string(parsed.Body), "body\n")
 	}
 }
 
@@ -168,7 +231,10 @@ func TestRoundTrip(t *testing.T) {
 		t.Fatalf("Parse failed: %v", err)
 	}
 
-	rendered := Render(parsed.Metadata, []string{"name", "description"}, parsed.Body)
+	rendered := Render(stringFields(
+		"name", parsed.Metadata["name"],
+		"description", parsed.Metadata["description"],
+	), parsed.Body)
 
 	if string(rendered) != string(original) {
 		t.Errorf("Round trip failed:\n  got:  %q\n  want: %q", string(rendered), string(original))
@@ -176,13 +242,10 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestRenderQuotesColonSpace(t *testing.T) {
-	fields := map[string]string{
-		"name":        "Test Skill",
-		"description": "Examples: user: hello, system: world",
-	}
+	desc := "Examples: user: hello, system: world"
 	body := []byte("# Content\n")
 
-	result := Render(fields, []string{"name", "description"}, body)
+	result := Render(stringFields("name", "Test Skill", "description", desc), body)
 
 	// The output should be valid YAML that can be parsed back
 	parsed, err := Parse(result)
@@ -191,8 +254,8 @@ func TestRenderQuotesColonSpace(t *testing.T) {
 	}
 
 	// Verify the value survived the round trip
-	if parsed.Metadata["description"] != fields["description"] {
-		t.Errorf("description = %q, want %q", parsed.Metadata["description"], fields["description"])
+	if parsed.Metadata["description"] != desc {
+		t.Errorf("description = %q, want %q", parsed.Metadata["description"], desc)
 	}
 }
 
@@ -204,7 +267,10 @@ func TestRoundTripWithColonSpace(t *testing.T) {
 	body := []byte("Body content\n")
 
 	// Render then parse
-	rendered := Render(fields, []string{"name", "description"}, body)
+	rendered := Render(stringFields(
+		"name", fields["name"],
+		"description", fields["description"],
+	), body)
 	parsed, err := Parse(rendered)
 	if err != nil {
 		t.Fatalf("Parse failed after render: %v\nRendered:\n%s", err, rendered)
@@ -359,3 +425,82 @@ description: No depends
 	}
 }
 
+func TestParseNative(t *testing.T) {
+	input := []byte(`---
+name: parallel-work
+description: A skill
+native:
+  claude:
+    disable-model-invocation: true
+    allowed-tools: [Read, Bash]
+  codex:
+    argument-hint: "<slot>"
+---
+
+# Body
+`)
+
+	parsed, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	if got := parsed.Native["claude"]["disable-model-invocation"]; got != true {
+		t.Errorf("native.claude.disable-model-invocation = %v, want true", got)
+	}
+	if got := parsed.Native["codex"]["argument-hint"]; got != "<slot>" {
+		t.Errorf("native.codex.argument-hint = %v, want %q", got, "<slot>")
+	}
+
+	// native is tai's own key and must not leak into the fields adapters read.
+	if _, ok := parsed.Metadata[FieldNative]; ok {
+		t.Errorf("Metadata still holds %q: %v", FieldNative, parsed.Metadata)
+	}
+}
+
+func TestParseNativeAbsent(t *testing.T) {
+	parsed, err := Parse([]byte("---\nname: Test\n---\n\nbody\n"))
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if parsed.Native != nil {
+		t.Errorf("Native = %v, want nil", parsed.Native)
+	}
+}
+
+func TestParseNativeInvalid(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"not a map", "---\nname: Test\nnative: claude\n---\n\nbody\n"},
+		{"list", "---\nname: Test\nnative:\n  - claude\n---\n\nbody\n"},
+		{"target maps to a scalar", "---\nname: Test\nnative:\n  claude: true\n---\n\nbody\n"},
+		{"target maps to a list", "---\nname: Test\nnative:\n  claude: [a, b]\n---\n\nbody\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse([]byte(tt.input))
+			if err == nil {
+				t.Fatal("Parse succeeded, want error")
+			}
+			if !strings.Contains(err.Error(), "native") {
+				t.Errorf("error = %q, want it to mention native", err)
+			}
+		})
+	}
+}
+
+func TestIsTaiField(t *testing.T) {
+	for _, field := range []string{FieldName, FieldDescription, FieldTools, FieldModel, FieldDepends, FieldNative} {
+		if !IsTaiField(field) {
+			t.Errorf("IsTaiField(%q) = false, want true", field)
+		}
+	}
+	for _, field := range []string{"disable-model-invocation", "allowed-tools", "license"} {
+		if IsTaiField(field) {
+			t.Errorf("IsTaiField(%q) = true, want false", field)
+		}
+	}
+}

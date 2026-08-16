@@ -176,11 +176,10 @@ asset type, which installs commands the *target* runs during a session.
 
 ### Asset File Formats
 
-All file assets require tai frontmatter with `tai-schema-version: 1`:
+Personas, delegates and skills carry tai frontmatter. Only `name` is required:
 
 ```markdown
 ---
-tai-schema-version: 1
 name: Senior SWE
 description: Experienced software engineer co-owner role.
 ---
@@ -190,7 +189,25 @@ description: Experienced software engineer co-owner role.
 You are a senior software engineer...
 ```
 
-During installation, tai validates the frontmatter, strips `tai-schema-version`, and the adapter renders target-specific frontmatter. Docs are installed as body only (no target frontmatter). Delegates and skills also support a `tools` field.
+During installation tai strips its own frontmatter and the adapter renders the
+target's. Delegates and skills also take `tools` and `model`. A `file` asset is
+copied byte-for-byte, frontmatter and all.
+
+A field only one target understands goes under `native`, keyed by target name,
+and is merged verbatim into that target's copy:
+
+```markdown
+---
+name: parallel-work
+description: Coordinates parallel worktree sessions.
+native:
+  claude:
+    disable-model-invocation: true
+---
+```
+
+Any field tai does not recognize is dropped with a warning naming it. See
+SPEC.md for the full list.
 
 ## CLI Reference
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/frontmatter"
 )
 
 func TestAdapterName(t *testing.T) {
@@ -330,5 +331,28 @@ func TestAdapterProvideVariables(t *testing.T) {
 	}
 	if vars["target_agents_file"] != "GEMINI.md" {
 		t.Errorf("target_agents_file = %q, want 'GEMINI.md'", vars["target_agents_file"])
+	}
+}
+
+func TestAdapterTransformNativeMerged(t *testing.T) {
+	a := New("")
+	asset := &config.ResolvedAsset{
+		Asset:    config.Asset{Type: config.AssetTypeSkill},
+		Metadata: map[string]string{"name": "my-skill", "description": "A skill"},
+		Native: frontmatter.Native{
+			"gemini": {"scope": "project"},
+			"claude": {"disable-model-invocation": true},
+		},
+		Content: []byte("# Skill\n"),
+	}
+
+	got, err := a.TransformContent(asset)
+	if err != nil {
+		t.Fatalf("TransformContent failed: %v", err)
+	}
+
+	want := "---\nname: my-skill\ndescription: A skill\nscope: project\n---\n\n# Skill\n"
+	if string(got) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", string(got), want)
 	}
 }

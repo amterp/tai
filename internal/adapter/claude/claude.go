@@ -120,38 +120,24 @@ func (a *Adapter) TransformContent(asset *config.ResolvedAsset) ([]byte, error) 
 
 // transformPersona renders Claude output-style frontmatter (name, description).
 func (a *Adapter) transformPersona(asset *config.ResolvedAsset) []byte {
-	fields := map[string]string{fm.FieldName: asset.Metadata[fm.FieldName]}
-	order := []string{fm.FieldName}
+	var fields fm.Fields
+	fields.Set(fm.FieldName, asset.Metadata[fm.FieldName])
+	fields.SetString(fm.FieldDescription, asset.Metadata[fm.FieldDescription])
+	fields.Merge(asset.Native[a.Name()])
 
-	if desc := asset.Metadata[fm.FieldDescription]; desc != "" {
-		fields[fm.FieldDescription] = desc
-		order = append(order, fm.FieldDescription)
-	}
-
-	return fm.Render(fields, order, asset.Content)
+	return fm.Render(fields, asset.Content)
 }
 
 // transformAgent renders Claude agent/skill frontmatter (name, description, tools).
 func (a *Adapter) transformAgent(asset *config.ResolvedAsset) []byte {
-	fields := map[string]string{fm.FieldName: asset.Metadata[fm.FieldName]}
-	order := []string{fm.FieldName}
+	var fields fm.Fields
+	fields.Set(fm.FieldName, asset.Metadata[fm.FieldName])
+	fields.SetString(fm.FieldDescription, asset.Metadata[fm.FieldDescription])
+	fields.SetString(fm.FieldTools, asset.Metadata[fm.FieldTools])
+	fields.SetString(fm.FieldModel, asset.Metadata[fm.FieldModel])
+	fields.Merge(asset.Native[a.Name()])
 
-	if desc := asset.Metadata[fm.FieldDescription]; desc != "" {
-		fields[fm.FieldDescription] = desc
-		order = append(order, fm.FieldDescription)
-	}
-
-	if tools := asset.Metadata[fm.FieldTools]; tools != "" {
-		fields[fm.FieldTools] = tools
-		order = append(order, fm.FieldTools)
-	}
-
-	if model := asset.Metadata[fm.FieldModel]; model != "" {
-		fields[fm.FieldModel] = model
-		order = append(order, fm.FieldModel)
-	}
-
-	return fm.Render(fields, order, asset.Content)
+	return fm.Render(fields, asset.Content)
 }
 
 // Run invokes claude with the given arguments.

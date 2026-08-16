@@ -587,16 +587,46 @@ You are a senior software engineer...
 | `tools` | — | optional | optional |
 | `model` | — | optional | optional |
 | `depends` | optional | optional | optional |
+| `native` | optional | optional | optional |
 
 - `name`: Human-readable display name.
 - `description`: Short description of what this asset does.
 - `tools`: Comma-separated list of tools the delegate/skill may use.
 - `model`: Model to use for this delegate/skill (e.g., `haiku`, `sonnet`, `opus`).
 - `depends`: List of asset dependencies (see [Asset Dependencies](#asset-dependencies) below).
+- `native`: Per-target fields passed through verbatim (see [Per-Target Frontmatter](#per-target-frontmatter-native) below).
 
-Unknown fields are silently ignored to support forward compatibility and external sources with their own metadata. The schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file.
+Any other field is dropped with a warning naming the field and pointing at `native`. The schema version is tracked at the repo level (`version: 1` in `tai.yaml`), not per-file; a leftover `tai-schema-version` warns that it does nothing.
 
 **Note:** The `file` type has no frontmatter requirements—content is copied exactly as-is.
+
+#### Per-Target Frontmatter (`native`)
+
+Targets read frontmatter fields tai has no word for: Claude alone reads `disable-model-invocation`, `user-invocable`, `allowed-tools`, `effort`, `argument-hint`, `paths` and `hooks` from a SKILL.md. Those go under `native`, keyed by target name, and are merged verbatim over the frontmatter the adapter generated:
+
+```markdown
+---
+name: parallel-work
+description: >
+  Use when several agent sessions build features simultaneously...
+native:
+  claude:
+    disable-model-invocation: true
+    allowed-tools: [Read, Bash]
+---
+```
+
+Installing to Claude writes `name`, `description`, `disable-model-invocation` and `allowed-tools`. Installing the same asset to any other target writes only `name` and `description`, because `native.claude` is not addressed to them.
+
+This is the same escape hatch hooks and MCP servers use, spelled the same way — see `native` under [Hook Definition](#hook-definition) and [MCP Definition](#mcp-definition).
+
+**What belongs here.** A field only one target understands. A concept several targets share can be promoted to a tai field instead, so it is written once and each adapter translates it — that is what `tools` and `model` already are. The two rules meet at "how many targets have this", not at "how obscure is it".
+
+**A native field wins** over the tai field of the same name, keeping the position tai gave it. `native: {claude: {description: ...}}` replaces the description on Claude and leaves every other target's alone.
+
+**A misspelled target name warns.** `native.cluade` reaches nothing, and silently doing nothing is the failure this feature exists to remove, so tai names the targets it knows.
+
+**Values are not interpreted.** Lists, maps and booleans render as YAML, so a nested field like Claude's `hooks` survives its shape.
 
 #### Adapter Transformation (Claude)
 
@@ -606,6 +636,8 @@ Unknown fields are silently ignored to support forward compatibility and externa
 | Delegates | `name`, `description`, `tools`, `model` | Claude agent format |
 | Skills | `name`, `description`, `tools`, `model` | Same as delegates (SKILL.md in directories) |
 | Files | (none—content unchanged) | Copied byte-for-byte to `dest` location |
+
+Every row except `file` also gets that target's `native` entry merged on top.
 
 #### Asset Dependencies
 

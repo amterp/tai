@@ -2132,3 +2132,204 @@ post_install:
 		t.Errorf("CLAUDE.md = %q, want %q", got, want)
 	}
 }
+
+// TestE2EInstallSkillWithNativeFrontmatter checks that a target-specific field
+// declared under native reaches the installed SKILL.md untouched.
+func TestE2EInstallSkillWithNativeFrontmatter(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "my-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	skillMd := `---
+name: my-skill
+description: A test skill
+native:
+  claude:
+    disable-model-invocation: true
+    allowed-tools: [Read, Bash]
+  codex:
+    argument-hint: "<slot>"
+---
+
+# My Skill
+`
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMd), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	env.SetupBundle("test", `name: test
+assets:
+  - type: skill
+    path: skills/my-skill
+`)
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
+	adap := claude.New(env.TargetDir)
+
+	asset, _ := sources["local"].ResolveAsset("skills/my-skill", config.AssetTypeSkill)
+	result, err := installer.Install(adap, "test", []*config.Asset{asset}, install.InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	got := env.ReadTargetFile("skills/my-skill/SKILL.md")
+	want := "---\nname: my-skill\ndescription: A test skill\n" +
+		"allowed-tools:\n  - Read\n  - Bash\ndisable-model-invocation: true\n---\n\n# My Skill\n"
+	if got != want {
+		t.Errorf("SKILL.md = %q, want %q", got, want)
+	}
+
+	// Another target's native fields, and the native key itself, stay out.
+	for _, unwanted := range []string{"argument-hint", "native:"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("SKILL.md contains %q:\n%s", unwanted, got)
+		}
+	}
+
+	if len(result.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", result.Warnings)
+	}
+}
+
+// TestE2EInstallSkillUnknownFrontmatterFieldWarns checks that a field tai does
+// not recognize is reported rather than dropped in silence.
+func TestE2EInstallSkillUnknownFrontmatterFieldWarns(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "my-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	skillMd := `---
+name: my-skill
+description: A test skill
+disable-model-invocation: true
+---
+
+# My Skill
+`
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMd), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	env.SetupBundle("test", `name: test
+assets:
+  - type: skill
+    path: skills/my-skill
+`)
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
+	adap := claude.New(env.TargetDir)
+
+	asset, _ := sources["local"].ResolveAsset("skills/my-skill", config.AssetTypeSkill)
+	result, err := installer.Install(adap, "test", []*config.Asset{asset}, install.InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	// The field is still dropped - the fix is that tai now says so.
+	got := env.ReadTargetFile("skills/my-skill/SKILL.md")
+	if strings.Contains(got, "disable-model-invocation") {
+		t.Errorf("unknown field installed:\n%s", got)
+	}
+
+	var found string
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "disable-model-invocation") {
+			found = w
+		}
+	}
+	if found == "" {
+		t.Fatalf("no warning about the dropped field, warnings: %v", result.Warnings)
+	}
+	if !strings.Contains(found, "native.claude") {
+		t.Errorf("warning does not say where to put it: %s", found)
+	}
+}
+
+// TestE2EInstallPersonaWithNativeFrontmatter covers a flat-file asset, which
+// takes a different path through the installer than a skill directory.
+func TestE2EInstallPersonaWithNativeFrontmatter(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+
+	env.SetupAsset("personas", "senior-swe.md", `---
+name: Senior SWE
+description: A senior software engineer persona
+native:
+  claude:
+    model: opus
+---
+
+# Senior Software Engineer
+`)
+
+	env.SetupBundle("test", `name: test
+assets:
+  - type: persona
+    path: personas/senior-swe.md
+`)
+	env.SetupProfile("test", `name: test
+target: claude
+bundles:
+  - test
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, _ := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	sources, _ := loader.LoadAll(taiConfig.Sources)
+
+	manifestStore := install.NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := install.NewInstaller(manifestStore, env.ConfigRepo, nil)
+	adap := claude.New(env.TargetDir)
+
+	asset, _ := sources["local"].ResolveAsset("personas/senior-swe.md", config.AssetTypePersona)
+	if _, err := installer.Install(adap, "test", []*config.Asset{asset}, install.InstallOptions{}); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	got := env.ReadTargetFile("output-styles/senior-swe.md")
+	want := "---\nname: Senior SWE\ndescription: A senior software engineer persona\nmodel: opus\n---\n\n# Senior Software Engineer\n"
+	if got != want {
+		t.Errorf("persona = %q, want %q", got, want)
+	}
+}

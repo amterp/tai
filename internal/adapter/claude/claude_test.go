@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/amterp/tai/internal/config"
+	"github.com/amterp/tai/internal/frontmatter"
 )
 
 func TestAdapterName(t *testing.T) {
@@ -302,5 +303,77 @@ func TestAdapterProvideVariables(t *testing.T) {
 	}
 	if vars["target_agents_file"] != "CLAUDE.md" {
 		t.Errorf("target_agents_file = %q, want 'CLAUDE.md'", vars["target_agents_file"])
+	}
+}
+
+func TestAdapterTransformNativeMerged(t *testing.T) {
+	a := New("")
+	asset := &config.ResolvedAsset{
+		Asset: config.Asset{Type: config.AssetTypeSkill},
+		Metadata: map[string]string{
+			"name":        "parallel-work",
+			"description": "Parallel worktree workflow",
+		},
+		Native: frontmatter.Native{
+			"claude": {"disable-model-invocation": true},
+			"codex":  {"argument-hint": "<slot>"},
+		},
+		Content: []byte("# Parallel Work\n"),
+	}
+
+	got, err := a.TransformContent(asset)
+	if err != nil {
+		t.Fatalf("TransformContent failed: %v", err)
+	}
+
+	want := "---\nname: parallel-work\ndescription: Parallel worktree workflow\n" +
+		"disable-model-invocation: true\n---\n\n# Parallel Work\n"
+	if string(got) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", string(got), want)
+	}
+}
+
+func TestAdapterTransformNativeOverridesTaiField(t *testing.T) {
+	a := New("")
+	asset := &config.ResolvedAsset{
+		Asset: config.Asset{Type: config.AssetTypeDelegate},
+		Metadata: map[string]string{
+			"name":        "reviewer",
+			"description": "tai's description",
+			"tools":       "Read, Grep",
+		},
+		Native:  frontmatter.Native{"claude": {"description": "Claude's own description"}},
+		Content: []byte("# Reviewer\n"),
+	}
+
+	got, err := a.TransformContent(asset)
+	if err != nil {
+		t.Fatalf("TransformContent failed: %v", err)
+	}
+
+	// Native wins, and keeps the position tai gave the field.
+	want := "---\nname: reviewer\ndescription: Claude's own description\ntools: Read, Grep\n---\n\n# Reviewer\n"
+	if string(got) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", string(got), want)
+	}
+}
+
+func TestAdapterTransformPersonaNative(t *testing.T) {
+	a := New("")
+	asset := &config.ResolvedAsset{
+		Asset:    config.Asset{Type: config.AssetTypePersona},
+		Metadata: map[string]string{"name": "Senior SWE"},
+		Native:   frontmatter.Native{"claude": {"model": "opus"}},
+		Content:  []byte("# Senior SWE\n"),
+	}
+
+	got, err := a.TransformContent(asset)
+	if err != nil {
+		t.Fatalf("TransformContent failed: %v", err)
+	}
+
+	want := "---\nname: Senior SWE\nmodel: opus\n---\n\n# Senior SWE\n"
+	if string(got) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", string(got), want)
 	}
 }
