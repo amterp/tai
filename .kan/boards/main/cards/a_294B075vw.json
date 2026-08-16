@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "install-a-deleted",
+  "alias_explicit": false,
+  "column": "done",
+  "created_at_millis": 1786888082917,
+  "creator": "Alexander Terp",
+  "description": "Deleting an installed file and reinstalling puts the file back, but the summary counts it as `unchanged` and prints no line for it. Classification looks like it runs against the manifest rather than against what is on disk, so a file that was absent and has just been written is indistinguishable from one that was never touched.\n\nRepro (2026-08-16, profile `default` to claude):\n\n```\ntm ~/.claude/skills/parallel-pr     # remove an installed skill\ntai reinstall\n  0 added, 1 updated, 60 unchanged, 0 removed   # no parallel-pr line anywhere\ntest -d ~/.claude/skills/parallel-pr            # it is back\n```\n\nThe impact is that the summary can't be used to confirm an install did what you wanted. Checking means diffing the installed copy against source by hand, which is the work the summary exists to save. A zero also reads as \"nothing happened\" rather than \"I didn't check\", so it misleads rather than abstains.\n\nNarrowed the same day: genuinely new and genuinely removed assets ARE reported correctly. Renaming the skill produced `+ skills/parallel-work (new)` and `- skills/parallel-pr (removed)` on the same run. So the miss is specific to \"manifest says installed, disk says absent\" rather than to counting in general, which supports the manifest-vs-disk reading above.\n\nNot investigated: whether `--dry-run` reports the missing-file case correctly.",
+  "id": "a_294B075vw",
+  "position": "0",
+  "title": "install: a deleted managed file is restored but reported as unchanged",
+  "type": "bug",
+  "updated_at_millis": 1786891313755,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1786888082917},
+    {"field":"column","value":"done","at":1786891313755}
+  ]
+}

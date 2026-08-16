@@ -2,15 +2,24 @@
   "_v": 3,
   "alias": "patching-imported",
   "alias_explicit": false,
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Shipped. Main carries the patched-view materialization, the editable patch workspace and regenerate, url sources for single remote files, bundle imports, and the docs page.",
+      "created_at_millis": 1786891635271,
+      "id": "c_295fPj8qW"
+    }
+  ],
   "created_at_millis": 1784399832957,
   "creator": "Alexander Terp",
   "id": "a_1sE8FjzRG",
-  "position": "U",
+  "position": "!2",
   "title": "patching imported assets",
   "type": "feature",
-  "updated_at_millis": 1784401244567,
+  "updated_at_millis": 1786891638891,
   "history": [
-    {"field":"column","value":"in-progress","at":1784399832957}
+    {"field":"column","value":"in-progress","at":1784399832957},
+    {"field":"column","value":"done","at":1786891638891}
   ]
 }

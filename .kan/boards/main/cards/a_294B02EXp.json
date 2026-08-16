@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "skills-claude",
+  "alias_explicit": false,
+  "column": "done",
+  "created_at_millis": 1786888082865,
+  "creator": "Alexander Terp",
+  "description": "Installing a skill to the Claude target rewrites its frontmatter down to `name` and `description`, so none of the other fields Claude Code reads from a SKILL.md survive: `disable-model-invocation`, `user-invocable`, `allowed-tools`/`disallowed-tools`, `model`, `effort`, `paths`, `argument-hint`, `context: fork` + `agent`, `hooks`. A tai-managed skill can't use any of them.\n\nVerified 2026-08-16 with `disable-model-invocation: true`. Source carried it; installed `~/.claude/skills/parallel-work/SKILL.md` had only `name` and `description`; no warning printed. The rest of the list is inferred from tai recognizing only `name`/`description`/`tools`, not individually tested.\n\nThe concrete cost: `parallel-work` holds opposite rules for its two roles (workers must not touch git, the integrator does all of it), so misfiring in the wrong session actively misleads that session. `disable-model-invocation` is the mechanism for \"only the user may invoke this\". Without it the fallbacks are a negative boundary in the description plus an early stop-and-ask in the body, both of which are model judgment where the frontmatter would have been a hard gate.\n\nThe silence is the half that costs most. A dropped unknown field and a dropped typo'd field look identical, and neither says anything, so you only find out by diffing installed against source.\n\nOpen question: pass unknown fields through wholesale, or keep a per-target allowlist? Wholesale lets a target add fields without a tai release; an allowlist can validate and warn on nonsense. Warning on drop is worth having either way, independent of which wins.",
+  "id": "a_294B02EXp",
+  "position": "!U",
+  "title": "skills: Claude-specific SKILL.md frontmatter is dropped on install",
+  "type": "enhancement",
+  "updated_at_millis": 1786891313788,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1786888082865},
+    {"field":"column","value":"done","at":1786891313788}
+  ]
+}
