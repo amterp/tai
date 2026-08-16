@@ -690,6 +690,43 @@ func TestHookReinstallKeepsPositionAndDoesNotChurn(t *testing.T) {
 	}
 }
 
+// Deleting tai's hook from settings.json is the config-asset twin of deleting
+// an installed file: the manifest still holds the entry and its checksum, so
+// re-adding it looks like a no-op unless the classification consults the file.
+func TestHookDeletedFromSettingsIsReportedAsRestored(t *testing.T) {
+	env, installer, adap := setupStatusLineTest(t)
+	env.SetupAsset("hooks", "notify.yaml", "on: stop\nrun: say done\n")
+	assets := []*config.Asset{hookAsset(env, "notify.yaml")}
+
+	if _, err := installer.Install(adap, "p", assets, InstallOptions{}); err != nil {
+		t.Fatalf("first install failed: %v", err)
+	}
+
+	settingsPath := filepath.Join(env.TargetDir, "settings.json")
+	doc, err := readJSONFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	delete(doc["hooks"].(map[string]any), "Stop")
+	writeJSONFile(t, settingsPath, doc)
+
+	result, err := installer.Install(adap, "p", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("reinstall failed: %v", err)
+	}
+
+	if len(result.Restored) != 1 || result.Restored[0] != "[hook] notify" {
+		t.Errorf("Restored = %v, want [[hook] notify]", result.Restored)
+	}
+	if len(result.Unchanged) != 0 {
+		t.Errorf("Unchanged = %v, want empty", result.Unchanged)
+	}
+	if countHandlers(t, settingsPath, "Stop") != 1 {
+		t.Errorf("hooks.Stop has %d groups, want the hook back exactly once",
+			countHandlers(t, settingsPath, "Stop"))
+	}
+}
+
 // writeJSONFile rewrites a target config file, standing in for a user or
 // another tool editing it between installs.
 func writeJSONFile(t *testing.T, path string, doc map[string]any) {

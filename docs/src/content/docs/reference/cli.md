@@ -247,7 +247,7 @@ If the config declares [command sources](/tai/concepts/sources/#command-source),
 # Preview what would happen
 tai install work --dry-run
 # Would install profile 'work' for claude...
-# 5 added, 0 updated, 0 unchanged, 0 removed
+# 5 would be added, 0 restored, 0 updated, 0 unchanged, 0 removed
 
 # Install with template variables
 tai install work --var project_name=MyApp
@@ -264,9 +264,14 @@ Example output:
 ```
 Installing profile 'work' for claude...
 Override: personas/senior-swe.md (core -> work-extras)
-5 added, 0 updated, 0 unchanged, 0 removed
+5 added, 0 restored, 0 updated, 0 unchanged, 0 removed
 Manifest written to /Users/you/.config/tai/manifests/
 ```
+
+`restored` counts assets tai manages that were missing from the target and got
+written back - a skill you deleted by hand, or a hook someone removed from
+`settings.json`. They are kept apart from `added` because the manifest already
+had them, and from `unchanged` because the target did change.
 
 When conflicts are detected without `--force` or `--skip-conflicts`:
 

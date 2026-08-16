@@ -903,6 +903,7 @@ func doInstall(s *state.State, profileName string, flags installFlags) error {
 	}
 	out.InstallResult(&output.InstallResultData{
 		Added:     result.Added,
+		Restored:  result.Restored,
 		Updated:   result.Updated,
 		Unchanged: result.Unchanged,
 		Removed:   result.Removed,

@@ -75,16 +75,24 @@ When running `tai install` with an existing installation (manifest exists for th
 
 1. Load the current manifest
 2. Resolve the new profile's assets through the full pipeline
-3. Compare the new asset list against the manifest:
+3. Compare the new asset list against the manifest *and* against the target directory:
 
 | Category | Description | Action |
 |----------|-------------|--------|
 | **Added** | In new profile, not in manifest | Install the file |
+| **Restored** | In manifest, but missing from the target | Write it back |
 | **Updated** | In both, checksum changed | Overwrite with new version |
-| **Unchanged** | In both, checksum identical | Skip (no write needed) |
+| **Unchanged** | In both, checksum identical, file present | Rewrite with identical content |
 | **Removed** | In manifest, not in new profile | Delete the file |
 
 4. Apply changes and update the manifest
+
+Tai reads both the manifest and the target directory to categorize. The
+manifest keeps a deleted file's entry and checksum, so on the manifest alone
+that file looks identical to one nobody touched. Tai rewrites every file in the
+profile either way, so without the check against disk a deleted file would come
+back while the summary called it unchanged. **Restored** covers config entries
+too: a hook someone deleted from `settings.json` that tai puts back.
 
 For removed files that had a backup (from `{{ existing }}` templating), the original content is restored from the backup instead of deleting the file.
 

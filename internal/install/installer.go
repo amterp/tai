@@ -52,9 +52,10 @@ type InstallOptions struct {
 
 // InstallResult contains the result of an installation.
 type InstallResult struct {
-	Added     []string // Files added
+	Added     []string // Files added (tai was not managing them before)
+	Restored  []string // Files tai manages that were gone from the target and got written back
 	Updated   []string // Files updated (content changed)
-	Unchanged []string // Files unchanged (content identical)
+	Unchanged []string // Files unchanged (content identical, and already present)
 	Removed   []string // Files removed
 	Skipped   []string // Files skipped due to conflicts
 	Errors    []error  // Non-fatal errors
@@ -120,7 +121,14 @@ type resolvedFileAsset struct {
 	resolved      *config.ResolvedAsset
 	existingEntry ManifestEntry
 	wasManaged    bool
-	conflict      *Conflict
+
+	// existsOnDisk records whether the target was there before this install.
+	// Classification cannot be read off the manifest alone: a file the manifest
+	// claims is installed but that has since been deleted has the recorded
+	// checksum, so it looks identical to one nobody touched.
+	existsOnDisk bool
+
+	conflict *Conflict
 }
 
 // installContext holds shared state during the two-phase install process.
@@ -151,6 +159,12 @@ type installContext struct {
 type resolvedConfigAsset struct {
 	asset *config.Asset
 	scope string
+
+	// vanished records that tai's entry was missing from the config file before
+	// this install. Same blind spot as existsOnDisk on file assets: the manifest
+	// still holds the entry and its checksum, so re-adding it is otherwise
+	// indistinguishable from leaving it alone.
+	vanished bool
 }
 
 // scopeFor resolves an asset's installation scope: its own override, else the
@@ -374,7 +388,14 @@ func (i *Installer) resolveAndDetectConflicts(
 		configByKey[key] = resolvedConfigAsset{asset: asset, scope: ctx.scopeFor(asset)}
 	}
 
+	// Both checks read the config files before phase 2 mutates them, which is the
+	// only point at which "was tai's entry there?" can still be answered.
 	for key, rca := range configByKey {
+		if prev, wasManaged := ctx.existingConfigEntries[key]; wasManaged {
+			rca.vanished = i.configEntryVanished(ctx, prev)
+			configByKey[key] = rca
+		}
+
 		conflict := i.checkConfigConflict(ctx, key, rca)
 		if conflict != nil {
 			conflicts = append(conflicts, *conflict)
@@ -419,7 +440,7 @@ func (i *Installer) resolveFileAsset(ctx *installContext, asset *config.Asset) (
 	}
 
 	existingEntry, wasManaged := ctx.existingFiles[targetPath]
-	conflict := i.checkConflict(fullTargetPath, existingEntry, wasManaged, resolved)
+	conflict, existsOnDisk := i.checkConflict(fullTargetPath, existingEntry, wasManaged, resolved)
 
 	ra := resolvedFileAsset{
 		asset:         asset,
@@ -429,6 +450,7 @@ func (i *Installer) resolveFileAsset(ctx *installContext, asset *config.Asset) (
 		resolved:      resolved,
 		existingEntry: existingEntry,
 		wasManaged:    wasManaged,
+		existsOnDisk:  existsOnDisk,
 		conflict:      conflict,
 	}
 
@@ -524,6 +546,8 @@ func (i *Installer) executeInstall(
 		// would hide the fact that a --force just overwrote the edit.
 		case configConflicts[key]:
 			result.Updated = append(result.Updated, label)
+		case rca.vanished:
+			result.Restored = append(result.Restored, label)
 		case configEntry.Checksum == existingEntry.Checksum:
 			result.Unchanged = append(result.Unchanged, label)
 		default:
@@ -659,15 +683,18 @@ func (i *Installer) installFileAsset(ctx *installContext, ra resolvedFileAsset, 
 		}
 	}
 
-	// Track what's happening
-	if ra.wasManaged {
-		if ra.resolved.Checksum == ra.existingEntry.Checksum {
-			result.Unchanged = append(result.Unchanged, ra.targetPath)
-		} else {
-			result.Updated = append(result.Updated, ra.targetPath)
-		}
-	} else {
+	// Track what's happening. Absence outranks the checksum comparison: a file
+	// that was gone and is back has changed, and the manifest checksum it would
+	// otherwise be judged against describes a copy nobody can see any more.
+	switch {
+	case !ra.wasManaged:
 		result.Added = append(result.Added, ra.targetPath)
+	case !ra.existsOnDisk:
+		result.Restored = append(result.Restored, ra.targetPath)
+	case ra.resolved.Checksum == ra.existingEntry.Checksum:
+		result.Unchanged = append(result.Unchanged, ra.targetPath)
+	default:
+		result.Updated = append(result.Updated, ra.targetPath)
 	}
 
 	return EntryFromAsset(ra.resolved), false, nil
@@ -783,6 +810,27 @@ func (i *Installer) configEntryDrifted(ctx *installContext, entry ConfigEntry) (
 		}
 	}
 	return "", false
+}
+
+// configEntryVanished reports whether any edit tai previously wrote is no
+// longer in the config file - the case configEntryDrifted deliberately passes
+// over, since putting an entry back is not a conflict.
+//
+// Not a conflict, but still worth reporting: an install that re-adds a hook
+// someone deleted from settings.json has changed that file, and a summary
+// calling it unchanged is the same lie as one calling a restored file
+// unchanged.
+func (i *Installer) configEntryVanished(ctx *installContext, entry ConfigEntry) bool {
+	for _, applied := range entry.Edits {
+		doc, err := ctx.configFiles.load(applied.File)
+		if err != nil {
+			return false // Unreadable; install will report it properly.
+		}
+		if _, exists := findEntry(doc, applied); !exists {
+			return true
+		}
+	}
+	return false
 }
 
 // editCollides reports whether an edit would displace an entry tai does not
@@ -1314,28 +1362,32 @@ func (i *Installer) resolveAsset(
 	return resolved, nil
 }
 
-// checkConflict checks for conflicts when installing a file.
+// checkConflict checks for conflicts when installing a file, and reports
+// whether the target is currently on disk. Both answers come from one stat, and
+// the caller needs the second to tell a restore apart from a no-op.
 func (i *Installer) checkConflict(
 	fullPath string,
 	existingEntry ManifestEntry,
 	wasManaged bool,
 	resolved *config.ResolvedAsset,
-) *Conflict {
+) (*Conflict, bool) {
 	info, err := os.Stat(fullPath)
 	if os.IsNotExist(err) {
-		return nil // No conflict - file doesn't exist
+		return nil, false // No conflict - file doesn't exist
 	}
 	if err != nil {
-		return &Conflict{Path: fullPath, Reason: fmt.Sprintf("stat error: %v", err)}
+		// Something is there that tai cannot read. Call it existing, so a stat
+		// failure cannot pass itself off as a restore.
+		return &Conflict{Path: fullPath, Reason: fmt.Sprintf("stat error: %v", err)}, true
 	}
 
 	if !wasManaged {
 		// File exists but wasn't managed by tai
 		// However, if the asset uses {{existing}}, it's designed to wrap existing content
 		if resolved.BackupPath != "" {
-			return nil // Not a conflict - we're wrapping existing content
+			return nil, true // Not a conflict - we're wrapping existing content
 		}
-		return &Conflict{Path: fullPath, Reason: "unmanaged file exists"}
+		return &Conflict{Path: fullPath, Reason: "unmanaged file exists"}, true
 	}
 
 	// Check if user modified the file
@@ -1347,10 +1399,10 @@ func (i *Installer) checkConflict(
 	}
 
 	if currentChecksum != existingEntry.Checksum {
-		return &Conflict{Path: fullPath, Reason: "file modified since last install"}
+		return &Conflict{Path: fullPath, Reason: "file modified since last install"}, true
 	}
 
-	return nil
+	return nil, true
 }
 
 // installAsset installs a resolved asset to the target.
@@ -1830,7 +1882,7 @@ func (i *Installer) Rebaseline(adap adapter.Adapter, result *InstallResult) ([]s
 	}
 
 	written := make(map[string]bool)
-	for _, group := range [][]string{result.Added, result.Updated, result.Unchanged} {
+	for _, group := range [][]string{result.Added, result.Restored, result.Updated, result.Unchanged} {
 		for _, path := range group {
 			written[path] = true
 		}

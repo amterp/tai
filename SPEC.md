@@ -1426,7 +1426,7 @@ install while telling nobody anything.
 | Entry exists, in manifest, unchanged | No-op; the file is not rewritten |
 | Entry exists, in manifest, asset changed | Update in place |
 | Entry exists, in manifest, edited since install | **Error**: conflict (use `--force` to take it back, `--skip-conflicts` to keep the edit) |
-| Entry in manifest, gone from the file | Add it back |
+| Entry in manifest, gone from the file | Add it back; reported as `restored` |
 
 The drift case is the same bargain tai strikes for files: an entry that no
 longer matches what tai wrote is the user's now, so tai stops and says so

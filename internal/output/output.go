@@ -64,6 +64,7 @@ type KeyValuePair struct {
 // InstallResultData contains the data for displaying installation results.
 type InstallResultData struct {
 	Added     []string
+	Restored  []string
 	Updated   []string
 	Unchanged []string
 	Removed   []string

@@ -206,6 +206,151 @@ func TestInstallerInstallMixedUnchangedAndUpdated(t *testing.T) {
 	}
 }
 
+// The manifest still carries the deleted file's entry, checksum and all, so
+// classifying off the manifest alone reports "unchanged" for a file that was
+// absent a moment ago.
+func TestInstallerReportsDeletedFileAsRestored(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Test")
+	assets := []*config.Asset{
+		{Type: "persona", Name: "test.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
+	}
+
+	if _, err := installer.Install(adapter, "test-profile", assets, InstallOptions{}); err != nil {
+		t.Fatalf("First install failed: %v", err)
+	}
+
+	if err := os.Remove(filepath.Join(env.TargetDir, "output-styles", "test.md")); err != nil {
+		t.Fatalf("removing installed file: %v", err)
+	}
+
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Second install failed: %v", err)
+	}
+
+	if len(result.Restored) != 1 || result.Restored[0] != "output-styles/test.md" {
+		t.Errorf("Restored = %v, want [output-styles/test.md]", result.Restored)
+	}
+	if len(result.Unchanged) != 0 {
+		t.Errorf("Unchanged = %v, want empty", result.Unchanged)
+	}
+	if len(result.Added) != 0 {
+		t.Errorf("Added = %v, want empty", result.Added)
+	}
+	if !env.TargetFileExists("output-styles/test.md") {
+		t.Error("file was not written back")
+	}
+}
+
+func TestInstallerReportsDeletedSkillDirAsRestored(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "my-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: My Skill\ndescription: A skill\n---\n\n# My Skill\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skill", Name: "my-skill", SourceName: "local", SourcePath: skillDir, IsDir: true},
+	}
+
+	if _, err := installer.Install(adapter, "test-profile", assets, InstallOptions{}); err != nil {
+		t.Fatalf("First install failed: %v", err)
+	}
+
+	if err := os.RemoveAll(filepath.Join(env.TargetDir, "skills", "my-skill")); err != nil {
+		t.Fatalf("removing installed skill: %v", err)
+	}
+
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Second install failed: %v", err)
+	}
+
+	if len(result.Restored) != 1 || result.Restored[0] != "skills/my-skill" {
+		t.Errorf("Restored = %v, want [skills/my-skill]", result.Restored)
+	}
+	if len(result.Unchanged) != 0 {
+		t.Errorf("Unchanged = %v, want empty", result.Unchanged)
+	}
+	if !env.TargetFileExists("skills/my-skill/SKILL.md") {
+		t.Error("skill was not written back")
+	}
+}
+
+// A dry run must name the missing file too - it is the command you reach for to
+// find out whether an install would change anything.
+func TestInstallerDryRunReportsDeletedFileAsRestored(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Test")
+	assets := []*config.Asset{
+		{Type: "persona", Name: "test.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
+	}
+
+	if _, err := installer.Install(adapter, "test-profile", assets, InstallOptions{}); err != nil {
+		t.Fatalf("First install failed: %v", err)
+	}
+	if err := os.Remove(filepath.Join(env.TargetDir, "output-styles", "test.md")); err != nil {
+		t.Fatalf("removing installed file: %v", err)
+	}
+
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{DryRun: true})
+	if err != nil {
+		t.Fatalf("Dry run failed: %v", err)
+	}
+
+	if len(result.Restored) != 1 {
+		t.Errorf("Restored = %v, want one entry", result.Restored)
+	}
+	if env.TargetFileExists("output-styles/test.md") {
+		t.Error("dry run wrote the file back")
+	}
+}
+
+// Content that also moved on since the manifest was written does not change the
+// headline: the file was gone, and now it is not.
+func TestInstallerRestoredWinsOverUpdated(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Version 1")
+	assets := []*config.Asset{
+		{Type: "persona", Name: "test.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "test.md")},
+	}
+
+	if _, err := installer.Install(adapter, "test-profile", assets, InstallOptions{}); err != nil {
+		t.Fatalf("First install failed: %v", err)
+	}
+	if err := os.Remove(filepath.Join(env.TargetDir, "output-styles", "test.md")); err != nil {
+		t.Fatalf("removing installed file: %v", err)
+	}
+	env.SetupAsset("personas", "test.md", "---\ntai-schema-version: 1\nname: Test\n---\n\n# Version 2")
+
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Second install failed: %v", err)
+	}
+
+	if len(result.Restored) != 1 {
+		t.Errorf("Restored = %v, want one entry", result.Restored)
+	}
+	if len(result.Updated) != 0 {
+		t.Errorf("Updated = %v, want empty", result.Updated)
+	}
+	if got := env.ReadTargetFile("output-styles/test.md"); !strings.Contains(got, "Version 2") {
+		t.Errorf("restored content = %q, want the current source content", got)
+	}
+}
+
 func TestInstallerInstallRemoveStale(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 

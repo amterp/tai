@@ -62,6 +62,7 @@ tai install personal --dry-run
 
 The dry-run output shows:
 - Files that would be added (new)
+- Files that would be restored (managed by tai, but missing from the target)
 - Files that would be updated (changed since last install)
 - Files that would be removed (no longer in the profile)
 

@@ -130,7 +130,7 @@ func TestPlainOutput_InstallResult(t *testing.T) {
 	if !strings.Contains(got, "? docs/conflict.md (skipped)") {
 		t.Errorf("expected skipped item, got %q", got)
 	}
-	if !strings.Contains(got, "1 added, 1 updated, 0 unchanged, 1 removed") {
+	if !strings.Contains(got, "1 added, 0 restored, 1 updated, 0 unchanged, 1 removed") {
 		t.Errorf("expected summary, got %q", got)
 	}
 }
@@ -163,8 +163,26 @@ func TestPlainOutput_InstallResultWithUnchanged(t *testing.T) {
 	if !strings.Contains(got, "- docs/old.md (removed)") {
 		t.Errorf("expected removed item, got %q", got)
 	}
-	if !strings.Contains(got, "1 added, 1 updated, 2 unchanged, 1 removed") {
+	if !strings.Contains(got, "1 added, 0 restored, 1 updated, 2 unchanged, 1 removed") {
 		t.Errorf("expected summary with unchanged count, got %q", got)
+	}
+}
+
+func TestPlainOutput_InstallResultWithRestored(t *testing.T) {
+	var buf bytes.Buffer
+	out := NewPlain(&buf, &buf)
+
+	out.InstallResult(&InstallResultData{
+		Restored:  []string{"skills/parallel-work"},
+		Unchanged: []string{"docs/same.md"},
+	})
+
+	got := buf.String()
+	if !strings.Contains(got, "+ skills/parallel-work (restored)") {
+		t.Errorf("expected restored item, got %q", got)
+	}
+	if !strings.Contains(got, "0 added, 1 restored, 0 updated, 1 unchanged, 0 removed") {
+		t.Errorf("expected summary with restored count, got %q", got)
 	}
 }
 
@@ -194,7 +212,7 @@ func TestPlainOutput_InstallResultDryRunWithUnchanged(t *testing.T) {
 	})
 
 	got := buf.String()
-	if !strings.Contains(got, "0 would be added, 1 updated, 1 unchanged, 0 removed") {
+	if !strings.Contains(got, "0 would be added, 0 restored, 1 updated, 1 unchanged, 0 removed") {
 		t.Errorf("expected dry-run summary with unchanged, got %q", got)
 	}
 }
@@ -340,7 +358,7 @@ func TestStyledOutput_InstallResultWithUnchanged(t *testing.T) {
 		t.Errorf("expected removed item, got %q", got)
 	}
 	// Summary should include unchanged count
-	if !strings.Contains(got, "1 added, 1 updated, 1 unchanged, 1 removed") {
+	if !strings.Contains(got, "1 added, 0 restored, 1 updated, 1 unchanged, 1 removed") {
 		t.Errorf("expected summary with unchanged, got %q", got)
 	}
 }

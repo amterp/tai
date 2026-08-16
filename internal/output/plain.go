@@ -61,6 +61,9 @@ func (p *PlainOutput) InstallResult(data *InstallResultData) {
 	for _, path := range data.Added {
 		fmt.Fprintf(p.out, "  + %s (new)\n", path)
 	}
+	for _, path := range data.Restored {
+		fmt.Fprintf(p.out, "  + %s (restored)\n", path)
+	}
 	for _, path := range data.Updated {
 		fmt.Fprintf(p.out, "  ~ %s (updated)\n", path)
 	}
@@ -76,11 +79,11 @@ func (p *PlainOutput) InstallResult(data *InstallResultData) {
 
 	fmt.Fprintln(p.out)
 	if data.DryRun {
-		fmt.Fprintf(p.out, "%d would be added, %d updated, %d unchanged, %d removed\n",
-			len(data.Added), len(data.Updated), len(data.Unchanged), len(data.Removed))
+		fmt.Fprintf(p.out, "%d would be added, %d restored, %d updated, %d unchanged, %d removed\n",
+			len(data.Added), len(data.Restored), len(data.Updated), len(data.Unchanged), len(data.Removed))
 	} else {
-		fmt.Fprintf(p.out, "%d added, %d updated, %d unchanged, %d removed\n",
-			len(data.Added), len(data.Updated), len(data.Unchanged), len(data.Removed))
+		fmt.Fprintf(p.out, "%d added, %d restored, %d updated, %d unchanged, %d removed\n",
+			len(data.Added), len(data.Restored), len(data.Updated), len(data.Unchanged), len(data.Removed))
 		if data.Manifest != "" {
 			fmt.Fprintf(p.out, "Manifest written to %s\n", data.Manifest)
 		}
