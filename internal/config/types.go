@@ -436,6 +436,14 @@ func AssetTypeDirName(t string) string {
 	}
 }
 
+// IsAssetTypeDirName reports whether d names an asset type directory.
+// AssetTypeFromDirName passes an unrecognized name straight through, so a
+// caller that needs to distinguish "personas" from an arbitrary directory
+// asks here rather than testing the mapped value for emptiness.
+func IsAssetTypeDirName(d string) bool {
+	return AssetTypeFromDirName(d) != d
+}
+
 // AssetTypeFromDirName maps a directory name back to its singular asset type.
 func AssetTypeFromDirName(d string) string {
 	switch d {

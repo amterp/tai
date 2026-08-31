@@ -37,6 +37,16 @@ description: A test persona
 You are a test persona.
 `)
 	writeFile(t, filepath.Join(srcDir, "files", "plain.md"), "# Plain File\nNo frontmatter here.\n")
+	if err := os.MkdirAll(filepath.Join(srcDir, "skills", "wrapped"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(srcDir, "skills", "wrapped", "SKILL.md"), `---
+name: wrapped
+description: A skill whose body another skill wraps
+---
+
+Wrapped skill body.
+`)
 	writeFile(t, filepath.Join(srcDir, "statuslines", "config.yaml"), "level: minimal\n")
 
 	loader := source.NewLoader(tmpDir)
@@ -87,6 +97,22 @@ func TestAssetContentResolverPlainFile(t *testing.T) {
 	expected := "# Plain File\nNo frontmatter here.\n"
 	if string(content) != expected {
 		t.Errorf("content = %q, want %q", string(content), expected)
+	}
+}
+
+func TestAssetContentResolverSkillBody(t *testing.T) {
+	_, resolver := setupResolverTest(t)
+
+	content, err := resolver.ResolveAssetContent("local:skills/wrapped/SKILL.md")
+
+	if err != nil {
+		t.Fatalf("ResolveAssetContent failed: %v", err)
+	}
+	if strings.Contains(string(content), "name: wrapped") {
+		t.Error("frontmatter should be stripped")
+	}
+	if !strings.Contains(string(content), "Wrapped skill body.") {
+		t.Error("body content should be present")
 	}
 }
 

@@ -90,14 +90,18 @@ func (r *AssetContentResolver) ResolveAssetContent(ref string) ([]byte, error) {
 	return parsed.Body, nil
 }
 
-// inferAssetType determines the singular asset type from the directory holding
-// the asset (e.g. "assets/personas/foo.md" and "personas/foo.md" both give
-// "persona"). Reading the first segment instead would tie the type to how deep
-// the source root sits, which is not something a reference should encode.
+// inferAssetType determines the singular asset type from the nearest ancestor
+// directory that names one (e.g. "assets/personas/foo.md" and "personas/foo.md"
+// both give "persona", and "assets/skills/jj/SKILL.md" gives "skill"). Reading
+// the first segment instead would tie the type to how deep the source root
+// sits, which is not something a reference should encode. Reading only the
+// immediate parent would exclude a skill, whose body sits a level below the
+// type dir because the skill itself is a directory.
 func inferAssetType(assetPath string) string {
-	dir := path.Dir(assetPath)
-	if dir == "." || dir == "/" {
-		return ""
+	for dir := path.Dir(assetPath); dir != "." && dir != "/"; dir = path.Dir(dir) {
+		if base := path.Base(dir); config.IsAssetTypeDirName(base) {
+			return config.AssetTypeFromDirName(base)
+		}
 	}
-	return config.AssetTypeFromDirName(path.Base(dir))
+	return ""
 }
