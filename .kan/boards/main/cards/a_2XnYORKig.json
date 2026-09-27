@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "add-antigravity-as",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1790542550357,
+  "creator": "Alexander Terp",
+  "description": "Google's Antigravity replaces Gemini CLI as the agent to target on that side.\n\nFirst find out what Antigravity reads and where: its equivalents of a global instructions file, rules, skills or workflows, subagents, hooks, MCP config, and whether any of them are per-project vs global. Then decide which tai asset types map onto it and which have no equivalent (those should be skipped with a warning, as other targets do).\n\nThen add an adapter alongside claude/codex/opencode, a target name, docs, and tests. Worth reusing whatever the gemini adapter got right before it is removed - check its git history rather than resurrecting it wholesale.",
+  "id": "a_2XnYORKig",
+  "position": "z",
+  "title": "Add Antigravity as an install target",
+  "type": "feature",
+  "updated_at_millis": 1790542550357,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1790542550357}
+  ]
+}
