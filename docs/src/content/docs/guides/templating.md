@@ -114,6 +114,26 @@ The content between `{% verbatim %}` and `{% endverbatim %}` is passed through w
 
 Note: pongo2 does not support `{% raw %}`. Always use `{% verbatim %}` instead.
 
+## Sources that are not templates
+
+Content written for a target rather than for tai often contains `{#` or `{{` that was never meant
+as template syntax. A Markdown heading anchor such as `## Remote transport {#remote-transport}`
+opens a template comment that never closes, and that one parse error fails the whole install.
+Rather than wrapping each occurrence in `{% verbatim %}`, mark the source:
+
+```yaml
+sources:
+  - name: vendor-skills
+    path: ~/src/vendor-skills
+    template: false
+```
+
+Everything from that source then installs as written: its own assets, files a skill includes from
+it with `from:`, and assets inlined from it with `include_asset`. A skill in your own source that
+includes a file from it still templates its own files. The reverse also holds: a skill from the
+untemplated source is installed as written, including anything it pulls in from your templated
+sources. A file asset's `dest` is always templated, since it is written in your config.
+
 ## Asset inlining with include_asset
 
 The `{% include_asset %}` tag inlines another asset's body content at install time. The included asset's frontmatter is stripped - only the body is inserted:

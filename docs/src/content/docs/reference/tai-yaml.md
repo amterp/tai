@@ -57,6 +57,7 @@ Optional. A list of locations that provide assets. Each source makes its assets 
 | `timeout` | string | no | `30s` | Duration bound for the fetch (e.g. `"60s"`, `"2m"`). Only valid with `type: command` or `type: url`. |
 | `patches` | string | no | | Config-repo-relative directory of patch files applied to this source's content. See [Patches](/tai/concepts/patches/). |
 | `exclude` | string list | no | `[]` | Glob patterns for files this source does not carry at all. Patterns are source-relative. |
+| `template` | bool | no | `true` | Set to `false` to install this source's content without template processing. See [Templating](/tai/guides/templating/#sources-that-are-not-templates). |
 
 ### Source types
 

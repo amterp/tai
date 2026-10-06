@@ -1574,8 +1574,10 @@ sources:
 The opt-out follows the content, wherever it lands: the source's own assets, a
 file a skill includes from it with `from:`, and an asset inlined from it with
 `{% include_asset %}`. A skill from a templated source that includes a file
-from this one keeps templating its own files. A file asset's `dest` is still
-templated, since it is written in your config, not in the source.
+from this one keeps templating its own files. The reverse holds too: a skill
+from this source is installed as written, including any files it includes from
+templated sources. A file asset's `dest` is still templated, since it is
+written in your config, not in the source.
 
 tai does not instead skip a file that fails to parse and install the rest. It
 would have to decide which sources are "not yours" to know when skipping is
@@ -1732,7 +1734,7 @@ Without a source prefix, defaults to the "local" source.
 
 **Only file-shaped assets** (personas, delegates, skills, files) can be included. Config assets (statuslines, mcps, hooks) produce a hard error.
 
-**Recursive processing:** Included content is template-processed with the same variables, so included assets can themselves use conditionals, variables, and further `{% include_asset %}` calls.
+**Recursive processing:** Included content is template-processed with the same variables, so included assets can themselves use conditionals, variables, and further `{% include_asset %}` calls. Content from a source with `template: false` is inlined as written instead.
 
 **Cycle detection:** Circular includes (A includes B includes A) are detected and produce a hard error.
 
