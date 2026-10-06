@@ -549,7 +549,7 @@ func TestResolveCommandInclude(t *testing.T) {
 			Dest:    "docs/",
 		}
 
-		if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+		if _, err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
 			t.Fatalf("resolveCommandInclude() error = %v", err)
 		}
 
@@ -575,7 +575,7 @@ func TestResolveCommandInclude(t *testing.T) {
 			Dest: "refs/",
 		}
 
-		if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+		if _, err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
 			t.Fatalf("resolveCommandInclude() error = %v", err)
 		}
 
@@ -595,7 +595,7 @@ func TestResolveCommandInclude(t *testing.T) {
 			Dest:    "docs/",
 		}
 
-		err := resolver.resolveCommandInclude(inc, targetDir)
+		_, err := resolver.resolveCommandInclude(inc, targetDir)
 		if err == nil {
 			t.Fatal("expected error for empty output")
 		}
@@ -615,7 +615,7 @@ func TestResolveCommandInclude(t *testing.T) {
 			Dest:    "docs/",
 		}
 
-		err := resolver.resolveCommandInclude(inc, targetDir)
+		_, err := resolver.resolveCommandInclude(inc, targetDir)
 		if err == nil {
 			t.Fatal("expected error for nonzero exit")
 		}
@@ -645,7 +645,7 @@ func TestResolveCommandInclude(t *testing.T) {
 			Timeout: "100ms",
 		}
 
-		err := resolver.resolveCommandInclude(inc, targetDir)
+		_, err := resolver.resolveCommandInclude(inc, targetDir)
 		if err == nil {
 			t.Fatal("expected timeout error")
 		}
@@ -681,7 +681,7 @@ func TestResolveCommandInclude(t *testing.T) {
 			Dest: "out/",
 		}
 
-		if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+		if _, err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
 			t.Fatalf("resolveCommandInclude() error = %v", err)
 		}
 
@@ -721,7 +721,7 @@ func TestResolveCommandInclude(t *testing.T) {
 			Dest:    "docs/",
 		}
 
-		if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+		if _, err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
 			t.Fatalf("resolveCommandInclude() error = %v", err)
 		}
 
@@ -752,7 +752,7 @@ func TestResolveCommandInclude(t *testing.T) {
 			Dest:    "docs/",
 		}
 
-		if err := resolver.resolveCommandInclude(inc, targetDir); err == nil {
+		if _, err := resolver.resolveCommandInclude(inc, targetDir); err == nil {
 			t.Fatal("expected error from failing script")
 		}
 
@@ -774,7 +774,7 @@ func TestResolveCommandInclude(t *testing.T) {
 			Dest:    "../../../etc/malicious",
 		}
 
-		err := resolver.resolveCommandInclude(inc, targetDir)
+		_, err := resolver.resolveCommandInclude(inc, targetDir)
 		if err == nil {
 			t.Fatal("expected path traversal rejection")
 		}
@@ -799,7 +799,7 @@ func TestResolveCommandInclude(t *testing.T) {
 				Command: []string{"sh", "-c", `printf 'new' > "$TAI_DEST_DIR/SKILL.md" && mkdir "$TAI_DEST_DIR/refs" && printf 'r' > "$TAI_DEST_DIR/refs/r.md"`},
 				Dest:    dest,
 			}
-			if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+			if _, err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
 				t.Fatalf("dest %q: resolveCommandInclude() error = %v", dest, err)
 			}
 
@@ -822,7 +822,7 @@ func TestResolveCommandInclude(t *testing.T) {
 			Command: []string{"sh", "-c", `ln -s "` + outside + `" "$TAI_DEST_DIR/SKILL.md"`},
 			Dest:    "./",
 		}
-		if err := resolver.resolveCommandInclude(inc, targetDir); err == nil {
+		if _, err := resolver.resolveCommandInclude(inc, targetDir); err == nil {
 			t.Fatal("expected a symlink to be rejected")
 		}
 		if _, err := os.Lstat(filepath.Join(targetDir, "SKILL.md")); !os.IsNotExist(err) {
@@ -837,7 +837,7 @@ func TestResolveCommandInclude(t *testing.T) {
 		inc := config.Include{
 			Command: []string{"sh", "-c", `printf 'x' > "$TAI_DEST_DIR/out"`},
 		}
-		if err := resolver.resolveCommandInclude(inc, t.TempDir()); err == nil {
+		if _, err := resolver.resolveCommandInclude(inc, t.TempDir()); err == nil {
 			t.Error("empty dest should be rejected at runtime")
 		}
 	})
@@ -861,7 +861,7 @@ func TestResolveCommandInclude(t *testing.T) {
 			Dest: "out/",
 		}
 
-		if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+		if _, err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
 			t.Fatalf("resolveCommandInclude() error = %v", err)
 		}
 
@@ -892,7 +892,7 @@ func TestResolveCommandInclude(t *testing.T) {
 			Dest: "out/",
 		}
 
-		if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+		if _, err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
 			t.Fatalf("resolveCommandInclude() error = %v\n(set -u under zero context should still see all TAI_* vars)", err)
 		}
 	})

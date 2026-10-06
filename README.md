@@ -207,7 +207,10 @@ native:
 ```
 
 Any field tai does not recognize is dropped with a warning naming it. See
-SPEC.md for the full list.
+SPEC.md for the full list. For a source whose files were written for one
+target, such as a Claude Code skill pack, set `native_frontmatter: claude` on
+the source in `tai.yaml`: its unknown fields then go to that target as if
+written under `native.claude`.
 
 ## CLI Reference
 

@@ -51,32 +51,55 @@ func (r *IncludeResolver) SetCommandContext(ctx CommandContext) {
 	r.cmdCtx = ctx
 }
 
+// IncludeWrite records one path an include wrote into a skill, and the source
+// it came from. From is empty for a command or URL include, which no source
+// setting applies to.
+type IncludeWrite struct {
+	Path string // skill-relative; a directory covers everything beneath it
+	From string
+}
+
 // ResolveIncludes processes all includes for a skill, copying files to the
-// target skill path. It returns the skill-relative paths written from sources
-// that declared `template: false`, which the caller must leave untemplated:
-// the include carries the source's content, so it carries its opt-out too.
-func (r *IncludeResolver) ResolveIncludes(manifest *config.SkillManifest, targetSkillPath string) ([]string, error) {
-	var untemplated []string
+// target skill path. It returns what each include wrote, in order. A file
+// keeps its source's settings - `template: false`, `native_frontmatter` - in
+// whatever skill it lands in, so the caller needs to know which source wrote
+// each path last.
+func (r *IncludeResolver) ResolveIncludes(manifest *config.SkillManifest, targetSkillPath string) ([]IncludeWrite, error) {
+	var writes []IncludeWrite
 	for i, inc := range manifest.Include {
+		var written []string
 		var err error
+		from := ""
 		switch {
 		case inc.IsCommandBased():
-			err = r.resolveCommandInclude(inc, targetSkillPath)
+			written, err = r.resolveCommandInclude(inc, targetSkillPath)
 		case inc.IsURLBased():
 			err = r.resolveURLInclude(inc, targetSkillPath)
+			written = r.writtenRel(inc.Dest, "", inc.URL, targetSkillPath)
 		default:
 			err = r.resolveSourceInclude(inc, targetSkillPath)
-			if err == nil && !r.sources[inc.From].Templated() {
-				destPath, _ := r.computeDestPath(inc.Dest, inc.Path, "", targetSkillPath)
-				rel, _ := filepath.Rel(targetSkillPath, destPath)
-				untemplated = append(untemplated, rel)
-			}
+			written = r.writtenRel(inc.Dest, inc.Path, "", targetSkillPath)
+			from = inc.From
 		}
 		if err != nil {
 			return nil, fmt.Errorf("include[%d]: %w", i, err)
 		}
+		for _, rel := range written {
+			writes = append(writes, IncludeWrite{Path: rel, From: from})
+		}
 	}
-	return untemplated, nil
+	return writes, nil
+}
+
+// writtenRel is the skill-relative path an include with this dest wrote to.
+// Only called once the include succeeded, so the dest is known to be valid.
+func (r *IncludeResolver) writtenRel(dest, srcPath, srcURL, targetSkillPath string) []string {
+	destPath, err := r.computeDestPath(dest, srcPath, srcURL, targetSkillPath)
+	if err != nil {
+		return nil
+	}
+	rel, _ := filepath.Rel(targetSkillPath, destPath)
+	return []string{rel}
 }
 
 // resolveSourceInclude copies a file or directory from a named source.

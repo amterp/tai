@@ -192,6 +192,28 @@ func TestStateLoadConfigRepoRejectsRemovedTarget(t *testing.T) {
 	}
 }
 
+// native_frontmatter names a target, and a misspelt one would otherwise
+// quietly claim fields for a target that never installs them.
+func TestStateLoadConfigRepoRejectsUnknownNativeFrontmatter(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+	env.SetupMinimalConfig()
+	env.SetupTaiConfig("version: 1\nsources:\n  - name: local\n    path: ./assets\n    native_frontmatter: cluade\ndefault_profile: default\n")
+
+	state := &State{
+		Paths: &Paths{
+			ConfigDir:   env.ConfigDir,
+			ManifestDir: filepath.Join(env.ConfigDir, "manifests"),
+			ConfigFile:  filepath.Join(env.ConfigDir, "config.yaml"),
+		},
+		GlobalConfig: &GlobalConfig{},
+	}
+
+	err := state.LoadConfigRepo(env.ConfigRepo)
+	if err == nil || !strings.Contains(err.Error(), "cluade") || !strings.Contains(err.Error(), "known targets") {
+		t.Fatalf("LoadConfigRepo error = %v, want one naming the bad target and listing known ones", err)
+	}
+}
+
 func TestStateLocateAsset(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 	env.SetupMinimalConfig()

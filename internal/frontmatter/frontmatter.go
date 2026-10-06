@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -61,6 +62,47 @@ type Parsed struct {
 	// reader could use. A tai field lands here too when written as a list or
 	// map; the installer drops it with a warning rather than install that.
 	Structured map[string]any
+
+	// raw is every field as parsed, before Metadata flattened scalars to
+	// strings, so ClaimUnknownFor can hand a target its fields with their
+	// types intact.
+	raw map[string]any
+}
+
+// ClaimUnknownFor moves every field outside tai's vocabulary under
+// native.<target>, as if the author had written it there. A field the author
+// did write under native.<target> wins over the same field at the top level.
+// Fields named in except stay where they are.
+func (p *Parsed) ClaimUnknownFor(target string, except ...string) {
+	var claimed map[string]any
+	claim := func(field string) {
+		if IsTaiField(field) || slices.Contains(except, field) {
+			return
+		}
+		if claimed == nil {
+			claimed = make(map[string]any)
+		}
+		claimed[field] = p.raw[field]
+		delete(p.Metadata, field)
+		delete(p.Structured, field)
+	}
+	for field := range p.Metadata {
+		claim(field)
+	}
+	for field := range p.Structured {
+		claim(field)
+	}
+	if claimed == nil {
+		return
+	}
+
+	if p.Native == nil {
+		p.Native = make(Native)
+	}
+	for field, value := range p.Native[target] {
+		claimed[field] = value
+	}
+	p.Native[target] = claimed
 }
 
 // Native holds per-target frontmatter fields, keyed by target name. Its
@@ -161,7 +203,7 @@ func Parse(content []byte) (*Parsed, error) {
 		}
 	}
 
-	return &Parsed{Metadata: metadata, Depends: depends, Native: native, Structured: structured, Body: rest}, nil
+	return &Parsed{Metadata: metadata, Depends: depends, Native: native, Structured: structured, raw: rawMetadata, Body: rest}, nil
 }
 
 // IsStructured reports whether a parsed YAML value is a map or a list. yaml.v3
@@ -315,7 +357,14 @@ func Render(fields Fields, body []byte) []byte {
 // else (native fields can be lists, maps, booleans) is encoded normally.
 func valueNode(val any) *yaml.Node {
 	if s, ok := val.(string); ok {
-		return &yaml.Node{Kind: yaml.ScalarNode, Value: s}
+		node := &yaml.Node{Kind: yaml.ScalarNode, Value: s}
+		if !readsAsString(s) {
+			// Written plain, "1.0" or "true" would be read back as a number
+			// or a boolean - a different value from the string the source
+			// quoted.
+			node.Style = yaml.DoubleQuotedStyle
+		}
+		return node
 	}
 	node := &yaml.Node{}
 	if err := node.Encode(val); err != nil {
@@ -324,6 +373,20 @@ func valueNode(val any) *yaml.Node {
 		return &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%v", val)}
 	}
 	return node
+}
+
+// readsAsString reports whether s, written as a plain YAML scalar, parses
+// back as the same string. Multi-line values are left to the renderer.
+func readsAsString(s string) bool {
+	if strings.Contains(s, "\n") {
+		return true
+	}
+	var back any
+	if err := yaml.Unmarshal([]byte(s), &back); err != nil {
+		return true
+	}
+	str, ok := back.(string)
+	return ok && str == s
 }
 
 // sortedKeys returns map keys in sorted order.

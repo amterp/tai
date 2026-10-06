@@ -2433,3 +2433,63 @@ func TestInstallerSkillMdFromCommandInclude(t *testing.T) {
 		t.Errorf("content = %q, want %q", content, expected)
 	}
 }
+
+// A file is judged by the include that wrote it last. Here a command include
+// replaces a SKILL.md that came from a native_frontmatter source, so its
+// unknown field is not that source's to claim and must warn. A retired field
+// from the claiming source still warns too: it is tai's, not the target's.
+func TestInstallerNativeFrontmatterFollowsLastWriter(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	upstream := filepath.Join(env.Root, "upstream")
+	if err := os.MkdirAll(upstream, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(upstream, "SKILL.md"),
+		[]byte("---\nname: up\ndescription: d\ntai-schema-version: 1\nallowed-tools: Read\n---\n\nBody\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sources := map[string]*source.LoadedSource{
+		"up": {Source: config.Source{Name: "up", Path: upstream, NativeFrontmatter: "claude"}, ResolvedPath: upstream},
+	}
+
+	install := func(manifest string) *InstallResult {
+		t.Helper()
+		skillDir := filepath.Join(t.TempDir(), "s")
+		if err := os.MkdirAll(skillDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, SkillManifestFilename), []byte(manifest), 0644); err != nil {
+			t.Fatal(err)
+		}
+		installer := NewInstaller(NewManifestStore(filepath.Join(t.TempDir(), "manifests")), env.ConfigRepo, sources)
+		result, err := installer.Install(claude.New(t.TempDir()), "p",
+			[]*config.Asset{{Type: "skill", Name: "s", SourceName: "local", SourcePath: skillDir, IsDir: true}}, InstallOptions{})
+		if err != nil {
+			t.Fatalf("Install failed: %v", err)
+		}
+		return result
+	}
+	warned := func(result *InstallResult, field string) bool {
+		return slices.ContainsFunc(result.Warnings, func(w string) bool { return strings.Contains(w, `"`+field+`"`) })
+	}
+
+	result := install("include:\n  - from: up\n    path: SKILL.md\n    dest: SKILL.md\n")
+	if warned(result, "allowed-tools") {
+		t.Errorf("claimed field warned: %v", result.Warnings)
+	}
+	if !warned(result, "tai-schema-version") {
+		t.Errorf("retired field did not warn: %v", result.Warnings)
+	}
+
+	result = install(`include:
+  - from: up
+    path: SKILL.md
+    dest: SKILL.md
+  - command: ["sh", "-c", "printf -- '---\\nname: gen\\ndescription: d\\nsecret-field: 1\\n---\\n' > \"$TAI_DEST_DIR/SKILL.md\""]
+    dest: ./
+`)
+	if !warned(result, "secret-field") {
+		t.Errorf("command-written SKILL.md was read with the earlier source's setting: %v", result.Warnings)
+	}
+}

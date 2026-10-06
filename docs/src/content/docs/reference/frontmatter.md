@@ -130,7 +130,9 @@ Note that `depends` is consumed during resolution and not written to the target.
 A field outside tai's vocabulary is not installed, and tai warns about it, naming the field and
 suggesting `native.<target>` if you meant it for one target. Assets from external sources often
 carry such fields, so the warning is information, not an error. Nested values (a `metadata:` map,
-a list) are dropped the same way.
+a list) are dropped the same way. For a source whose files were written for one target, set
+`native_frontmatter: <target>` on the source in `tai.yaml`, and its unknown fields go to that
+target as if written under `native.<target>`.
 
 ```yaml
 ---

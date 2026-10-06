@@ -20,12 +20,14 @@ import (
 // directory the command wrote replaces the same path in the skill, and the
 // rest of the skill stays. Swapping would replace the whole skill with the
 // command's output; merging is what lets a command produce SKILL.md itself.
-func (r *IncludeResolver) resolveCommandInclude(inc config.Include, targetSkillPath string) error {
+//
+// It returns the skill-relative paths it wrote.
+func (r *IncludeResolver) resolveCommandInclude(inc config.Include, targetSkillPath string) ([]string, error) {
 	// Compute the final destination first so we fail fast on path-traversal
 	// before spending time running the script.
 	destPath, err := r.computeCommandDestPath(inc.Dest, targetSkillPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	spec := cmdexec.Spec{
@@ -42,7 +44,8 @@ func (r *IncludeResolver) resolveCommandInclude(inc config.Include, targetSkillP
 	if destPath == targetSkillPath {
 		return cmdexec.MergeInto(spec, destPath)
 	}
-	return cmdexec.FetchInto(spec, destPath, "")
+	rel, _ := filepath.Rel(targetSkillPath, destPath)
+	return []string{rel}, cmdexec.FetchInto(spec, destPath, "")
 }
 
 // computeCommandDestPath resolves the final dest path for a command include,

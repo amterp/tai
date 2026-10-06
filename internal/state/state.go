@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -173,6 +175,19 @@ func (s *State) LoadConfigRepo(path string) error {
 		return err
 	}
 	s.TaiConfig = taiConfig
+
+	// Validated here rather than in config, which cannot see the adapter list.
+	for _, src := range taiConfig.Sources {
+		target := src.NativeFrontmatter
+		if target == "" || slices.Contains(adapter.TargetNames(), target) {
+			continue
+		}
+		if advice, removed := adapter.RemovedTarget(target); removed {
+			return fmt.Errorf("source %q: native_frontmatter names %q, which is no longer supported. %s", src.Name, target, advice)
+		}
+		return fmt.Errorf("source %q: native_frontmatter %q is not a target tai supports (known targets: %s)",
+			src.Name, target, strings.Join(adapter.TargetNames(), ", "))
+	}
 
 	// Load sources
 	loader := source.NewLoader(absPath)

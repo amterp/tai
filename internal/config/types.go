@@ -79,6 +79,13 @@ type Source struct {
 	// syntax, and a single parse error fails the whole install. Unset means
 	// true.
 	Template *bool `yaml:"template"`
+
+	// NativeFrontmatter names the target this source's assets were written
+	// for. Their frontmatter fields outside tai's vocabulary are then that
+	// target's own, installed for it as if written under native.<target>,
+	// instead of being dropped with a warning. For sources tai does not own,
+	// where moving each field under native.<target> means a patch per file.
+	NativeFrontmatter string `yaml:"native_frontmatter"`
 }
 
 // Templated reports whether this source's content goes through the template

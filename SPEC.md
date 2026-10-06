@@ -627,6 +627,19 @@ This is the same escape hatch hooks and MCP servers use, spelled the same way â€
 
 **Values are not interpreted.** Lists, maps and booleans render as YAML, so a nested field like Claude's `hooks` survives its shape.
 
+**A source written for one target can say so.** Skills written for Claude Code carry Claude's fields at the top level, and moving each under `native.claude` means a patch per file for a source you do not own. Declaring the target on the source does it for every file:
+
+```yaml
+sources:
+  - name: vendor-skills
+    path: ~/src/vendor-skills
+    native_frontmatter: claude
+```
+
+Every frontmatter field outside tai's vocabulary in that source's assets is then treated as if written under `native.claude`, keeping its type: Claude gets it, other targets ignore it as they ignore any `native.claude` block, and nothing warns. A field the file does write under `native.claude` wins over the same field at the top level. The setting follows the file, so a SKILL.md included from the source with `from:` is read the same way inside another source's skill. tai's own fields are unaffected. The value must name a target tai supports.
+
+This is not the wholesale passthrough of unknown fields that tai rejects. That would write Claude-only fields into the Codex and OpenCode copies; here the user names the one target the fields belong to, and they reach only that target.
+
 #### Adapter Transformation (Claude)
 
 | Asset Type | Installed frontmatter | Notes |

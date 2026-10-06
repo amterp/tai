@@ -564,3 +564,59 @@ func TestParseKeepsStructuredValues(t *testing.T) {
 		t.Errorf("Structured = %#v, want numbered kept", parsed.Structured)
 	}
 }
+
+// Fields claimed for a target keep their parsed types - a boolean must reach
+// the target as a boolean - and an explicit native entry beats the top-level
+// field it shadows.
+func TestClaimUnknownFor(t *testing.T) {
+	parsed, err := Parse([]byte(`---
+name: demo
+description: d
+user-invocable: false
+allowed-tools: [Read, Grep]
+effort: low
+native:
+  claude:
+    effort: high
+---
+`))
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	parsed.ClaimUnknownFor("claude")
+
+	want := map[string]any{
+		"user-invocable": false,
+		"allowed-tools":  []any{"Read", "Grep"},
+		"effort":         "high",
+	}
+	if !reflect.DeepEqual(parsed.Native["claude"], want) {
+		t.Errorf("Native[claude] = %#v, want %#v", parsed.Native["claude"], want)
+	}
+	wantMetadata := map[string]string{"name": "demo", "description": "d"}
+	if !reflect.DeepEqual(parsed.Metadata, wantMetadata) {
+		t.Errorf("Metadata = %#v, want %#v", parsed.Metadata, wantMetadata)
+	}
+	if len(parsed.Structured) != 0 {
+		t.Errorf("Structured = %#v, want empty", parsed.Structured)
+	}
+}
+
+// A string that looks like another type must stay a string through a render:
+// written plain, "1.0" reads back as a float and "true" as a boolean.
+func TestRenderKeepsStringsThatLookLikeOtherTypes(t *testing.T) {
+	fields := stringFields("name", "Test")
+	fields.Merge(map[string]any{"version": "1.0", "flag": "true", "hint": "123", "plain": "hello"})
+
+	parsed, err := Parse(Render(fields, nil))
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	want := map[string]any{"version": "1.0", "flag": "true", "hint": "123", "plain": "hello"}
+	for k, v := range want {
+		if parsed.raw[k] != v {
+			t.Errorf("%s = %#v (%T), want the string %q", k, parsed.raw[k], parsed.raw[k], v)
+		}
+	}
+}

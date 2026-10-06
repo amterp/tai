@@ -2,12 +2,14 @@ package install
 
 import (
 	"fmt"
+	"maps"
 	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -1395,6 +1397,8 @@ func (i *Installer) resolveAsset(
 			return nil, fmt.Errorf("parsing frontmatter: %w", err)
 		}
 
+		i.claimNativeFrontmatter(parsed, asset.SourceName)
+
 		if err := validateAssetMetadata(parsed.Metadata, asset.Type); err != nil {
 			return nil, fmt.Errorf("asset %s/%s: %w", asset.Type, asset.Name, err)
 		}
@@ -1516,7 +1520,7 @@ func (i *Installer) installDirAsset(resolved *config.ResolvedAsset, fullTargetPa
 	}()
 
 	// Template-process non-main files in the copied directory
-	if err := templateProcessDirFiles(fullTargetPath, engine, mainFileName); err != nil {
+	if err := templateProcessDirFiles(fullTargetPath, engine, func(rel string) bool { return rel == mainFileName }); err != nil {
 		return err
 	}
 
@@ -1552,7 +1556,7 @@ func (i *Installer) installSkillDirAsset(resolved *config.ResolvedAsset, fullTar
 	if err != nil {
 		return fmt.Errorf("loading skill manifest: %w", err)
 	}
-	var untemplated []string
+	var writes []IncludeWrite
 	if manifest != nil && len(manifest.Include) > 0 {
 		resolver := NewIncludeResolver(i.sources, i.httpClient)
 		resolver.SetCommandContext(CommandContext{
@@ -1562,25 +1566,46 @@ func (i *Installer) installSkillDirAsset(resolved *config.ResolvedAsset, fullTar
 			ManifestDir: resolved.SourcePath,
 			Version:     i.version,
 		})
-		untemplated, err = resolver.ResolveIncludes(manifest, fullTargetPath)
+		writes, err = resolver.ResolveIncludes(manifest, fullTargetPath)
 		if err != nil {
 			return fmt.Errorf("resolving includes: %w", err)
 		}
 	}
 
+	// An included file keeps its source's settings, so each file is judged
+	// by the include that wrote it last, falling back to the skill's own
+	// source. Command and URL includes belong to no source.
+	sourceOf := func(rel string) string {
+		for k := len(writes) - 1; k >= 0; k-- {
+			if isExcludedPath(rel, []string{writes[k].Path}) {
+				return writes[k].From
+			}
+		}
+		return resolved.SourceName
+	}
+	untemplated := func(rel string) bool {
+		src, ok := i.sources[sourceOf(rel)]
+		return ok && !src.Templated()
+	}
+
 	// Template-process non-main files in the copied directory
-	if err := templateProcessDirFiles(fullTargetPath, engine, append(untemplated, mainFileName)...); err != nil {
+	if err := templateProcessDirFiles(fullTargetPath, engine, func(rel string) bool {
+		return rel == mainFileName || untemplated(rel)
+	}); err != nil {
 		return err
 	}
-	if isExcludedPath(mainFileName, untemplated) {
+	if untemplated(mainFileName) {
 		engine = nil
 	}
 
 	// Detect field mapping for SKILL.md from includes
 	fieldMapping := findSkillMdFields(manifest)
 
+	// SKILL.md's frontmatter was written for whichever source supplied it.
+	mainSource := sourceOf(mainFileName)
+
 	// Transform SKILL.md from installed location (after includes may have replaced it)
-	if err := i.transformMainFileInPlace(resolved, fullTargetPath, adap, mainFileName, fieldMapping, engine); err != nil {
+	if err := i.transformMainFileInPlace(resolved, fullTargetPath, adap, mainFileName, fieldMapping, engine, mainSource); err != nil {
 		return err
 	}
 
@@ -1609,7 +1634,7 @@ func (i *Installer) transformMainFileFromSource(resolved *config.ResolvedAsset, 
 		return fmt.Errorf("reading %s: %w", mainFileName, err)
 	}
 
-	transformed, err := i.transformMainFileContent(resolved, content, mainFileName, nil, adap, engine)
+	transformed, err := i.transformMainFileContent(resolved, content, mainFileName, nil, adap, engine, resolved.SourceName)
 	if err != nil {
 		return err
 	}
@@ -1624,7 +1649,7 @@ func (i *Installer) transformMainFileFromSource(resolved *config.ResolvedAsset, 
 // If fieldMapping is non-nil, it remaps source field names to tai field names
 // before validation - e.g., {"name": "title"} renames the source's "title"
 // field to tai's "name" field.
-func (i *Installer) transformMainFileInPlace(resolved *config.ResolvedAsset, dirTargetPath string, adap adapter.Adapter, mainFileName string, fieldMapping map[string]string, engine *template.Engine) error {
+func (i *Installer) transformMainFileInPlace(resolved *config.ResolvedAsset, dirTargetPath string, adap adapter.Adapter, mainFileName string, fieldMapping map[string]string, engine *template.Engine, contentSource string) error {
 	mainFilePath := filepath.Join(dirTargetPath, mainFileName)
 
 	info, err := os.Stat(mainFilePath)
@@ -1641,7 +1666,7 @@ func (i *Installer) transformMainFileInPlace(resolved *config.ResolvedAsset, dir
 		return fmt.Errorf("reading %s: %w", mainFileName, err)
 	}
 
-	transformed, err := i.transformMainFileContent(resolved, content, mainFileName, fieldMapping, adap, engine)
+	transformed, err := i.transformMainFileContent(resolved, content, mainFileName, fieldMapping, adap, engine, contentSource)
 	if err != nil {
 		return err
 	}
@@ -1654,7 +1679,10 @@ func (i *Installer) transformMainFileInPlace(resolved *config.ResolvedAsset, dir
 //
 // Warnings about the main file's frontmatter are recorded on resolved, which
 // the installer drains once the asset is installed.
-func (i *Installer) transformMainFileContent(resolved *config.ResolvedAsset, content []byte, mainFileName string, fieldMapping map[string]string, adap adapter.Adapter, engine *template.Engine) ([]byte, error) {
+//
+// contentSource is the source the main file came from, whose
+// native_frontmatter decides what its unknown fields are.
+func (i *Installer) transformMainFileContent(resolved *config.ResolvedAsset, content []byte, mainFileName string, fieldMapping map[string]string, adap adapter.Adapter, engine *template.Engine, contentSource string) ([]byte, error) {
 	assetType, assetName := resolved.Type, resolved.Name
 
 	// Apply template processing before frontmatter parsing.
@@ -1709,6 +1737,8 @@ func (i *Installer) transformMainFileContent(resolved *config.ResolvedAsset, con
 		}
 	}
 
+	i.claimNativeFrontmatter(parsed, contentSource)
+
 	if err := validateAssetMetadata(parsed.Metadata, assetType); err != nil {
 		return nil, fmt.Errorf("%s %s/%s: %w", assetType, assetName, mainFileName, err)
 	}
@@ -1750,6 +1780,15 @@ func joinScalarList(v any) (string, bool) {
 		parts = append(parts, fmt.Sprintf("%v", item))
 	}
 	return strings.Join(parts, ", "), true
+}
+
+// claimNativeFrontmatter hands a file's unknown frontmatter fields to the
+// target its source declared with native_frontmatter, if it declared one.
+func (i *Installer) claimNativeFrontmatter(parsed *frontmatter.Parsed, sourceName string) {
+	if src, ok := i.sources[sourceName]; ok && src.NativeFrontmatter != "" {
+		// A retired field is tai's own, not the target's, and must still warn.
+		parsed.ClaimUnknownFor(src.NativeFrontmatter, slices.Collect(maps.Keys(retiredFields))...)
+	}
 }
 
 // findSkillMdFields returns the Fields mapping from the include that targets
@@ -1849,11 +1888,9 @@ func validateDirTemplates(dirPath string, engine *template.Engine) error {
 }
 
 // templateProcessDirFiles walks a directory and applies template processing to
-// any files containing template syntax. Skips directories and excluded paths.
-// Excluded paths are relative to dirPath and cover everything beneath them
-// (e.g. "SKILL.md" excludes only a root-level file, not "subdir/SKILL.md",
-// while "refs" excludes the whole refs directory).
-func templateProcessDirFiles(dirPath string, engine *template.Engine, excludePaths ...string) error {
+// any files containing template syntax. Skips directories and any file whose
+// path relative to dirPath skip accepts.
+func templateProcessDirFiles(dirPath string, engine *template.Engine, skip func(rel string) bool) error {
 	if engine == nil {
 		return nil
 	}
@@ -1870,7 +1907,7 @@ func templateProcessDirFiles(dirPath string, engine *template.Engine, excludePat
 		if err != nil {
 			return err
 		}
-		if isExcludedPath(relPath, excludePaths) {
+		if skip(relPath) {
 			return nil
 		}
 

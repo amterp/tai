@@ -614,6 +614,13 @@ Installing to Claude writes all four fields. Installing to any other target
 writes `name` and `description` only, since `native.claude` is not addressed
 to them. It is the same escape hatch hooks and MCP servers use.
 
+For a source written for one target that you do not own (a Claude Code skill
+pack, say), set `native_frontmatter: claude` on the source in `tai.yaml`
+instead of patching every file. Its assets' unknown fields are then treated as
+if written under `native.claude`: Claude gets them, other targets ignore them,
+and the "not a tai field" warnings stop. It also applies to a SKILL.md
+included from that source with `from:`.
+
 - A field only one target understands goes here. A concept several targets
   share can become a tai field instead - written once, translated per target,
   which is what `tools` and `model` already are.
