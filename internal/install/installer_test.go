@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -313,6 +314,66 @@ func TestInstallerDryRunReportsDeletedFileAsRestored(t *testing.T) {
 	}
 	if env.TargetFileExists("output-styles/test.md") {
 		t.Error("dry run wrote the file back")
+	}
+}
+
+// A skill directory's manifest checksum describes the installed copy, which the
+// adapter has rewritten, so a dry run judging it by the source would call every
+// skill updated.
+func TestInstallerDryRunReportsUnchangedSkillDir(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "my-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: My Skill\ndescription: A skill\n---\n\n# My Skill\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	assets := []*config.Asset{
+		{Type: "skill", Name: "my-skill", SourceName: "local", SourcePath: skillDir, IsDir: true},
+	}
+
+	if _, err := installer.Install(adapter, "test-profile", assets, InstallOptions{}); err != nil {
+		t.Fatalf("First install failed: %v", err)
+	}
+
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{DryRun: true})
+	if err != nil {
+		t.Fatalf("Dry run failed: %v", err)
+	}
+	if len(result.Unchanged) != 1 || len(result.Updated) != 0 {
+		t.Errorf("Unchanged = %v, Updated = %v, want the skill unchanged", result.Unchanged, result.Updated)
+	}
+}
+
+// A skill's SKILL.md is only parsed while its directory is built, so a dry run
+// that never builds it never sees the fields it would drop.
+func TestInstallerDryRunWarnsAboutSkillFrontmatter(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "my-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\ntai-schema-version: 1\nname: My Skill\ndescription: A skill\nflavor: mint\n---\n\n# My Skill\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	assets := []*config.Asset{
+		{Type: "skill", Name: "my-skill", SourceName: "local", SourcePath: skillDir, IsDir: true},
+	}
+
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{DryRun: true})
+	if err != nil {
+		t.Fatalf("Dry run failed: %v", err)
+	}
+	if !slices.ContainsFunc(result.Warnings, func(w string) bool { return strings.Contains(w, `"flavor"`) }) {
+		t.Errorf("Warnings = %v, want one naming the dropped field", result.Warnings)
+	}
+	if env.TargetFileExists("skills/my-skill/SKILL.md") {
+		t.Error("dry run wrote the skill")
 	}
 }
 

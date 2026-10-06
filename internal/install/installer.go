@@ -666,20 +666,13 @@ func (i *Installer) installFileAsset(ctx *installContext, ra resolvedFileAsset, 
 		}
 	}
 
-	// Install the asset
 	if !opts.DryRun {
-		if err := i.installAsset(ra.resolved, ra.fullPath, ctx.adap, ctx.templateEngine); err != nil {
+		if err := i.writeFileAsset(ctx, ra.resolved, ra.fullPath); err != nil {
 			return ManifestEntry{}, false, fmt.Errorf("installing %s: %w", ra.targetPath, err)
 		}
-
-		// For skill directories, re-compute checksum after installation
-		// to account for resolved includes
-		if ra.resolved.IsDir {
-			checksum, err := ComputeDirChecksum(ra.fullPath)
-			if err != nil {
-				return ManifestEntry{}, false, fmt.Errorf("computing installed checksum for %s: %w", ra.targetPath, err)
-			}
-			ra.resolved.Checksum = checksum
+	} else if ra.resolved.IsDir {
+		if err := i.previewDirAsset(ctx, ra.resolved); err != nil {
+			return ManifestEntry{}, false, fmt.Errorf("previewing %s: %w", ra.targetPath, err)
 		}
 	}
 
@@ -703,6 +696,37 @@ func (i *Installer) installFileAsset(ctx *installContext, ra resolvedFileAsset, 
 	}
 
 	return EntryFromAsset(ra.resolved), false, nil
+}
+
+// writeFileAsset installs a resolved asset at path. A directory's checksum is
+// then retaken from what was written, since includes and the adapter rewrite
+// its contents on the way in and the manifest must describe the installed copy.
+func (i *Installer) writeFileAsset(ctx *installContext, resolved *config.ResolvedAsset, path string) error {
+	if err := i.installAsset(resolved, path, ctx.adap, ctx.templateEngine); err != nil {
+		return err
+	}
+	if !resolved.IsDir {
+		return nil
+	}
+	checksum, err := ComputeDirChecksum(path)
+	if err != nil {
+		return fmt.Errorf("computing installed checksum: %w", err)
+	}
+	resolved.Checksum = checksum
+	return nil
+}
+
+// previewDirAsset builds a directory asset in a scratch directory, for a dry
+// run. Its installed checksum and its main file's frontmatter warnings only
+// exist once it has been built; judged by the source checksum instead, every
+// directory would read as updated and none would warn.
+func (i *Installer) previewDirAsset(ctx *installContext, resolved *config.ResolvedAsset) error {
+	scratch, err := os.MkdirTemp("", "tai-dry-run-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(scratch) }()
+	return i.writeFileAsset(ctx, resolved, filepath.Join(scratch, filepath.Base(resolved.TargetPath)))
 }
 
 // removeStaleFiles removes files that are no longer in the profile.
