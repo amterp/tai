@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/frontmatter"
 )
@@ -57,6 +58,12 @@ func frontmatterWarnings(parsed *frontmatter.Parsed, assetType, assetName, targe
 	sort.Strings(knownTargets)
 	for _, named := range sortedKeys(parsed.Native) {
 		if slices.Contains(knownTargets, named) {
+			continue
+		}
+		if _, removed := adapter.RemovedTarget(named); removed {
+			warnings = append(warnings, fmt.Sprintf(
+				"%s %q: 'native.%s' names a target tai no longer supports, so those fields reach nothing. Delete them.",
+				assetType, assetName, named))
 			continue
 		}
 		warnings = append(warnings, fmt.Sprintf(

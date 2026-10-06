@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/amterp/tai/internal/adapter/claude"
-	"github.com/amterp/tai/internal/adapter/gemini"
 	"github.com/amterp/tai/internal/adapter/opencode"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/testutil"
@@ -263,32 +262,6 @@ env:
 	}
 	if envMap["GITHUB_TOKEN"] != "{env:GITHUB_TOKEN}" {
 		t.Errorf("environment.GITHUB_TOKEN = %v, want OpenCode's syntax", envMap["GITHUB_TOKEN"])
-	}
-}
-
-func TestMCPTranslatesForGemini(t *testing.T) {
-	env := testutil.NewTestEnv(t)
-	installer := NewInstaller(NewManifestStore(filepath.Join(env.ConfigDir, "manifests")), env.ConfigRepo, nil)
-	adap := gemini.New(env.TargetDir)
-
-	env.SetupAsset("mcps", "local.yaml", "transport: stdio\ncommand: my-server\ncwd: ./tools\n")
-
-	assets := []*config.Asset{mcpAsset(env, "local.yaml")}
-	if _, err := installer.Install(adap, "p", assets, InstallOptions{}); err != nil {
-		t.Fatalf("Install failed: %v", err)
-	}
-
-	doc, err := readJSONFile(filepath.Join(env.TargetDir, "settings.json"))
-	if err != nil {
-		t.Fatalf("reading settings.json: %v", err)
-	}
-	server := doc["mcpServers"].(map[string]any)["local"].(map[string]any)
-	if server["command"] != "my-server" {
-		t.Errorf("command = %v", server["command"])
-	}
-	// Gemini does support cwd, unlike Claude.
-	if server["cwd"] != "./tools" {
-		t.Errorf("cwd = %v, want './tools'", server["cwd"])
 	}
 }
 

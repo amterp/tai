@@ -5,7 +5,7 @@
 
 ## Overview
 
-tai is a CLI tool for managing AI agent configurations. It provides a framework for organizing, composing, and installing assets (personas, delegates, skills, reference docs) across different AI targets (Claude Code, Codex, Gemini CLI, OpenCode) while keeping configuration version-controlled and portable.
+tai is a CLI tool for managing AI agent configurations. It provides a framework for organizing, composing, and installing assets (personas, delegates, skills, reference docs) across different AI targets (Claude Code, Codex, OpenCode) while keeping configuration version-controlled and portable.
 
 ## Core Concepts
 
@@ -13,7 +13,7 @@ tai is a CLI tool for managing AI agent configurations. It provides a framework 
 
 | tai term | What it is | Claude Code equivalent |
 |----------|------------|------------------------|
-| **Target** | The AI tool we install to | Claude Code, Codex, Gemini CLI, OpenCode |
+| **Target** | The AI tool we install to | Claude Code, Codex, OpenCode |
 | **Persona** | A behavioral style/role | output-style |
 | **Delegate** | A specialized helper for tasks | agents (sub-agents) |
 | **Skill** | A procedural capability | skills |
@@ -102,7 +102,7 @@ This distinction matters because:
                               ▼ installed to (via adapter)
 ┌─────────────────────────────────────────────────────────────┐
 │                    Target Config                             │
-│  ~/.claude/, ~/.codex/, ~/.gemini/, ~/.config/opencode/     │
+│  ~/.claude/, ~/.codex/, ~/.config/opencode/                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -121,7 +121,6 @@ tai/
 │   │   ├── adapter.go    # Interface definition
 │   │   ├── claude/       # Claude Code adapter
 │   │   ├── codex/        # Codex adapter
-│   │   ├── gemini/       # Gemini CLI adapter
 │   │   ├── opencode/     # OpenCode adapter
 │   │   └── shared.go     # Shared adapter helpers
 │   ├── bundle/           # Bundle resolution
@@ -854,17 +853,17 @@ to `native`.
 OpenCode wants `{env:VAR}`. tai never reads the variable, so the secret stays in
 the environment instead of being baked into an installed file.
 
-**The shapes differ even though the protocol does not.** Claude and Gemini key
-servers under `mcpServers`; OpenCode uses `mcp`, folds the command and its
+**The shapes differ even though the protocol does not.** Claude keys servers
+under `mcpServers` and Codex under `[mcp_servers]` in TOML; OpenCode uses `mcp`, folds the command and its
 arguments into one argv array, spells the environment `environment`, and
 requires an explicit `local`/`remote` type. Each adapter renders its own shape.
 
-| tai | Claude | Gemini | OpenCode |
-|-----|--------|--------|----------|
-| key | `mcpServers` | `mcpServers` | `mcp` |
-| command + args | separate | separate | one array |
-| env | `env` | `env` | `environment` |
-| cwd | unsupported | `cwd` | `cwd` |
+| tai | Claude | OpenCode |
+|-----|--------|----------|
+| key | `mcpServers` | `mcp` |
+| command + args | separate | one array |
+| env | `env` | `environment` |
+| cwd | unsupported | `cwd` |
 
 **Scope** picks the file:
 
@@ -872,7 +871,6 @@ requires an explicit `local`/`remote` type. Each adapter renders its own shape.
 |--------|--------|-----------|---------|
 | Claude | `~/.claude.json` | `.mcp.json` | `~/.claude.json`, under `projects.<path>` |
 | Codex | `~/.codex/config.toml` | `.codex/config.toml` | - |
-| Gemini | `~/.gemini/settings.json` | `.gemini/settings.json` | - |
 | OpenCode | `~/.config/opencode/opencode.json` | `opencode.json` | `opencode.json` |
 
 Claude's two project scopes differ in who else sees the server. Project scope
@@ -954,32 +952,30 @@ The hook's identity is its filename with the extension stripped, so
 `assets/hooks/format-on-save.yaml` installs a hook named `format-on-save`.
 
 **Canonical hook events.** tai names events itself rather than borrowing a
-target's vocabulary, because the targets disagree: Claude and Codex call an
-event `PreToolUse` where Gemini calls it `BeforeTool`, and Gemini renames every
-other event too.
+target's vocabulary, because targets disagree on which events exist and are
+free to name them differently, so one asset cannot use any target's names.
 
-| tai event | When it fires | Claude | Codex | Gemini |
-|-----------|---------------|--------|-------|--------|
-| `session_start` | A session begins | SessionStart | SessionStart | SessionStart |
-| `session_end` | A session ends | SessionEnd | - | SessionEnd |
-| `user_prompt_submit` | A prompt is submitted | UserPromptSubmit | UserPromptSubmit | BeforeAgent |
-| `stop` | The agent finishes responding | Stop | Stop | AfterAgent |
-| `pre_tool_use` | Before a tool runs | PreToolUse | PreToolUse | BeforeTool |
-| `post_tool_use` | After a tool runs | PostToolUse | PostToolUse | AfterTool |
-| `permission_request` | A permission is requested | PermissionRequest | PermissionRequest | - |
-| `subagent_start` | A subagent starts | SubagentStart | SubagentStart | - |
-| `subagent_stop` | A subagent finishes | SubagentStop | SubagentStop | - |
-| `pre_compact` | Before context is compacted | PreCompact | PreCompact | PreCompress |
-| `post_compact` | After context is compacted | PostCompact | PostCompact | - |
-| `notification` | The target sends a notification | Notification | - | Notification |
+| tai event | When it fires | Claude | Codex |
+|-----------|---------------|--------|-------|
+| `session_start` | A session begins | SessionStart | SessionStart |
+| `session_end` | A session ends | SessionEnd | - |
+| `user_prompt_submit` | A prompt is submitted | UserPromptSubmit | UserPromptSubmit |
+| `stop` | The agent finishes responding | Stop | Stop |
+| `pre_tool_use` | Before a tool runs | PreToolUse | PreToolUse |
+| `post_tool_use` | After a tool runs | PostToolUse | PostToolUse |
+| `permission_request` | A permission is requested | PermissionRequest | PermissionRequest |
+| `subagent_start` | A subagent starts | SubagentStart | SubagentStart |
+| `subagent_stop` | A subagent finishes | SubagentStop | SubagentStop |
+| `pre_compact` | Before context is compacted | PreCompact | PreCompact |
+| `post_compact` | After context is compacted | PostCompact | PostCompact |
+| `notification` | The target sends a notification | Notification | - |
 
 A `-` means the target has no equivalent. A hook using such an event is skipped
 on that target with a warning, so one asset can be shared by a profile that
 installs to several targets.
 
 **Canonical tool names.** `read`, `write`, `edit`, and `shell`, translated per
-target - Claude's `Edit` is Gemini's `replace`, Claude's `Bash` is Gemini's
-`run_shell_command`. A tool a target has no name for is an error rather than a
+target - Claude's `Edit` is Codex's `apply_patch`. A tool a target has no name for is an error rather than a
 silent drop: dropping it would widen the matcher to every tool, so a hook meant
 to guard edits would start firing on reads.
 
@@ -996,8 +992,9 @@ native:
   claude: { async: true }       # merged into Claude's handler object
 ```
 
-**Timeouts** are written as durations and converted per target, because Claude
-and Codex expect seconds while Gemini expects milliseconds. Getting that wrong
+**Timeouts** are written as durations and converted per target. Claude and
+Codex both expect seconds, but the unit is the adapter's to declare because
+targets differ (the removed Gemini CLI wanted milliseconds), and getting it wrong
 by hand fails silently - a 30-second timeout becomes 30 milliseconds.
 
 **Target notes.**
@@ -1230,21 +1227,6 @@ The Codex adapter:
 - Uses `target_agents_file: AGENTS.md`
 
 `statusline` assets are currently unsupported for Codex and are skipped with a warning.
-
-### Gemini CLI Adapter Specifics
-
-The Gemini adapter:
-- Targets `$GEMINI_HOME` if set, otherwise `~/.gemini/`
-- Maps tai terminology to Gemini-oriented paths:
-  - `personas/` -> `skills/` (mapped to skills since Gemini has no persona concept)
-  - `delegates/` -> unsupported (skipped entirely with warning)
-  - `skills/` -> `skills/`
-  - `files/` -> location specified by `dest` field (empty = root level)
-- Personas are installed as skills so their prompt content is still accessible; a warning is emitted explaining the mapping
-- Delegates are skipped entirely because Gemini CLI has no user-defined sub-agent system
-- Uses `target_agents_file: GEMINI.md`
-
-`statusline` assets are unsupported for Gemini CLI and are skipped with a warning.
 
 ### OpenCode Adapter Specifics
 
@@ -1649,11 +1631,11 @@ Missing environment variables render as empty string (standard `os.Getenv` behav
 
 Adapters provide target-specific variables with the `target_` prefix:
 
-| Variable | Claude | Codex | Gemini | OpenCode |
-|----------|--------|-------|--------|----------|
-| `target_name` | `claude` | `codex` | `gemini` | `opencode` |
-| `target_name_display` | `Claude` | `Codex` | `Gemini` | `OpenCode` |
-| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `GEMINI.md` | `AGENTS.md` |
+| Variable | Claude | Codex | OpenCode |
+|----------|--------|-------|----------|
+| `target_name` | `claude` | `codex` | `opencode` |
+| `target_name_display` | `Claude` | `Codex` | `OpenCode` |
+| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` |
 
 These variables enable target-aware assets. For example, a single "global instructions" file can be named appropriately per target:
 
@@ -1926,7 +1908,7 @@ rules don't matter.
 | `TAI_DEST_DIR` | Absolute path to the staging directory the script must write into |
 | `TAI_ASSET_TYPE` | The asset type (`skill` today) |
 | `TAI_ASSET_NAME` | The asset's name |
-| `TAI_TARGET` | The install target (`claude`, `codex`, `gemini`, `opencode`) |
+| `TAI_TARGET` | The install target (`claude`, `codex`, `opencode`) |
 | `TAI_MANIFEST_DIR` | Absolute path to the skill source directory (use this to read sibling helper files) |
 | `TAI_VERSION` | tai's version string |
 

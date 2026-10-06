@@ -175,22 +175,22 @@ run: ~/scripts/check-dangerous-commands.sh
 
 ### Events
 
-tai names events itself rather than adopting one target's vocabulary, because the targets disagree. Claude and Codex call an event `PreToolUse`; Gemini calls the same thing `BeforeTool`, and renames every other event too.
+tai names events itself rather than adopting one target's vocabulary, because targets differ in which events they have and are free to name them differently.
 
-| tai event | When it fires | Claude | Codex | Gemini |
-|-----------|---------------|--------|-------|--------|
-| `session_start` | A session begins | SessionStart | SessionStart | SessionStart |
-| `session_end` | A session ends | SessionEnd | - | SessionEnd |
-| `user_prompt_submit` | A prompt is submitted | UserPromptSubmit | UserPromptSubmit | BeforeAgent |
-| `stop` | The agent finishes responding | Stop | Stop | AfterAgent |
-| `pre_tool_use` | Before a tool runs | PreToolUse | PreToolUse | BeforeTool |
-| `post_tool_use` | After a tool runs | PostToolUse | PostToolUse | AfterTool |
-| `permission_request` | A permission is requested | PermissionRequest | PermissionRequest | - |
-| `subagent_start` | A subagent starts | SubagentStart | SubagentStart | - |
-| `subagent_stop` | A subagent finishes | SubagentStop | SubagentStop | - |
-| `pre_compact` | Before context is compacted | PreCompact | PreCompact | PreCompress |
-| `post_compact` | After context is compacted | PostCompact | PostCompact | - |
-| `notification` | The target sends a notification | Notification | - | Notification |
+| tai event | When it fires | Claude | Codex |
+|-----------|---------------|--------|-------|
+| `session_start` | A session begins | SessionStart | SessionStart |
+| `session_end` | A session ends | SessionEnd | - |
+| `user_prompt_submit` | A prompt is submitted | UserPromptSubmit | UserPromptSubmit |
+| `stop` | The agent finishes responding | Stop | Stop |
+| `pre_tool_use` | Before a tool runs | PreToolUse | PreToolUse |
+| `post_tool_use` | After a tool runs | PostToolUse | PostToolUse |
+| `permission_request` | A permission is requested | PermissionRequest | PermissionRequest |
+| `subagent_start` | A subagent starts | SubagentStart | SubagentStart |
+| `subagent_stop` | A subagent finishes | SubagentStop | SubagentStop |
+| `pre_compact` | Before context is compacted | PreCompact | PreCompact |
+| `post_compact` | After context is compacted | PostCompact | PostCompact |
+| `notification` | The target sends a notification | Notification | - |
 
 A `-` means the target has no equivalent, and a hook using that event is skipped there with a warning. That way one hook asset can be shared by a profile installing to several targets.
 
@@ -198,12 +198,12 @@ A `-` means the target has no equivalent, and a hook using that event is skipped
 
 `tools` narrows a tool event using tai's canonical names, translated per target:
 
-| tai | Claude | Codex | Gemini |
-|-----|--------|-------|--------|
-| `read` | Read | - | read_file |
-| `write` | Write | - | write_file |
-| `edit` | Edit | apply_patch | replace |
-| `shell` | Bash | Bash | run_shell_command |
+| tai | Claude | Codex |
+|-----|--------|-------|
+| `read` | Read | - |
+| `write` | Write | - |
+| `edit` | Edit | apply_patch |
+| `shell` | Bash | Bash |
 
 A tool a target has no name for is an error, not a silent drop - dropping it would widen the matcher to *every* tool, so a hook meant to guard edits would start firing on reads. Use `match` instead.
 
@@ -223,7 +223,7 @@ native:
 
 ### Timeouts
 
-Write `timeout` as a duration. tai converts it per target, because Claude and Codex expect seconds while Gemini expects milliseconds - a mismatch that fails silently by hand, turning a 30-second timeout into a 30-millisecond one.
+Write `timeout` as a duration. tai converts it to the unit each target expects. Claude and Codex both take seconds, but the unit is the adapter's to declare because targets differ, and a mismatch fails silently by hand, turning a 30-second timeout into a 30-millisecond one.
 
 ### Target notes
 
@@ -237,7 +237,6 @@ Write `timeout` as a duration. tai converts it per target, because Claude and Co
 |--------|--------|-----------|---------|
 | Claude | `~/.claude/settings.json` | `.claude/settings.json` | `.claude/settings.local.json` |
 | Codex | `~/.codex/hooks.json` | `.codex/hooks.json` | - |
-| Gemini | `~/.gemini/settings.json` | `.gemini/settings.json` | - |
 
 Entries land under the `hooks` key, alongside any hooks you or other tools have written:
 
@@ -311,13 +310,13 @@ tai does not read the variable itself, so the secret stays in your environment r
 
 The MCP protocol is shared, but the config shapes are not:
 
-| tai | Claude | Gemini | OpenCode |
-|-----|--------|--------|----------|
-| key | `mcpServers` | `mcpServers` | `mcp` |
-| `command` + `args` | separate fields | separate fields | one `command` array |
-| `env` | `env` | `env` | `environment` |
-| `transport` | `type: stdio\|http` | `type` (http only) | `type: local\|remote`, required |
-| `cwd` | not supported | `cwd` | `cwd` |
+| tai | Claude | OpenCode |
+|-----|--------|----------|
+| key | `mcpServers` | `mcp` |
+| `command` + `args` | separate fields | one `command` array |
+| `env` | `env` | `environment` |
+| `transport` | `type: stdio\| `type` (http only) | `type: local\|remote`, required |
+| `cwd` | not supported | `cwd` |
 
 tai writes each target's own shape; you write the tai one.
 
@@ -326,7 +325,6 @@ tai writes each target's own shape; you write the tai one.
 | Target | `user` | `project` | `local` |
 |--------|--------|-----------|---------|
 | Claude | `~/.claude.json` | `.mcp.json` | `~/.claude.json`, under `projects.<project path>` |
-| Gemini | `~/.gemini/settings.json` | `.gemini/settings.json` | - |
 | OpenCode | `~/.config/opencode/opencode.json` | `opencode.json` | `opencode.json` |
 
 :::note

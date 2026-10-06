@@ -25,7 +25,7 @@ The Codex adapter maps tai asset types to Codex's directory structure:
 
 Codex has first-class support for `AGENTS.md` and skills. It does not have a native persona concept, and it does not natively consume delegate assets the way Claude Code does.
 
-For personas, tai mirrors what it does for Gemini: each persona is installed under `skills/` as a regular skill so Codex's skill discovery actually picks it up. Single-file personas are wrapped into directory form (`skills/<name>/SKILL.md`); directory-form personas keep their layout. A per-asset warning notes the remapping.
+For personas, each persona is installed under `skills/` as a regular skill so Codex's skill discovery actually picks it up. Single-file personas are wrapped into directory form (`skills/<name>/SKILL.md`); directory-form personas keep their layout. A per-asset warning notes the remapping.
 
 For delegates, tai copies the file to `delegates/` as a passive reference and warns per asset.
 

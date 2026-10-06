@@ -537,8 +537,8 @@ const (
 var ValidStatusLineShowElements = []string{"cost", "model", "tokens", "latency", "context"}
 
 // Canonical tai hook events. Adapters translate these to whatever the target
-// calls them: Claude and Codex mostly use these names in PascalCase, while
-// Gemini renames them wholesale (BeforeTool, BeforeAgent, AfterAgent).
+// calls them: Claude and Codex mostly use these names in PascalCase, but a
+// target is free to rename them wholesale.
 //
 // A target that has no equivalent for an event skips that hook with a warning
 // rather than failing the install, so one hook asset can be shared by a
@@ -582,8 +582,7 @@ func IsValidHookEvent(e string) bool {
 }
 
 // Canonical tai tool names, for matching tool events across targets whose tool
-// vocabularies differ - Claude's Edit is Gemini's replace, Claude's Bash is
-// Gemini's run_shell_command.
+// vocabularies differ - Claude's Edit is Codex's apply_patch, for instance.
 //
 // This covers the common tools only. Anything outside it (MCP tools, custom
 // tools) is inherently target-specific and belongs in a hook's per-target
@@ -662,7 +661,7 @@ func ValidMCPTransports() []string {
 
 // MCPConfig represents a parsed MCP server asset.
 //
-// The fields here are the genuine common core across Claude, Codex, Gemini and
+// The fields here are the genuine common core across Claude, Codex and
 // OpenCode. Everything past it - OAuth specifics, trust flags, approval modes -
 // is four-way incompatible and belongs in Native rather than in a lossy
 // abstraction that has to be escaped anyway.

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/amterp/tai/internal/adapter/codex"
-	"github.com/amterp/tai/internal/adapter/gemini"
 	"github.com/amterp/tai/internal/adapter/opencode"
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/testutil"
@@ -247,7 +246,7 @@ run: peon.sh
 native:
   claude:
     async: true
-  gemini:
+  codex:
     description: ignored here
 `)
 
@@ -315,59 +314,15 @@ func TestHookWithoutToolsOmitsMatcher(t *testing.T) {
 	}
 }
 
-// Gemini renames every event and takes milliseconds, so it is the real test of
-// the canonical vocabulary.
-func TestHookTranslatesForGemini(t *testing.T) {
-	env := testutil.NewTestEnv(t)
-	installer := NewInstaller(NewManifestStore(filepath.Join(env.ConfigDir, "manifests")), env.ConfigRepo, nil)
-	adap := gemini.New(env.TargetDir)
-
-	env.SetupAsset("hooks", "guard.yaml", `on: pre_tool_use
-tools: [edit, shell]
-run: guard.sh
-timeout: 5s
-`)
-
-	if _, err := installer.Install(adap, "p", []*config.Asset{hookAsset(env, "guard.yaml")}, InstallOptions{}); err != nil {
-		t.Fatalf("Install failed: %v", err)
-	}
-
-	settings, err := readJSONFile(filepath.Join(env.TargetDir, "settings.json"))
-	if err != nil {
-		t.Fatalf("reading settings: %v", err)
-	}
-
-	// pre_tool_use is "BeforeTool" here, not "PreToolUse".
-	hooks := settings["hooks"].(map[string]any)
-	if _, wrong := hooks["PreToolUse"]; wrong {
-		t.Error("Claude's event name was written to Gemini")
-	}
-	group, ok := hooks["BeforeTool"].([]any)
-	if !ok {
-		t.Fatalf("no BeforeTool event; got keys %v", hooks)
-	}
-
-	first := group[0].(map[string]any)
-	if first["matcher"] != "replace|run_shell_command" {
-		t.Errorf("matcher = %v, want Gemini's tool names", first["matcher"])
-	}
-
-	handler := first["hooks"].([]any)[0].(map[string]any)
-	// Gemini takes milliseconds, unlike Claude and Codex.
-	if got := jsonNumber(t, handler["timeout"]); got != "5000" {
-		t.Errorf("timeout = %v, want 5000 (milliseconds)", handler["timeout"])
-	}
-}
-
 // An event a target lacks skips that one hook with a warning, rather than
 // failing an install that may be targeting several tools.
 func TestHookUnsupportedEventSkipsWithWarning(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 	installer := NewInstaller(NewManifestStore(filepath.Join(env.ConfigDir, "manifests")), env.ConfigRepo, nil)
-	adap := gemini.New(env.TargetDir)
+	adap := codex.New(env.TargetDir)
 
-	// Gemini has no subagent events.
-	env.SetupAsset("hooks", "sub.yaml", "on: subagent_stop\nrun: note.sh\n")
+	// Codex has no notification event.
+	env.SetupAsset("hooks", "sub.yaml", "on: notification\nrun: note.sh\n")
 
 	result, err := installer.Install(adap, "p", []*config.Asset{hookAsset(env, "sub.yaml")}, InstallOptions{})
 	if err != nil {
@@ -384,7 +339,7 @@ func TestHookUnsupportedEventSkipsWithWarning(t *testing.T) {
 
 	var found bool
 	for _, w := range result.Warnings {
-		if strings.Contains(w, "subagent_stop") {
+		if strings.Contains(w, "notification") {
 			found = true
 		}
 	}

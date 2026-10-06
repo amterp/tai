@@ -131,7 +131,23 @@ var DefaultRegistry = NewRegistry()
 // imported the codex package would be told no. Which targets exist is a fixed
 // fact about tai, so it is written down as one. TestRegistryMatchesTargetNames
 // in internal/state keeps the two in step.
-var targetNames = []string{"claude", "codex", "gemini", "opencode"}
+var targetNames = []string{"claude", "codex", "opencode"}
+
+// removedTargets maps a target tai used to support to what a config still
+// naming it should do. Without it, such a config gets the same "unknown
+// target" a typo does, which sends the user hunting for a spelling mistake.
+var removedTargets = map[string]string{
+	"gemini": "Gemini CLI support was removed in tai 0.2.0, after Gemini CLI was discontinued. " +
+		"Delete or retarget this profile. Files an earlier install put under ~/.gemini stay until " +
+		"you delete them, or run 'tai uninstall gemini' with tai 0.1.0 before upgrading.",
+}
+
+// RemovedTarget reports whether name is a target tai no longer supports, with
+// what to do about it.
+func RemovedTarget(name string) (string, bool) {
+	advice, ok := removedTargets[name]
+	return advice, ok
+}
 
 // TargetNames returns every target tai supports, whether or not its adapter is
 // linked into the current binary.

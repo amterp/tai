@@ -170,6 +170,28 @@ func TestStateLoadConfigRepo(t *testing.T) {
 	}
 }
 
+// A profile naming a target tai dropped must say so, not report "unknown
+// target" and leave the user looking for a typo.
+func TestStateLoadConfigRepoRejectsRemovedTarget(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+	env.SetupMinimalConfig()
+	env.SetupProfile("old", "name: old\ndescription: Old\ntarget: gemini\nbundles:\n  - core\n")
+
+	state := &State{
+		Paths: &Paths{
+			ConfigDir:   env.ConfigDir,
+			ManifestDir: filepath.Join(env.ConfigDir, "manifests"),
+			ConfigFile:  filepath.Join(env.ConfigDir, "config.yaml"),
+		},
+		GlobalConfig: &GlobalConfig{},
+	}
+
+	err := state.LoadConfigRepo(env.ConfigRepo)
+	if err == nil || !strings.Contains(err.Error(), "no longer supported") {
+		t.Fatalf("LoadConfigRepo error = %v, want one saying gemini is no longer supported", err)
+	}
+}
+
 func TestStateLocateAsset(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 	env.SetupMinimalConfig()

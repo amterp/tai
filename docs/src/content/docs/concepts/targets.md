@@ -83,15 +83,15 @@ The adapter determines what frontmatter appears in installed files:
 
 Not all targets support all config asset types:
 
-| Config asset | Claude Code | Codex | Gemini CLI | OpenCode |
-|-------------|------------|-------|-----------|----------|
-| `statusline` | Merged into `settings.json` | Not supported (skipped) | Not supported (skipped) | Not supported (skipped) |
-| `hook` | Merged into `settings.json` | Merged into `hooks.json` | Merged into `settings.json` | Not supported (skipped) |
-| `mcp` | Merged into `.mcp.json` or `~/.claude.json` | Merged into `config.toml` (asks first) | Merged into `settings.json` | Merged into `opencode.json` |
+| Config asset | Claude Code | Codex | OpenCode |
+|-------------|------------|-------|----------|
+| `statusline` | Merged into `settings.json` | Not supported (skipped) | Not supported (skipped) |
+| `hook` | Merged into `settings.json` | Merged into `hooks.json` | Not supported (skipped) |
+| `mcp` | Merged into `.mcp.json` or `~/.claude.json` | Merged into `config.toml` (asks first) | Merged into `opencode.json` |
 
-Hooks are portable across Claude, Codex and Gemini: all three structure them the same way, though Gemini renames every event and expects timeouts in milliseconds rather than seconds. tai names events itself and each adapter translates, so one hook asset works on all three. OpenCode has no declarative hooks - only a JS plugin API - so hook assets are skipped there.
+Hooks are portable across Claude and Codex: both structure them the same way. tai names events itself and each adapter translates, so one hook asset works on both. OpenCode has no declarative hooks - only a JS plugin API - so hook assets are skipped there.
 
-An event a target does not have (Gemini has no subagent events, Codex no notification event) skips just that hook, with a warning.
+An event a target does not have (Codex has no notification event, for instance) skips just that hook, with a warning.
 
 MCP servers install on every target. Codex is the one that asks first: it has no dedicated MCP file, so servers go in `config.toml` beside settings tai does not own, and writing it loses comments and key order. tai explains that and remembers your answer.
 

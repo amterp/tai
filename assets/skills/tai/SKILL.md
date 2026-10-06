@@ -3,14 +3,14 @@ name: tai
 description: >
   Manage AI agent configurations with the tai CLI. Use this skill when asked to:
   manage tai config repos, sources, bundles, or profiles; install or uninstall
-  configurations to targets like Claude Code, Codex, Gemini CLI, or OpenCode; create, edit, or
+  configurations to targets like Claude Code, Codex, or OpenCode; create, edit, or
   organize personas, delegates, skills, or files; or create new skills for
   tai-managed configurations.
 ---
 
 # Tai Configuration Management
 
-Tai organizes AI agent configurations (personas, delegates, skills, files) into composable, version-controlled assets that install to targets like Claude Code, Codex, Gemini CLI, and OpenCode.
+Tai organizes AI agent configurations (personas, delegates, skills, files) into composable, version-controlled assets that install to targets like Claude Code, Codex, and OpenCode.
 
 ## Core Concepts
 
@@ -20,7 +20,7 @@ Tai organizes AI agent configurations (personas, delegates, skills, files) into 
 | **Bundle** | Named collection of assets (a "shopping list") |
 | **Profile** | Bundle(s) bound to a specific target |
 | **Source** | Location providing assets (local dir or tai repo) |
-| **Target** | AI tool to install to (Claude Code, Codex, Gemini CLI, OpenCode) |
+| **Target** | AI tool to install to (Claude Code, Codex, OpenCode) |
 
 **Data flow:** Sources → Assets → Bundles → Profiles → Target
 
@@ -28,21 +28,20 @@ Tai organizes AI agent configurations (personas, delegates, skills, files) into 
 
 Tai uses target-agnostic terminology. Here's how asset types map to current targets:
 
-| Tai Type | Claude | Codex | Gemini | OpenCode | Purpose |
-|----------|--------|-------|--------|----------|---------|
-| `persona` | `output-styles/` | `skills/` (mapped) | `skills/` (mapped) | `agents/` | Behavioral styles and roles |
-| `delegate` | `agents/` | `delegates/` (passive) | unsupported | `agents/` | Specialized helper agents |
-| `skill` | `skills/` | `skills/` | `skills/` | `skills/` | Procedural capabilities |
-| `file` | (per `dest`) | (per `dest`) | (per `dest`) | (per `dest`) | Loose files copied as-is |
-| `statusline` | `settings.json` | unsupported | unsupported | unsupported | Status bar configuration |
-| `hook` | `settings.json` | `hooks.json` | `settings.json` | unsupported | Command run on a target event |
-| `mcp` | `.mcp.json` / `~/.claude.json` | `config.toml` | `settings.json` | `opencode.json` | MCP server |
+| Tai Type | Claude | Codex | OpenCode | Purpose |
+|----------|--------|-------|----------|---------|
+| `persona` | `output-styles/` | `skills/` (mapped) | `agents/` | Behavioral styles and roles |
+| `delegate` | `agents/` | `delegates/` (passive) | `agents/` | Specialized helper agents |
+| `skill` | `skills/` | `skills/` | `skills/` | Procedural capabilities |
+| `file` | (per `dest`) | (per `dest`) | (per `dest`) | Loose files copied as-is |
+| `statusline` | `settings.json` | unsupported | unsupported | Status bar configuration |
+| `hook` | `settings.json` | `hooks.json` | unsupported | Command run on a target event |
+| `mcp` | `.mcp.json` / `~/.claude.json` | `config.toml` | `opencode.json` | MCP server |
 
 The last two are **config assets**: they merge as entries into the target's config files instead of being written as files. See "Config Assets" below.
 
 Target-specific notes:
 - **Codex**: Personas are mapped to skills since Codex has no persona concept (single-file personas wrap as `skills/<name>/SKILL.md`). Delegates are installed as passive reference files (warns per asset).
-- **Gemini**: Personas are mapped to skills (Gemini has no persona concept). Delegates are skipped entirely (no sub-agent system).
 - **OpenCode**: Both personas and delegates map to `agents/`, distinguished by `mode: subagent` on delegates.
 
 ## CLI Commands
@@ -150,8 +149,7 @@ assets:
 ```
 
 `user` is the target's home config, `project` and `local` resolve against the
-working directory. Not every target has all three - Codex and Gemini have no
-`local` scope.
+working directory. Not every target has all three - Codex has no `local` scope.
 
 ### Statuslines
 
@@ -178,16 +176,15 @@ run: prettier --write "$FILE"
 timeout: 30s           # optional duration, converted per target
 ```
 
-**Events** are named by tai and translated per target, because the targets
-disagree - Claude's `PreToolUse` is Gemini's `BeforeTool`:
+**Events** are named by tai and translated per target, because targets differ
+in which events they have and what they call them:
 
 `session_start`, `session_end`, `user_prompt_submit`, `stop`, `pre_tool_use`,
 `post_tool_use`, `permission_request`, `subagent_start`, `subagent_stop`,
 `pre_compact`, `post_compact`, `notification`
 
-A target lacking an event skips that hook with a warning. Gemini has no
-subagent, post-compact, or permission events; Codex has no notification or
-session-end event.
+A target lacking an event skips that hook with a warning. Codex has no
+notification or session-end event.
 
 **Tools** are `read`, `write`, `edit`, `shell`. A tool a target has no name for
 is an error, not a silent drop - dropping it would widen the matcher to every
@@ -202,8 +199,8 @@ native:
   claude: { async: true }     # merged verbatim into the handler object
 ```
 
-Write `timeout` as a duration - Claude and Codex take seconds, Gemini takes
-milliseconds, and tai converts.
+Write `timeout` as a duration; tai converts it to the unit each target
+expects.
 
 **OpenCode has no hooks** (only a JS plugin API), so hook assets are skipped
 there. **Codex** will not run a hook until it is trusted, and every change
@@ -238,7 +235,7 @@ Write env references as `${VAR}`; tai rewrites them per target (OpenCode wants
 `{env:VAR}`) and never reads the value, so secrets stay in the environment.
 
 Targets keep the same protocol in different shapes, and tai writes each: Claude
-and Gemini key servers under `mcpServers`, OpenCode uses `mcp` with the command
+keys servers under `mcpServers`, OpenCode uses `mcp` with the command
 as one argv array and env spelled `environment`.
 
 **Codex asks before installing MCP servers**: it keeps them in `config.toml`
@@ -503,11 +500,11 @@ Combine with conditionals for target-specific composition:
 
 Adapters provide target-specific variables with the `target_` prefix:
 
-| Variable | Claude | Codex | Gemini | OpenCode |
-|----------|--------|-------|--------|----------|
-| `target_name` | `claude` | `codex` | `gemini` | `opencode` |
-| `target_name_display` | `Claude` | `Codex` | `Gemini` | `OpenCode` |
-| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `GEMINI.md` | `AGENTS.md` |
+| Variable | Claude | Codex | OpenCode |
+|----------|--------|-------|----------|
+| `target_name` | `claude` | `codex` | `opencode` |
+| `target_name_display` | `Claude` | `Codex` | `OpenCode` |
+| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` |
 
 Use these for target-aware file destinations:
 

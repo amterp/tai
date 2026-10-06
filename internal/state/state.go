@@ -11,7 +11,6 @@ import (
 	"github.com/amterp/tai/internal/adapter"
 	_ "github.com/amterp/tai/internal/adapter/claude"   // Register Claude adapter
 	_ "github.com/amterp/tai/internal/adapter/codex"    // Register Codex adapter
-	_ "github.com/amterp/tai/internal/adapter/gemini"   // Register Gemini adapter
 	_ "github.com/amterp/tai/internal/adapter/opencode" // Register OpenCode adapter
 	"github.com/amterp/tai/internal/bundle"
 	"github.com/amterp/tai/internal/config"
@@ -200,6 +199,9 @@ func (s *State) LoadConfigRepo(path string) error {
 
 	// Validate profile targets against registered adapters
 	for name, profile := range profiles {
+		if advice, removed := adapter.RemovedTarget(profile.Target); removed {
+			return fmt.Errorf("profile %q: target %q is no longer supported. %s", name, profile.Target, advice)
+		}
 		if _, err := adapter.DefaultRegistry.Get(profile.Target); err != nil {
 			return fmt.Errorf("profile %q: unknown target %q (no adapter registered)", name, profile.Target)
 		}

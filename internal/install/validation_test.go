@@ -79,6 +79,21 @@ func TestFrontmatterWarningsMisspelledNativeTarget(t *testing.T) {
 	}
 }
 
+// A removed target is not a typo, so the warning must not suggest checking
+// the spelling.
+func TestFrontmatterWarningsRemovedNativeTarget(t *testing.T) {
+	parsed := &frontmatter.Parsed{
+		Metadata: map[string]string{"name": "my-skill"},
+		Native:   frontmatter.Native{"gemini": {"effort": "high"}},
+	}
+
+	warnings := frontmatterWarnings(parsed, "skill", "my-skill", "claude", []string{"codex", "claude"})
+
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "no longer supports") {
+		t.Fatalf("warnings = %v, want one saying gemini is no longer supported", warnings)
+	}
+}
+
 // With no adapters registered tai cannot tell a misspelled target from one it
 // simply has not loaded, so it says nothing rather than crying wolf.
 func TestFrontmatterWarningsNoKnownTargets(t *testing.T) {

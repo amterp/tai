@@ -13,9 +13,10 @@ func init() {
 }
 
 // TimeoutUnit is the unit a target expects hook timeouts in. Claude and Codex
-// take seconds; Gemini takes milliseconds. Getting this wrong fails silently -
-// a 30-second timeout becomes 30 milliseconds - so hooks carry a duration and
-// each adapter states its unit once, here.
+// take seconds; others, such as the since-removed Gemini CLI, take
+// milliseconds. Getting this wrong fails silently - a 30-second timeout becomes
+// 30 milliseconds - so hooks carry a duration and each adapter states its unit
+// once, here.
 type TimeoutUnit int
 
 const (
@@ -25,7 +26,7 @@ const (
 
 // HookTranslator is implemented by adapters that support hooks.
 //
-// Claude, Codex and Gemini all structure hooks the same way - an event holding
+// Claude and Codex both structure hooks the same way - an event holding
 // matcher groups, each holding command handlers - so the handler builds that
 // shape itself and asks the adapter only for the vocabulary that differs.
 type HookTranslator interface {
