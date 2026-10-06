@@ -1,6 +1,7 @@
 package frontmatter
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -502,5 +503,51 @@ func TestIsTaiField(t *testing.T) {
 		if IsTaiField(field) {
 			t.Errorf("IsTaiField(%q) = true, want false", field)
 		}
+	}
+}
+
+// Skills written for a target often carry a nested `metadata:` block. Parsing
+// must keep its structure rather than flattening it to "map[author:...]".
+func TestParseNestedUnknownField(t *testing.T) {
+	input := []byte(`---
+name: demo
+description: A demo skill
+metadata:
+  author: Someone
+  tags:
+    - a
+    - b
+version: 2
+---
+
+Body
+`)
+
+	parsed, err := Parse(input)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	wantMetadata := map[string]string{"name": "demo", "description": "A demo skill", "version": "2"}
+	if !reflect.DeepEqual(parsed.Metadata, wantMetadata) {
+		t.Errorf("Metadata = %#v, want %#v", parsed.Metadata, wantMetadata)
+	}
+	wantStructured := map[string]any{
+		"metadata": map[string]any{"author": "Someone", "tags": []any{"a", "b"}},
+	}
+	if !reflect.DeepEqual(parsed.Structured, wantStructured) {
+		t.Errorf("Structured = %#v, want %#v", parsed.Structured, wantStructured)
+	}
+	if string(parsed.Body) != "Body\n" {
+		t.Errorf("Body = %q", parsed.Body)
+	}
+}
+
+// A tai field holds one value. A list there used to install as the text
+// "[Read Grep]", which no target can read.
+func TestParseRejectsStructuredTaiField(t *testing.T) {
+	_, err := Parse([]byte("---\nname: demo\ntools: [Read, Grep]\n---\n"))
+	if err == nil || !strings.Contains(err.Error(), `"tools"`) || !strings.Contains(err.Error(), "comma-separated") {
+		t.Errorf("Parse error = %v, want one naming tools and suggesting a comma-separated value", err)
 	}
 }

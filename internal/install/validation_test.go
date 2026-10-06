@@ -79,6 +79,20 @@ func TestFrontmatterWarningsMisspelledNativeTarget(t *testing.T) {
 	}
 }
 
+// A nested unknown field is dropped like any other, so it warns like one.
+func TestFrontmatterWarningsStructuredField(t *testing.T) {
+	parsed := &frontmatter.Parsed{
+		Metadata:   map[string]string{"name": "my-skill"},
+		Structured: map[string]any{"metadata": map[string]any{"author": "x"}},
+	}
+
+	warnings := frontmatterWarnings(parsed, "skill", "my-skill", "claude", nil)
+
+	if len(warnings) != 1 || !strings.Contains(warnings[0], `"metadata"`) {
+		t.Fatalf("warnings = %v, want one naming the dropped metadata field", warnings)
+	}
+}
+
 // A removed target is not a typo, so the warning must not suggest checking
 // the spelling.
 func TestFrontmatterWarningsRemovedNativeTarget(t *testing.T) {

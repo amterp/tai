@@ -127,16 +127,23 @@ Note that `depends` is consumed during resolution and not written to the target.
 
 ## Unknown fields
 
-Unknown frontmatter fields are silently ignored. This supports forward compatibility - assets from external sources may include metadata fields that tai does not use. These fields are simply discarded during parsing.
+A field outside tai's vocabulary is not installed, and tai warns about it, naming the field and
+suggesting `native.<target>` if you meant it for one target. Assets from external sources often
+carry such fields, so the warning is information, not an error. Nested values (a `metadata:` map,
+a list) are dropped the same way.
 
 ```yaml
 ---
 name: My Persona
 description: A custom persona.
-custom_field: some value   # Silently ignored by tai
-version: 2                 # Also ignored
+custom_field: some value   # Not installed; tai warns
+metadata:                  # Same, nested or not
+  author: Someone
 ---
 ```
+
+tai's own fields each take a single value. A list or map there is an error: write `tools` as a
+comma-separated string (`tools: Read, Grep`), not a YAML list.
 
 ## Schema versioning
 

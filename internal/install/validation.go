@@ -36,7 +36,12 @@ var retiredFields = map[string]string{
 func frontmatterWarnings(parsed *frontmatter.Parsed, assetType, assetName, target string, knownTargets []string) []string {
 	var warnings []string
 
-	for _, field := range sortedKeys(parsed.Metadata) {
+	fields := sortedKeys(parsed.Metadata)
+	for field := range parsed.Structured {
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+	for _, field := range fields {
 		if frontmatter.IsTaiField(field) {
 			continue
 		}

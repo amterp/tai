@@ -53,6 +53,12 @@ type Parsed struct {
 	Depends  []DependencyEntry // Parsed depends array (nil if not present)
 	Native   Native            // Parsed native block (nil if not present)
 	Body     []byte            // Content after the frontmatter block
+
+	// Structured holds fields outside tai's vocabulary whose values are maps
+	// or lists, kept as parsed. Metadata only holds single values, and
+	// flattening these into one with %v produced text like
+	// "map[author:x tags:[a b]]" that no reader could use.
+	Structured map[string]any
 }
 
 // Native holds per-target frontmatter fields, keyed by target name. Its
@@ -116,6 +122,7 @@ func Parse(content []byte) (*Parsed, error) {
 	metadata := make(map[string]string)
 	var depends []DependencyEntry
 	var native Native
+	var structured map[string]any
 
 	for key, val := range rawMetadata {
 		switch key {
@@ -132,20 +139,35 @@ func Parse(content []byte) (*Parsed, error) {
 			}
 			native = n
 		default:
-			// All other fields are strings
 			switch v := val.(type) {
 			case string:
 				metadata[key] = v
 			case nil:
 				// Skip nil values
+			case map[string]any, []any:
+				if IsTaiField(key) {
+					return nil, fmt.Errorf("frontmatter field %q must be a single value, not a %s; "+
+						"for a list, write it comma-separated (e.g. \"tools: Read, Grep\")", key, shapeName(v))
+				}
+				if structured == nil {
+					structured = make(map[string]any)
+				}
+				structured[key] = v
 			default:
-				// Convert non-string scalars to string representation
+				// Numbers and booleans: their string form is the value.
 				metadata[key] = fmt.Sprintf("%v", v)
 			}
 		}
 	}
 
-	return &Parsed{Metadata: metadata, Depends: depends, Native: native, Body: rest}, nil
+	return &Parsed{Metadata: metadata, Depends: depends, Native: native, Structured: structured, Body: rest}, nil
+}
+
+func shapeName(v any) string {
+	if _, ok := v.(map[string]any); ok {
+		return "map"
+	}
+	return "list"
 }
 
 // parseNative parses the native field into per-target field maps.
