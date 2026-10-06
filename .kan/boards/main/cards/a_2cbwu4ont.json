@@ -2,17 +2,26 @@
   "_v": 3,
   "alias": "a-command-include",
   "alias_explicit": false,
-  "column": "in-progress",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Implemented in fd73df0 (dest: ./ merges command output into the skill root), review fixes in f1293a0.",
+      "created_at_millis": 1791254601992,
+      "id": "c_2ccK6p6bN"
+    }
+  ],
   "created_at_millis": 1791253709965,
   "creator": "Alexander Terp",
   "description": "I wanted a skill whose SKILL.md comes from a CLI: `\u003ctool\u003e skill` prints the skill text to stdout. The natural shape is a skill dir whose tai.yaml has a command include writing `$TAI_DEST_DIR/SKILL.md`, but no `dest` works:\n\n- A dest that resolves to the skill root is rejected (`internal/install/command_include.go:46`): `dest \"\u003cdest\u003e\" resolves to the skill root; choose a subdirectory (e.g. refs/)`.\n- A file dest (`SKILL.md`) would become a directory, since the staging dir is swapped into `dest` whole.\n\nThe tai skill's Command Includes section doesn't say command includes are directory-only, so I wrote a README example that could not work before finding the check. The workaround is a `type: command` source that writes `skills/\u003cname\u003e/SKILL.md`, declared separately in each config repo that installs the skill.\n\nSuggested, either:\n\n- Allow a command include to produce SKILL.md: swap single files, or merge the staging dir into the skill root instead of replacing `dest`.\n- Or document it: say in the Command Includes section that dest must be a subdirectory, and point at command sources for a generated SKILL.md.\n\n(Moved from GitHub issue #11.)",
   "id": "a_2cbwu4ont",
-  "position": "a0",
+  "position": "Zx",
   "title": "A command include cannot write a skill's root SKILL.md",
   "type": "enhancement",
-  "updated_at_millis": 1791254356098,
+  "updated_at_millis": 1791254601992,
   "history": [
     {"field":"column","value":"backlog-hi","at":1791253709965},
-    {"field":"column","value":"in-progress","at":1791254356098}
+    {"field":"column","value":"in-progress","at":1791254356098},
+    {"field":"column","value":"done","at":1791254601946}
   ]
 }
