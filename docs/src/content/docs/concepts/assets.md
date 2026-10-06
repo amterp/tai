@@ -105,7 +105,7 @@ All file assets except `file` type require YAML frontmatter with at least a `nam
 | `model` | - | optional | optional |
 | `depends` | optional | optional | optional |
 
-Unknown fields are silently ignored for forward compatibility.
+Fields outside this table are not installed, and tai warns about each one. See [Frontmatter](/tai/reference/frontmatter/#unknown-fields).
 
 The `file` type is different - it has no frontmatter processing at all. Content is copied exactly as written.
 

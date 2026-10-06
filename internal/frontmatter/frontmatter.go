@@ -5,6 +5,7 @@ package frontmatter
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"unicode"
@@ -54,10 +55,11 @@ type Parsed struct {
 	Native   Native            // Parsed native block (nil if not present)
 	Body     []byte            // Content after the frontmatter block
 
-	// Structured holds fields outside tai's vocabulary whose values are maps
-	// or lists, kept as parsed. Metadata only holds single values, and
-	// flattening these into one with %v produced text like
-	// "map[author:x tags:[a b]]" that no reader could use.
+	// Structured holds fields whose values are maps or lists, kept as
+	// parsed. Metadata only holds single values, and flattening these into
+	// one with %v produced text like "map[author:x tags:[a b]]" that no
+	// reader could use. A tai field lands here too when written as a list or
+	// map; the installer drops it with a warning rather than install that.
 	Structured map[string]any
 }
 
@@ -144,17 +146,16 @@ func Parse(content []byte) (*Parsed, error) {
 				metadata[key] = v
 			case nil:
 				// Skip nil values
-			case map[string]any, []any:
-				if IsTaiField(key) {
-					return nil, fmt.Errorf("frontmatter field %q must be a single value, not a %s; "+
-						"for a list, write it comma-separated (e.g. \"tools: Read, Grep\")", key, shapeName(v))
-				}
-				if structured == nil {
-					structured = make(map[string]any)
-				}
-				structured[key] = v
 			default:
-				// Numbers and booleans: their string form is the value.
+				if IsStructured(v) {
+					if structured == nil {
+						structured = make(map[string]any)
+					}
+					structured[key] = v
+					continue
+				}
+				// Other scalars (numbers, booleans, dates): their string form
+				// is the value.
 				metadata[key] = fmt.Sprintf("%v", v)
 			}
 		}
@@ -163,11 +164,15 @@ func Parse(content []byte) (*Parsed, error) {
 	return &Parsed{Metadata: metadata, Depends: depends, Native: native, Structured: structured, Body: rest}, nil
 }
 
-func shapeName(v any) string {
-	if _, ok := v.(map[string]any); ok {
-		return "map"
+// IsStructured reports whether a parsed YAML value is a map or a list. yaml.v3
+// decodes a map with any non-string key as map[any]any, so matching only
+// map[string]any would let those through to be flattened.
+func IsStructured(v any) bool {
+	switch reflect.ValueOf(v).Kind() {
+	case reflect.Map, reflect.Slice:
+		return true
 	}
-	return "list"
+	return false
 }
 
 // parseNative parses the native field into per-target field maps.

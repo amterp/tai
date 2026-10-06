@@ -1676,6 +1676,66 @@ func TestInstallerSkillWithFieldMapping(t *testing.T) {
 	}
 }
 
+// Agent Skills' allowed-tools is often a YAML list; mapped onto tai's tools it
+// must arrive comma-separated rather than vanish as a structured field.
+func TestInstallerSkillFieldMappingJoinsList(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+
+	// Create an external source with a SKILL.md using non-tai field names
+	externalSource := filepath.Join(env.Root, "external")
+	if err := os.MkdirAll(externalSource, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(externalSource, "SKILL.md"),
+		[]byte("---\nname: ext\ndescription: d\nallowed-tools: [Read, Grep]\n---\n\n# Body\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create skill directory with tai.yaml that includes the external SKILL.md with field mapping
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "mapped-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	manifestContent := `include:
+  - from: external
+    path: SKILL.md
+    dest: SKILL.md
+    fields:
+      tools: allowed-tools
+`
+	if err := os.WriteFile(filepath.Join(skillDir, "tai.yaml"), []byte(manifestContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	sources := map[string]*source.LoadedSource{
+		"external": {
+			Source:       config.Source{Name: "external", Path: externalSource},
+			ResolvedPath: externalSource,
+		},
+	}
+
+	manifestStore := NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	installer := NewInstaller(manifestStore, env.ConfigRepo, sources)
+	adapter := claude.New(env.TargetDir)
+
+	assets := []*config.Asset{
+		{Type: "skill", Name: "mapped-skill", SourceName: "local",
+			SourcePath: skillDir, IsDir: true},
+	}
+
+	_, err := installer.Install(adapter, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install with field mapping failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("skills/mapped-skill/SKILL.md")
+	expected := "---\nname: ext\ndescription: d\ntools: Read, Grep\n---\n\n# Body\n"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
+	}
+}
+
 func TestInstallerSkillFieldMappingLocalValueWins(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 

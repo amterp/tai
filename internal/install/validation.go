@@ -43,6 +43,12 @@ func frontmatterWarnings(parsed *frontmatter.Parsed, assetType, assetName, targe
 	sort.Strings(fields)
 	for _, field := range fields {
 		if frontmatter.IsTaiField(field) {
+			if _, structured := parsed.Structured[field]; structured {
+				warnings = append(warnings, fmt.Sprintf(
+					"%s %q: frontmatter field %q is a list or map, but it takes a single value, so it was not installed. "+
+						"Write it as one value (a list of tools as \"tools: Read, Grep\").",
+					assetType, assetName, field))
+			}
 			continue
 		}
 		if reason, retired := retiredFields[field]; retired {

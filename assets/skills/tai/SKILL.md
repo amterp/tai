@@ -1063,7 +1063,7 @@ a template needs a `{% verbatim %}` block around it.{% endverbatim %}
 
 ## Migration: Per-file tai-schema-version Removed (2026-01-24)
 
-`tai-schema-version` is no longer recognized as a special field. If present in existing files, it's treated as an unknown field and silently ignored. Schema version is tracked at the repo level (`version: 1` in `tai.yaml`).
+`tai-schema-version` is no longer recognized as a special field. If present in existing files, tai drops it and warns that it no longer does anything. Schema version is tracked at the repo level (`version: 1` in `tai.yaml`).
 
 The only hard requirement is `name` (for personas, delegates, and skills). Files have no frontmatter requirements—content is copied as-is.
 

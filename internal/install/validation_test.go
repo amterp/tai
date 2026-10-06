@@ -93,6 +93,21 @@ func TestFrontmatterWarningsStructuredField(t *testing.T) {
 	}
 }
 
+// A tai field written as a list is not installed as "[Read Grep]"; it is
+// dropped, and says so.
+func TestFrontmatterWarningsStructuredTaiField(t *testing.T) {
+	parsed := &frontmatter.Parsed{
+		Metadata:   map[string]string{"name": "my-skill"},
+		Structured: map[string]any{"tools": []any{"Read", "Grep"}},
+	}
+
+	warnings := frontmatterWarnings(parsed, "skill", "my-skill", "claude", nil)
+
+	if len(warnings) != 1 || !strings.Contains(warnings[0], `"tools"`) || !strings.Contains(warnings[0], "single value") {
+		t.Fatalf("warnings = %v, want one saying tools takes a single value", warnings)
+	}
+}
+
 // A removed target is not a typo, so the warning must not suggest checking
 // the spelling.
 func TestFrontmatterWarningsRemovedNativeTarget(t *testing.T) {

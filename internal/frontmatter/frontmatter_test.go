@@ -543,11 +543,24 @@ Body
 	}
 }
 
-// A tai field holds one value. A list there used to install as the text
-// "[Read Grep]", which no target can read.
-func TestParseRejectsStructuredTaiField(t *testing.T) {
-	_, err := Parse([]byte("---\nname: demo\ntools: [Read, Grep]\n---\n"))
-	if err == nil || !strings.Contains(err.Error(), `"tools"`) || !strings.Contains(err.Error(), "comma-separated") {
-		t.Errorf("Parse error = %v, want one naming tools and suggesting a comma-separated value", err)
+// A list or map is kept as parsed wherever it appears, including under a tai
+// field (the installer drops that with a warning) and under a map with
+// non-string keys, which yaml decodes as map[any]any.
+func TestParseKeepsStructuredValues(t *testing.T) {
+	parsed, err := Parse([]byte("---\nname: demo\ntools: [Read, Grep]\nnumbered:\n  1: x\n---\n"))
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if _, ok := parsed.Metadata["tools"]; ok {
+		t.Errorf("tools was flattened into Metadata: %q", parsed.Metadata["tools"])
+	}
+	if _, ok := parsed.Metadata["numbered"]; ok {
+		t.Errorf("numbered was flattened into Metadata: %q", parsed.Metadata["numbered"])
+	}
+	if !reflect.DeepEqual(parsed.Structured["tools"], []any{"Read", "Grep"}) {
+		t.Errorf("Structured[tools] = %#v", parsed.Structured["tools"])
+	}
+	if _, ok := parsed.Structured["numbered"]; !ok {
+		t.Errorf("Structured = %#v, want numbered kept", parsed.Structured)
 	}
 }

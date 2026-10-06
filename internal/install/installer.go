@@ -1681,11 +1681,17 @@ func (i *Installer) transformMainFileContent(resolved *config.ResolvedAsset, con
 		if parsed.Metadata == nil {
 			parsed.Metadata = make(map[string]string)
 		}
-		// Snapshot source values before mutating
+		// Snapshot source values before mutating. A list is joined with
+		// commas: the field being mapped is usually Agent Skills'
+		// allowed-tools, often a YAML list, mapped onto tai's comma-separated
+		// tools.
 		snapped := make(map[string]string, len(fieldMapping))
 		for _, sourceField := range fieldMapping {
 			if val, ok := parsed.Metadata[sourceField]; ok {
 				snapped[sourceField] = val
+			} else if joined, ok := joinScalarList(parsed.Structured[sourceField]); ok {
+				snapped[sourceField] = joined
+				delete(parsed.Structured, sourceField)
 			}
 		}
 		// Apply mappings using snapshotted values
@@ -1727,6 +1733,23 @@ func (i *Installer) transformMainFileContent(resolved *config.ResolvedAsset, con
 	}
 
 	return transformed, nil
+}
+
+// joinScalarList joins a YAML list of scalars with ", ", reporting false for
+// anything else.
+func joinScalarList(v any) (string, bool) {
+	items, ok := v.([]any)
+	if !ok {
+		return "", false
+	}
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		if item == nil || frontmatter.IsStructured(item) {
+			return "", false
+		}
+		parts = append(parts, fmt.Sprintf("%v", item))
+	}
+	return strings.Join(parts, ", "), true
 }
 
 // findSkillMdFields returns the Fields mapping from the include that targets

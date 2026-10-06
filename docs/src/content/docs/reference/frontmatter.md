@@ -142,8 +142,10 @@ metadata:                  # Same, nested or not
 ---
 ```
 
-tai's own fields each take a single value. A list or map there is an error: write `tools` as a
-comma-separated string (`tools: Read, Grep`), not a YAML list.
+`name`, `description`, `tools` and `model` each take a single value. A list or map under one of
+them is not installed, with a warning: write `tools` as a comma-separated string
+(`tools: Read, Grep`), not a YAML list. A `fields:` include mapping is the exception, and joins a
+list it maps with commas, so Agent Skills' `allowed-tools: [Read, Grep]` can map onto `tools`.
 
 ## Schema versioning
 
