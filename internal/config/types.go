@@ -663,7 +663,7 @@ func ValidMCPTransports() []string {
 //
 // The fields here are the genuine common core across Claude, Codex and
 // OpenCode. Everything past it - OAuth specifics, trust flags, approval modes -
-// is four-way incompatible and belongs in Native rather than in a lossy
+// is incompatible across targets and belongs in Native rather than in a lossy
 // abstraction that has to be escaped anyway.
 type MCPConfig struct {
 	// Description is for humans reading the config repo. Only some targets

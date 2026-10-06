@@ -372,8 +372,12 @@ func (s *State) RequireActiveConfig() error {
 	return nil
 }
 
-// GetAdapter returns an adapter by name.
+// GetAdapter returns an adapter by name. A target tai dropped gets its
+// removal advice rather than the "unknown target" a typo gets.
 func (s *State) GetAdapter(name string) (adapter.Adapter, error) {
+	if advice, removed := adapter.RemovedTarget(name); removed {
+		return nil, fmt.Errorf("target %q is no longer supported. %s", name, advice)
+	}
 	return adapter.DefaultRegistry.Get(name)
 }
 

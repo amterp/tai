@@ -854,9 +854,9 @@ OpenCode wants `{env:VAR}`. tai never reads the variable, so the secret stays in
 the environment instead of being baked into an installed file.
 
 **The shapes differ even though the protocol does not.** Claude keys servers
-under `mcpServers` and Codex under `[mcp_servers]` in TOML; OpenCode uses `mcp`, folds the command and its
-arguments into one argv array, spells the environment `environment`, and
-requires an explicit `local`/`remote` type. Each adapter renders its own shape.
+under `mcpServers` and Codex under `[mcp_servers]` in TOML; OpenCode uses
+`mcp`, folds the command and its arguments into one argv array, spells the
+environment `environment`, and requires an explicit `local`/`remote` type. Each adapter renders its own shape.
 
 | tai | Claude | OpenCode |
 |-----|--------|----------|
@@ -975,9 +975,9 @@ on that target with a warning, so one asset can be shared by a profile that
 installs to several targets.
 
 **Canonical tool names.** `read`, `write`, `edit`, and `shell`, translated per
-target - Claude's `Edit` is Codex's `apply_patch`. A tool a target has no name for is an error rather than a
-silent drop: dropping it would widen the matcher to every tool, so a hook meant
-to guard edits would start firing on reads.
+target - Claude's `Edit` is Codex's `apply_patch`. A tool a target has no name
+for is an error rather than a silent drop: dropping it would widen the matcher
+to every tool, so a hook meant to guard edits would start firing on reads.
 
 **Escape hatches.** Anything outside the canonical vocabulary - MCP tool
 patterns, target-specific handler options - goes in `match` or `native`, keyed

@@ -138,8 +138,8 @@ var targetNames = []string{"claude", "codex", "opencode"}
 // target" a typo does, which sends the user hunting for a spelling mistake.
 var removedTargets = map[string]string{
 	"gemini": "Gemini CLI support was removed in tai 0.2.0, after Gemini CLI was discontinued. " +
-		"Delete or retarget this profile. Files an earlier install put under ~/.gemini stay until " +
-		"you delete them, or run 'tai uninstall gemini' with tai 0.1.0 before upgrading.",
+		"Delete or retarget any profile naming it. Files an earlier install put under ~/.gemini stay " +
+		"until you delete them by hand, or until 'tai uninstall gemini' is run with tai 0.1.0.",
 }
 
 // RemovedTarget reports whether name is a target tai no longer supports, with

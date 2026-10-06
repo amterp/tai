@@ -315,7 +315,7 @@ The MCP protocol is shared, but the config shapes are not:
 | key | `mcpServers` | `mcp` |
 | `command` + `args` | separate fields | one `command` array |
 | `env` | `env` | `environment` |
-| `transport` | `type: stdio\| `type` (http only) | `type: local\|remote`, required |
+| `transport` | `type: stdio\|http` | `type: local\|remote`, required |
 | `cwd` | not supported | `cwd` |
 
 tai writes each target's own shape; you write the tai one.

@@ -445,4 +445,9 @@ func TestRegistryMatchesTargetNames(t *testing.T) {
 		t.Errorf("adapter.TargetNames() = %v, registry has %v - update targetNames in internal/adapter",
 			declared, registered)
 	}
+	for _, name := range declared {
+		if _, removed := adapter.RemovedTarget(name); removed {
+			t.Errorf("%q is both a supported target and a removed one - drop it from removedTargets", name)
+		}
+	}
 }
