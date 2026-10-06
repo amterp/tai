@@ -18,9 +18,8 @@ const staleBackupAge = 30 * time.Minute
 
 // SwapInto replaces dest with staging, a directory or a file, as atomically as
 // the filesystem allows. An existing dest is first renamed aside rather than
-// removed, so a failure
-// mid-swap restores the previous state instead of destroying it - callers
-// rely on "fetch failed, previous content intact". os.Rename is atomic on
+// removed, so a failure mid-swap restores the previous state instead of
+// destroying it - callers rely on "fetch failed, previous content intact". os.Rename is atomic on
 // POSIX within a single filesystem; on EXDEV we fall back to recursive
 // copy + remove (a wider failure window, which is why fetches should stage
 // on the same filesystem as dest when possible).

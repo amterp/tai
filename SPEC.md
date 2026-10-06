@@ -1890,7 +1890,13 @@ For each `command:` include:
        dest: ./
    ```
 
-   The generated SKILL.md is then transformed like any other. Replacing the
+   The generated SKILL.md is then templated and transformed like any other.
+   Each top-level entry replaces its counterpart whole, so writing `refs/a.md`
+   replaces the skill's entire `refs/`. Symlinks are rejected. `tai list
+   assets` only discovers a skill directory holding a SKILL.md, and
+   `depends:` is read from the source SKILL.md, so a skill generated entirely
+   by a command installs when a bundle names it but is not listed and
+   declares no dependencies. Replacing the
    root wholesale is never what a script means, since it would delete every
    other file in the skill; a merge that fails partway can leave earlier
    entries replaced, and the install then fails and removes the skill.

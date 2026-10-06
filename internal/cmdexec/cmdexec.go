@@ -72,6 +72,10 @@ func FetchInto(spec Spec, dest, stagingParent string) error {
 // to rather than replace - a skill's root directory, say. Each entry is
 // replaced atomically; the merge as a whole is not, so a failure partway can
 // leave earlier entries replaced.
+//
+// A top-level symlink is rejected before anything moves. Merged into dest it
+// would point outside it, and whatever writes into dest next - the install
+// rewriting a skill's SKILL.md, for one - would write through the link.
 func MergeInto(spec Spec, dest string) error {
 	staging, err := stage(spec, "")
 	if err != nil {
@@ -80,6 +84,12 @@ func MergeInto(spec Spec, dest string) error {
 	entries, err := os.ReadDir(staging)
 	if err != nil {
 		return fmt.Errorf("reading staging dir %q: %w", staging, err)
+	}
+	for _, e := range entries {
+		if e.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("command %v wrote a symlink, %q, which cannot be merged into %q; write a regular file or directory instead (staging: %s)",
+				redactArgv(spec.Argv), e.Name(), dest, staging)
+		}
 	}
 	for _, e := range entries {
 		if err := SwapInto(filepath.Join(staging, e.Name()), filepath.Join(dest, e.Name())); err != nil {

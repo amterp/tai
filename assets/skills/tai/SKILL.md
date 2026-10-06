@@ -876,11 +876,17 @@ is inherited, so secrets in env vars (`$GITLAB_TOKEN`, etc.) are available.
 
 The script must write files into `$TAI_DEST_DIR`. tai treats the directory's
 contents as the include's output and atomically swaps them into `dest` on
-success. With `dest: ./` (the skill root) tai merges instead: each file the
-script wrote replaces the same path in the skill and the rest stays, so a
-script writing `$TAI_DEST_DIR/SKILL.md` generates the skill's main file, which
-tai then transforms as usual. Empty output is an error; non-zero exit or timeout is an error and
+success. Empty output is an error; non-zero exit or timeout is an error and
 preserves the staging dir for debugging.
+
+With `dest: ./` (the skill root) tai merges instead: each top-level file or
+directory the script wrote replaces the same path in the skill and the rest
+stays. A script writing `$TAI_DEST_DIR/SKILL.md` therefore generates the
+skill's main file, which tai then templates and transforms as usual. Symlinks
+are rejected. A skill dir with no SKILL.md of its own installs fine when a
+bundle names it, but `tai list assets` does not show it and `depends:` in the
+generated frontmatter is not read; a stub SKILL.md in the source fixes the
+listing.
 
 `--dry-run` runs command includes as well, building the skill in a scratch
 directory it then discards, so a script should have no effects beyond writing

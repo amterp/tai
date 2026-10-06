@@ -124,6 +124,11 @@ func TestIncludeValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "command dest cannot be SKILL.md",
+			include: Include{Command: []string{"echo"}, Dest: "SKILL.md"},
+			wantErr: true,
+		},
+		{
 			name:    "command include rejects fields",
 			include: Include{Command: []string{"echo"}, Dest: "docs/", Fields: map[string]string{"name": "title"}},
 			wantErr: true,

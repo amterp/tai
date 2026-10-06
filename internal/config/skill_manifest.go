@@ -75,6 +75,12 @@ func (i *Include) Validate() error {
 		if i.Dest == "" {
 			return fmt.Errorf("include with 'command' requires 'dest'")
 		}
+		// A command's output is a directory, so this dest would install
+		// SKILL.md/SKILL.md - never what someone writing it means.
+		if filepath.Clean(i.Dest) == "SKILL.md" {
+			return fmt.Errorf("include 'dest' %q would make SKILL.md a directory: a command include writes a directory. "+
+				"To generate SKILL.md, use dest: ./ and write $TAI_DEST_DIR/SKILL.md", i.Dest)
+		}
 		// 'fields' is a frontmatter-remap feature for source-based includes
 		// of SKILL.md - meaningless and silently ignored otherwise.
 		if len(i.Fields) > 0 {

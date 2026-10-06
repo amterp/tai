@@ -811,6 +811,25 @@ func TestResolveCommandInclude(t *testing.T) {
 		}
 	})
 
+	t.Run("symlink in a root merge is rejected", func(t *testing.T) {
+		targetDir := t.TempDir()
+		outside := filepath.Join(t.TempDir(), "victim.md")
+		if err := os.WriteFile(outside, []byte("untouched"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		resolver := NewIncludeResolver(nil, nil)
+		inc := config.Include{
+			Command: []string{"sh", "-c", `ln -s "` + outside + `" "$TAI_DEST_DIR/SKILL.md"`},
+			Dest:    "./",
+		}
+		if err := resolver.resolveCommandInclude(inc, targetDir); err == nil {
+			t.Fatal("expected a symlink to be rejected")
+		}
+		if _, err := os.Lstat(filepath.Join(targetDir, "SKILL.md")); !os.IsNotExist(err) {
+			t.Errorf("symlink was merged into the skill, lstat err = %v", err)
+		}
+	})
+
 	t.Run("empty dest rejected by runtime", func(t *testing.T) {
 		// Validate() would normally reject this; the resolver guards it too,
 		// for callers that skip Validate().
