@@ -307,6 +307,17 @@ Welcome to the {{project_name}} codebase.
 tai install work --var project_name=MyApp
 ```
 
+A source written for a target rather than for tai may contain `{#` or `{{` that
+was never meant as template syntax, such as a Markdown heading anchor. Mark it
+`template: false` in `tai.yaml` to install its content as written:
+
+```yaml
+sources:
+  - name: vendor-skills
+    path: ~/src/vendor-skills
+    template: false
+```
+
 ### Target-Aware Files
 
 Adapters provide target-specific variables (prefixed with `target_`), enabling files that adapt to each target:

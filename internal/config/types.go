@@ -72,6 +72,19 @@ type Source struct {
 	// own. Patterns are source-relative and matched per path segment; see
 	// IsExcluded for what a pattern can express.
 	Exclude []string `yaml:"exclude"`
+
+	// Template set to false installs this source's content without template
+	// processing. For sources written for a target rather than for tai: their
+	// markdown can contain `{#` or `{{` that was never meant as template
+	// syntax, and a single parse error fails the whole install. Unset means
+	// true.
+	Template *bool `yaml:"template"`
+}
+
+// Templated reports whether this source's content goes through the template
+// engine on install.
+func (s *Source) Templated() bool {
+	return s.Template == nil || *s.Template
 }
 
 // HasPatches reports whether this source declares a patch directory.

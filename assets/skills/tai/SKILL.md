@@ -456,6 +456,13 @@ CLI override: `tai install work --var project_name=MyApp`
 
 Undefined variables cause an error. For optional behavior, define with empty string (`vars: { opt: "" }`). Use verbatim blocks for literal template syntax.
 
+A source written for a target rather than for tai (third-party skills, say)
+can contain `{#` or `{{` that is not template syntax - a Markdown heading
+anchor like `## Usage {#usage}` fails the whole install with "Newline not
+permitted in a single-line comment". Set `template: false` on that source in
+`tai.yaml` rather than patching each file. It covers the source's own assets,
+files a skill includes from it with `from:`, and `include_asset` of it.
+
 ### Environment Variables
 
 Access env vars with the `env` filter: `{{ "HOME"|env }}`, `{{ "USER"|env }}`. Missing env vars render as empty string.

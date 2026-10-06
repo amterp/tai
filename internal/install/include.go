@@ -51,8 +51,12 @@ func (r *IncludeResolver) SetCommandContext(ctx CommandContext) {
 	r.cmdCtx = ctx
 }
 
-// ResolveIncludes processes all includes for a skill, copying files to the target skill path.
-func (r *IncludeResolver) ResolveIncludes(manifest *config.SkillManifest, targetSkillPath string) error {
+// ResolveIncludes processes all includes for a skill, copying files to the
+// target skill path. It returns the skill-relative paths written from sources
+// that declared `template: false`, which the caller must leave untemplated:
+// the include carries the source's content, so it carries its opt-out too.
+func (r *IncludeResolver) ResolveIncludes(manifest *config.SkillManifest, targetSkillPath string) ([]string, error) {
+	var untemplated []string
 	for i, inc := range manifest.Include {
 		var err error
 		switch {
@@ -62,12 +66,17 @@ func (r *IncludeResolver) ResolveIncludes(manifest *config.SkillManifest, target
 			err = r.resolveURLInclude(inc, targetSkillPath)
 		default:
 			err = r.resolveSourceInclude(inc, targetSkillPath)
+			if err == nil && !r.sources[inc.From].Templated() {
+				destPath, _ := r.computeDestPath(inc.Dest, inc.Path, "", targetSkillPath)
+				rel, _ := filepath.Rel(targetSkillPath, destPath)
+				untemplated = append(untemplated, rel)
+			}
 		}
 		if err != nil {
-			return fmt.Errorf("include[%d]: %w", i, err)
+			return nil, fmt.Errorf("include[%d]: %w", i, err)
 		}
 	}
-	return nil
+	return untemplated, nil
 }
 
 // resolveSourceInclude copies a file or directory from a named source.

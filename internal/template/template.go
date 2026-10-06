@@ -25,6 +25,13 @@ type ContentResolver interface {
 	ResolveAssetContent(ref string) ([]byte, error)
 }
 
+// VerbatimReporter is implemented by a ContentResolver whose references can
+// name content that opted out of templating. include_asset inlines such
+// content as-is instead of rendering it.
+type VerbatimReporter interface {
+	IsVerbatim(ref string) bool
+}
+
 // MergeVariables combines multiple variable maps, with later maps taking precedence.
 // Priority order: adapter vars < tai.yaml vars < profile vars < CLI --var.
 func MergeVariables(sources ...Variables) Variables {

@@ -477,7 +477,7 @@ func TestResolveIncludes(t *testing.T) {
 			},
 		}
 
-		err := resolver.ResolveIncludes(manifest, targetDir)
+		_, err := resolver.ResolveIncludes(manifest, targetDir)
 		if err != nil {
 			t.Fatalf("ResolveIncludes() error = %v", err)
 		}
@@ -508,7 +508,7 @@ func TestResolveIncludes(t *testing.T) {
 			Include: []config.Include{},
 		}
 
-		err := resolver.ResolveIncludes(manifest, targetDir)
+		_, err := resolver.ResolveIncludes(manifest, targetDir)
 		if err != nil {
 			t.Fatalf("ResolveIncludes() error = %v", err)
 		}
@@ -524,7 +524,7 @@ func TestResolveIncludes(t *testing.T) {
 			},
 		}
 
-		err := resolver.ResolveIncludes(manifest, targetDir)
+		_, err := resolver.ResolveIncludes(manifest, targetDir)
 		if err == nil {
 			t.Fatal("ResolveIncludes() should return error")
 		}

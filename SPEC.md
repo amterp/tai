@@ -1558,6 +1558,31 @@ This {{ will not }} be processed as a template variable.
 {% endverbatim %}
 ```
 
+**Sources that are not templates.** Content written for a target rather than
+for tai often contains `{#` (Markdown heading anchors such as
+`## Remote transport {#remote-transport}`) or `{{`, which the engine reads as
+template syntax. One parse error fails the whole install. A source declaring
+`template: false` installs its content as written:
+
+```yaml
+sources:
+  - name: vendor-skills
+    path: ~/src/vendor-skills
+    template: false
+```
+
+The opt-out follows the content, wherever it lands: the source's own assets, a
+file a skill includes from it with `from:`, and an asset inlined from it with
+`{% include_asset %}`. A skill from a templated source that includes a file
+from this one keeps templating its own files. A file asset's `dest` is still
+templated, since it is written in your config, not in the source.
+
+tai does not instead skip a file that fails to parse and install the rest. It
+would have to decide which sources are "not yours" to know when skipping is
+safe, and a skip installs content that differs from what the user asked for,
+silently unless someone reads the warning. A parse error stays fatal, like
+every other install error, and the fix is one line in `tai.yaml`.
+
 When installing, pass variables via the `--var` flag:
 
 ```bash

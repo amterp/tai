@@ -105,8 +105,8 @@ func (t *tagIncludeAsset) Execute(ctx *pongo2.ExecutionContext, writer pongo2.Te
 		return ctx.Error(fmt.Sprintf("include_asset %q: %v", t.ref, err), nil)
 	}
 
-	// If the included content has no template syntax, output it directly
-	if !HasTemplateSyntax(content) {
+	verbatim, _ := resolver.(VerbatimReporter)
+	if !HasTemplateSyntax(content) || (verbatim != nil && verbatim.IsVerbatim(t.ref)) {
 		_, writeErr := writer.WriteString(string(content))
 		if writeErr != nil {
 			return ctx.Error(fmt.Sprintf("include_asset %q: write error: %v", t.ref, writeErr), nil)

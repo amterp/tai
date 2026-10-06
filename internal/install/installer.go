@@ -137,7 +137,10 @@ type installContext struct {
 	adap           adapter.Adapter
 	targetDir      string
 	templateEngine *template.Engine
-	existingFiles  map[string]ManifestEntry
+
+	// untemplated names the sources that declared `template: false`.
+	untemplated   map[string]bool
+	existingFiles map[string]ManifestEntry
 
 	// existingConfigEntries is keyed by ConfigEntryKey, not by asset type.
 	// Collection types (hooks, MCP servers) hold many entries per type, so
@@ -270,16 +273,34 @@ func (i *Installer) buildInstallContext(adap adapter.Adapter, existing *Manifest
 		engine = template.NewEngine(mergedVars)
 	}
 
+	untemplated := make(map[string]bool)
+	for name, src := range i.sources {
+		if !src.Templated() {
+			untemplated[name] = true
+		}
+	}
+
 	return &installContext{
 		adap:                  adap,
 		targetDir:             adap.TargetDir(),
 		templateEngine:        engine,
+		untemplated:           untemplated,
 		existingFiles:         existingFiles,
 		existingConfigEntries: existingConfigEntries,
 		configFiles:           newConfigFileSet(),
 		consent:               make(map[string]bool),
 		opts:                  opts,
 	}
+}
+
+// engineFor returns the template engine for an asset's content, or nil when its
+// source opted out of templating. A file asset's dest is not covered: that is
+// written in the user's own config, not in the source.
+func (ctx *installContext) engineFor(asset *config.Asset) *template.Engine {
+	if ctx.untemplated[asset.SourceName] {
+		return nil
+	}
+	return ctx.templateEngine
 }
 
 // separateAssets splits assets into file assets and config assets.
@@ -434,7 +455,7 @@ func (i *Installer) resolveFileAsset(ctx *installContext, asset *config.Asset) (
 	fullTargetPath := filepath.Join(ctx.targetDir, targetPath)
 
 	// Resolve the asset with dryRun=true to prevent backup creation during phase 1
-	resolved, err := i.resolveAsset(workingAsset, targetPath, fullTargetPath, ctx.templateEngine, ctx.adap, true)
+	resolved, err := i.resolveAsset(workingAsset, targetPath, fullTargetPath, ctx.engineFor(asset), ctx.adap, true)
 	if err != nil {
 		return resolvedFileAsset{}, nil, fmt.Errorf("resolving asset %s: %w", workingAsset.SourcePath, err)
 	}
@@ -702,7 +723,7 @@ func (i *Installer) installFileAsset(ctx *installContext, ra resolvedFileAsset, 
 // then retaken from what was written, since includes and the adapter rewrite
 // its contents on the way in and the manifest must describe the installed copy.
 func (i *Installer) writeFileAsset(ctx *installContext, resolved *config.ResolvedAsset, path string) error {
-	if err := i.installAsset(resolved, path, ctx.adap, ctx.templateEngine); err != nil {
+	if err := i.installAsset(resolved, path, ctx.adap, ctx.engineFor(&resolved.Asset)); err != nil {
 		return err
 	}
 	if !resolved.IsDir {
@@ -927,7 +948,11 @@ func (i *Installer) configAssetContent(ctx *installContext, asset *config.Asset)
 	// No target path: {{ existing }} has no meaning for a config asset, whose
 	// output is entries merged into a shared document rather than a file whose
 	// prior content could be folded in.
-	rendered, err := ctx.templateEngine.Process(data, "")
+	engine := ctx.engineFor(asset)
+	if engine == nil {
+		return data, nil
+	}
+	rendered, err := engine.Process(data, "")
 	if err != nil {
 		return nil, fmt.Errorf("templating %s: %w", asset.Name, err)
 	}
@@ -1332,8 +1357,7 @@ func (i *Installer) resolveAsset(
 			return nil, err
 		}
 
-		// Check if templating is needed
-		if template.HasTemplateSyntax(content) {
+		if engine != nil && template.HasTemplateSyntax(content) {
 			resolved.IsTemplated = true
 
 			// If uses {{existing}}, prepare backup of the existing file
@@ -1528,6 +1552,7 @@ func (i *Installer) installSkillDirAsset(resolved *config.ResolvedAsset, fullTar
 	if err != nil {
 		return fmt.Errorf("loading skill manifest: %w", err)
 	}
+	var untemplated []string
 	if manifest != nil && len(manifest.Include) > 0 {
 		resolver := NewIncludeResolver(i.sources, i.httpClient)
 		resolver.SetCommandContext(CommandContext{
@@ -1537,14 +1562,18 @@ func (i *Installer) installSkillDirAsset(resolved *config.ResolvedAsset, fullTar
 			ManifestDir: resolved.SourcePath,
 			Version:     i.version,
 		})
-		if err := resolver.ResolveIncludes(manifest, fullTargetPath); err != nil {
+		untemplated, err = resolver.ResolveIncludes(manifest, fullTargetPath)
+		if err != nil {
 			return fmt.Errorf("resolving includes: %w", err)
 		}
 	}
 
 	// Template-process non-main files in the copied directory
-	if err := templateProcessDirFiles(fullTargetPath, engine, mainFileName); err != nil {
+	if err := templateProcessDirFiles(fullTargetPath, engine, append(untemplated, mainFileName)...); err != nil {
 		return err
+	}
+	if isExcludedPath(mainFileName, untemplated) {
+		engine = nil
 	}
 
 	// Detect field mapping for SKILL.md from includes
@@ -1797,17 +1826,13 @@ func validateDirTemplates(dirPath string, engine *template.Engine) error {
 }
 
 // templateProcessDirFiles walks a directory and applies template processing to
-// any files containing template syntax. Skips directories and excluded files.
-// Excluded files are matched by their path relative to dirPath (e.g. "SKILL.md"
-// excludes only a root-level file, not "subdir/SKILL.md").
-func templateProcessDirFiles(dirPath string, engine *template.Engine, excludeFiles ...string) error {
+// any files containing template syntax. Skips directories and excluded paths.
+// Excluded paths are relative to dirPath and cover everything beneath them
+// (e.g. "SKILL.md" excludes only a root-level file, not "subdir/SKILL.md",
+// while "refs" excludes the whole refs directory).
+func templateProcessDirFiles(dirPath string, engine *template.Engine, excludePaths ...string) error {
 	if engine == nil {
 		return nil
-	}
-
-	excludeSet := make(map[string]bool, len(excludeFiles))
-	for _, e := range excludeFiles {
-		excludeSet[e] = true
 	}
 
 	return filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
@@ -1822,7 +1847,7 @@ func templateProcessDirFiles(dirPath string, engine *template.Engine, excludeFil
 		if err != nil {
 			return err
 		}
-		if excludeSet[relPath] {
+		if isExcludedPath(relPath, excludePaths) {
 			return nil
 		}
 
@@ -1851,6 +1876,16 @@ func templateProcessDirFiles(dirPath string, engine *template.Engine, excludeFil
 
 		return os.WriteFile(path, processed, info.Mode().Perm())
 	})
+}
+
+// isExcludedPath reports whether rel is one of excludes or lies beneath one.
+func isExcludedPath(rel string, excludes []string) bool {
+	for _, e := range excludes {
+		if e == "." || rel == e || strings.HasPrefix(rel, e+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // copyDirExcluding copies a directory recursively, excluding files with names in excludes.

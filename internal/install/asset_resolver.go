@@ -12,8 +12,11 @@ import (
 	"github.com/amterp/tai/internal/template"
 )
 
-// Ensure AssetContentResolver implements template.ContentResolver.
-var _ template.ContentResolver = (*AssetContentResolver)(nil)
+// Ensure AssetContentResolver implements template.ContentResolver and VerbatimReporter.
+var (
+	_ template.ContentResolver  = (*AssetContentResolver)(nil)
+	_ template.VerbatimReporter = (*AssetContentResolver)(nil)
+)
 
 // AssetContentResolver resolves asset references to their body content,
 // stripping frontmatter. It implements template.ContentResolver.
@@ -33,6 +36,14 @@ var fileShapedAssetTypes = map[string]bool{
 	config.AssetTypeDelegate: true,
 	config.AssetTypeSkill:    true,
 	config.AssetTypeFile:     true,
+}
+
+// IsVerbatim reports whether ref names content from a source that declared
+// `template: false`.
+func (r *AssetContentResolver) IsVerbatim(ref string) bool {
+	sourceName, _ := config.ParseAssetReference(ref)
+	src, ok := r.sources[sourceName]
+	return ok && !src.Templated()
 }
 
 // ResolveAssetContent resolves an asset reference and returns its body content
