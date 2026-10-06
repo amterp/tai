@@ -199,6 +199,7 @@ This repo uses `kan` for task tracking (file-based kanban). Leave `.kan/` change
 - **AGENTS.md** (this file) - Architecture and development guidance for AI agents
 - **README.md** - User-facing documentation, installation, and usage
 - **SPEC.md** - Complete specification covering all features and design rationale
+- **docs/** - The user-facing docs site (Astro); pages under `docs/src/content/docs/`
 
 ### The Tai Skill
 
@@ -210,11 +211,14 @@ When making changes, update the relevant documentation:
 
 | Change Type | Update |
 |-------------|--------|
-| New/changed CLI commands | SPEC.md (command reference), README.md (usage examples), tai skill |
-| New concepts or terminology | SPEC.md (definitions), AGENTS.md (core concepts table), tai skill |
+| New/changed CLI commands | SPEC.md (command reference), README.md (usage examples), tai skill, docs site (`reference/cli.md`) |
+| New concepts or terminology | SPEC.md (definitions), AGENTS.md (core concepts table), tai skill, docs site (`concepts/`) |
 | Architecture changes | AGENTS.md (package structure, design decisions), SPEC.md |
-| New adapters or targets | AGENTS.md (adapter interface section), SPEC.md |
-| User-facing behavior | README.md, SPEC.md, tai skill |
-| Skill creation/includes | SPEC.md, tai skill |
+| New adapters or targets | AGENTS.md (adapter interface section), SPEC.md, docs site (`targets/`, `concepts/targets.md`) |
+| User-facing behavior | README.md, SPEC.md, tai skill, docs site |
+| Skill creation/includes | SPEC.md, tai skill, docs site (`reference/skill-includes.md`) |
+
+The docs site lives in `docs/src/content/docs/`. It repeats much of SPEC.md for users, so a
+behavior change usually has a stale copy there too: grep it for the old behavior.
 
 Documentation should be updated in the same commit as the code change, not deferred.
