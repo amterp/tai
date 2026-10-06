@@ -8,7 +8,7 @@
   "created_at_millis": 1769225985893,
   "updated_at_millis": 1769225985893,
   "column": "done",
-  "position": "Q!",
+  "position": "aN",
   "history": [
     {"field":"column","value":"done","at":1769225985893}
   ]

@@ -9,7 +9,7 @@
   "created_at_millis": 1769056050696,
   "updated_at_millis": 1769056199573,
   "column": "done",
-  "position": "f!",
+  "position": "aS",
   "history": [
     {"field":"column","value":"done","at":1769056050696}
   ]

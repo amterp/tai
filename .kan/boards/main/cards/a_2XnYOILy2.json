@@ -7,7 +7,7 @@
   "creator": "Alexander Terp",
   "description": "Gemini CLI has been discontinued, replaced by Google's Antigravity, so the gemini target no longer has anything to install into.\n\nRemove the target end to end rather than leaving it to rot:\n- the adapter (internal/adapter/gemini) and its registration in internal/adapter/adapter.go\n- gemini-specific branches in config types, state, config assets (hooks, MCP), and their tests (internal/install/gemini_test.go, plus gemini cases in mcp_test.go and hook_test.go)\n- docs: README, SPEC.md, AGENTS.md, the tai skill, and the docs site pages that list it as a target\n- 'gemini' as a valid target name in config validation, with a clear error for configs that still name it\n\nDownstream: tai-personal has a profiles/gemini.yaml that goes once this lands.\n\nAntigravity support is a separate card.",
   "id": "a_2XnYOILy2",
-  "position": "x",
+  "position": "a8",
   "title": "Remove Gemini CLI support",
   "type": "chore",
   "updated_at_millis": 1790542550271,

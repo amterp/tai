@@ -7,7 +7,7 @@
   "creator": "Alexander Terp",
   "description": "Installing a third-party skill pack (13 skills written for Claude Code, staged into a local source by the pack's own installer) prints one warning per skill:\n\n```\nskill \"\u003cname\u003e\": frontmatter field \"allowed-tools\" is not a tai field and was not installed - claude will not see it. Move it under 'native.claude' to pass it through in claude's own format.\n```\n\nand the skills install without their tool restriction. \"Move it under native.claude\" is not available for files tai doesn't own: honoring it means 13 patch files, each re-blessed on every upstream release, to restore a field Claude reads natively anyway. I accepted the loss, so every install now prints 13 warnings.\n\nSuggested, either:\n\n- Let a source (or a bundle entry) declare that its assets' unknown frontmatter is a given target's own, e.g. `native_frontmatter: claude` on the source in tai.yaml, and pass those fields through verbatim.\n- Or map the fields tai already knows a target reads (the tai skill lists Claude's: `disable-model-invocation`, `user-invocable`, `allowed-tools`, `effort`, `argument-hint`, `paths`, `hooks`) into `native.\u003ctarget\u003e` instead of dropping them. Dropping loses information tai could have forwarded.\n\n(Moved from GitHub issue #9.)",
   "id": "a_2cbwscxeP",
-  "position": "zl",
+  "position": "aB",
   "title": "Pass target-native frontmatter through for skills from a source you don't own",
   "type": "enhancement",
   "updated_at_millis": 1791253709063,

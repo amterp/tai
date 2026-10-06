@@ -17,7 +17,7 @@
     }
   ],
   "column": "done",
-  "position": "!!0",
+  "position": "a3",
   "history": [
     {"field":"column","value":"backlog-lo","at":1769056992396},
     {"field":"column","value":"done","at":1791253699686}
