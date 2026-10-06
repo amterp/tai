@@ -7,10 +7,19 @@
   "description": "maximum flexibility, but maybe not the kind we want?",
   "creator": "Alexander Terp",
   "created_at_millis": 1769141429246,
-  "updated_at_millis": 1769141440773,
-  "column": "uncomitted",
-  "position": "f!",
+  "updated_at_millis": 1791253699888,
+  "comments": [
+    {
+      "id": "c_2cbwdl6z1",
+      "body": "Stale: post_install hooks exist (documented in 4ee5e7a, may modify managed files since 54fc69a).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1791253699859
+    }
+  ],
+  "column": "done",
+  "position": "!!!7",
   "history": [
-    {"field":"column","value":"uncomitted","at":1769141429246}
+    {"field":"column","value":"uncomitted","at":1769141429246},
+    {"field":"column","value":"done","at":1791253699888}
   ]
 }

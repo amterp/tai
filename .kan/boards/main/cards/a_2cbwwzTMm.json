@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "support-settings",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1791253711777,
+  "creator": "Alexander Terp",
+  "description": "Wanted to set an env var (`CLAUDE_AFK_TIMEOUT_MS`) in Claude Code's `settings.json` `env` block on both my machines. Each machine has its own tai config repo, and both already import shared assets from a common personal repo via sources — but no asset type can carry a settings field, so the var had to be hand-edited into `settings.json` on each machine, outside tai.\n\nFrom scouting the code:\n\n- The config-asset machinery already merges single keys into `settings.json` non-destructively: `installConfigAsset` (`internal/install/installer.go`) + `SettingsKey` (`internal/adapter/claude/claude.go`). But `statusline` is the only asset type wired to it — `SettingsKey` returns `\"\"` for everything else.\n- A `file` asset can't fill the gap: it's a byte-for-byte copy, so owning `settings.json` wholesale would clobber machine-local state (hooks, enabled plugins, model) that legitimately differs per machine.\n\nOne option is a new config asset type (e.g. `settings`, or a narrower `env`) declaring fields to merge into the target's settings file, reusing the existing config-asset install/uninstall path. Define once in a shared repo, reference from each machine's repo like any other asset.\n\nAnother, escape-hatch-flavored option: allow a config repo to declare arbitrary scripts that run at the end of `tai install`, which could inject fields (or do whatever else) themselves. There's precedent for this shape in tai already — `command:` includes in skill `tai.yaml` manifests run an arbitrary argv with env like `TAI_DEST_DIR`. A post-install hook would be the same idea at repo/profile level. Less structured than a config asset (tai couldn't diff/uninstall what the script did), but it unblocks this and a whole class of similar needs without tai having to model each target's settings schema.\n\nOpen questions:\n\n- Merge/uninstall semantics — what happens on uninstall, or when a tai-managed key is later hand-edited?\n- Scope: env-only (simple, the actual use case) vs arbitrary settings fields (more useful, more collision surface)?\n- Cross-target story: `env` maps cleanly for Claude's `settings.json`; does it mean anything for Codex/Gemini/OpenCode, or do adapters skip it the way Gemini skips delegates?\n- If the script route: where do hooks live (profile? `tai.yaml`?), and do they run on every install or only when something changed?\n\n(Moved from GitHub issue #3.)",
+  "id": "a_2cbwwzTMm",
+  "position": "y",
+  "title": "Support settings fields (e.g. Claude env) as shareable config assets",
+  "type": "feature",
+  "updated_at_millis": 1791253711777,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791253711777}
+  ]
+}

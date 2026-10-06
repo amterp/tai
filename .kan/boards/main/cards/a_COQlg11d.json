@@ -7,10 +7,19 @@
   "description": "Implement MCP server definitions as config assets that merge into .mcp.json or ~/.claude.json. Includes YAML parsing, JSON merge logic, and manifest tracking.",
   "creator": "Alexander Terp",
   "created_at_millis": 1769056988049,
-  "updated_at_millis": 1769056988049,
-  "column": "backlog-lo",
-  "position": "8!",
+  "updated_at_millis": 1791253699412,
+  "comments": [
+    {
+      "id": "c_2cbwd0pSd",
+      "body": "Stale: shipped as the mcp config asset in ce5cb35, Codex support in fa102fe.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1791253699381
+    }
+  ],
+  "column": "done",
+  "position": "!!F",
   "history": [
-    {"field":"column","value":"backlog-lo","at":1769056988049}
+    {"field":"column","value":"backlog-lo","at":1769056988049},
+    {"field":"column","value":"done","at":1791253699412}
   ]
 }

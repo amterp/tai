@@ -7,10 +7,19 @@
   "description": "Extend manifest to track config_entries separately from files. Track type, name, target_file, scope, and checksum for surgical uninstall.",
   "creator": "Alexander Terp",
   "created_at_millis": 1769056991482,
-  "updated_at_millis": 1769056991482,
-  "column": "backlog-lo",
-  "position": "Z!",
+  "updated_at_millis": 1791253699617,
+  "comments": [
+    {
+      "id": "c_2cbwdKYbi",
+      "body": "Stale: the manifest tracks config entries since 5df11d9 (own config entries, not config keys).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1791253699585
+    }
+  ],
+  "column": "done",
+  "position": "!!1",
   "history": [
-    {"field":"column","value":"backlog-lo","at":1769056991482}
+    {"field":"column","value":"backlog-lo","at":1769056991482},
+    {"field":"column","value":"done","at":1791253699617}
   ]
 }

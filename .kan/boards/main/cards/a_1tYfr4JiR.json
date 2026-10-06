@@ -2,16 +2,25 @@
   "_v": 3,
   "alias": "post-install-hooks",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
+  "comments": [
+    {
+      "author": "Alexander Terp",
+      "body": "Stale: fixed in 54fc69a (post_install hooks may modify installed files; the manifest baseline is re-taken after the hook).",
+      "created_at_millis": 1791253699310,
+      "id": "c_2cbwctYG4"
+    }
+  ],
   "created_at_millis": 1784596553588,
   "creator": "Alexander Terp",
   "description": "Hit while wiring `memri` into the `default` profile: `memri install claude-code` appends an `@import` line to `~/.claude/CLAUDE.md`, which tai renders from `assets/files/AGENTS.md`. Running that from `post_install` leaves the file permanently in conflict.\n\nThe manifest is written during install; the hook runs after (`cmd/tai/main.go:824` - `runPostInstallHook`, whose comment notes \"files and manifest are already in place\"). Conflict detection then compares the on-disk file against that pre-hook checksum (`internal/install/installer.go:940`):\n\n```\ninstall writes CLAUDE.md   -\u003e checksum recorded\npost_install mutates it    -\u003e on-disk now differs from manifest\nnext install               -\u003e \"file modified since last install\"\n```\n\nSo any hook touching a managed file makes that file conflict on *every* subsequent install. The escape is `--force` on every run, which is worse than it sounds: normalizing `--force` silently disarms conflict detection for genuinely hand-edited files elsewhere. `--skip-conflicts` isn't a substitute - it leaves the file stale, so real source changes stop landing.\n\nNot memri-specific - the same applies to any hook that formats, injects machine-local config, or otherwise post-processes a managed file.\n\nOne option is to re-checksum managed entries after the hook returns and persist that as the baseline. `ComputeFileChecksum` / `ComputeDirChecksum` already exist, and untouched files re-hash to the same value, so refreshing everything is equivalent to refreshing only what changed - no tracking needed.\n\nProbably worth refreshing only on hook *success*. A hook that mutated a file and then failed leaves a partial edit, and that's a conflict worth surfacing rather than baselining.\n\nTrade-off to weigh: this deliberately stops tai flagging hook-caused changes. That's the false positive being removed, but it also means a buggy hook's edits get accepted silently. Damage stays transient since install re-renders from source each run.\n\nOpen: the docs currently frame `post_install` as \"side effects only\", which implies hooks shouldn't touch managed files at all. If that stays the intended contract, the alternative is to say so explicitly and have the CLAUDE.md line come from the source asset instead - at the cost of hardcoding memri's internal nudge path in tai config.",
   "id": "a_1tYfr4JiR",
-  "position": "ucU",
+  "position": "!!V",
   "title": "post_install hooks that modify managed files conflict on every install",
   "type": "bug",
-  "updated_at_millis": 1784596553588,
+  "updated_at_millis": 1791253699342,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1784596553588}
+    {"field":"column","value":"backlog-hi","at":1784596553588},
+    {"field":"column","value":"done","at":1791253699342}
   ]
 }

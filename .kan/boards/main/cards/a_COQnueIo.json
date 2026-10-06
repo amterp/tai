@@ -7,10 +7,19 @@
   "description": "Implement hook definitions as config assets that merge into settings.json files. Includes YAML parsing, JSON merge into hooks.{EventName} arrays, and manifest tracking.",
   "creator": "Alexander Terp",
   "created_at_millis": 1769056989428,
-  "updated_at_millis": 1769056989428,
-  "column": "backlog-lo",
-  "position": "H!",
+  "updated_at_millis": 1791253699477,
+  "comments": [
+    {
+      "id": "c_2cbwd6lnV",
+      "body": "Stale: shipped as the hook config asset in 92e5fbf.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1791253699449
+    }
+  ],
+  "column": "done",
+  "position": "!!7",
   "history": [
-    {"field":"column","value":"backlog-lo","at":1769056989428}
+    {"field":"column","value":"backlog-lo","at":1769056989428},
+    {"field":"column","value":"done","at":1791253699477}
   ]
 }

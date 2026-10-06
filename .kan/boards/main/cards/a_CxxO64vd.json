@@ -6,10 +6,19 @@
   "title": "better understand how we'd *theoretically* install into other targets e.g. codex",
   "creator": "Alexander Terp",
   "created_at_millis": 1769141656756,
-  "updated_at_millis": 1769141656756,
-  "column": "backlog-hi",
-  "position": "Zf",
+  "updated_at_millis": 1791253699820,
+  "comments": [
+    {
+      "id": "c_2cbwdfCdq",
+      "body": "Stale: the Codex adapter exists (internal/adapter/codex).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1791253699792
+    }
+  ],
+  "column": "done",
+  "position": "!!!F",
   "history": [
-    {"field":"column","value":"backlog-hi","at":1769141656756}
+    {"field":"column","value":"backlog-hi","at":1769141656756},
+    {"field":"column","value":"done","at":1791253699820}
   ]
 }

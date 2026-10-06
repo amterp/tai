@@ -7,10 +7,19 @@
   "description": "Add SupportedAssetTypes(), ConfigAssetTypes(), MergeConfigAsset(), and RemoveConfigAsset() to adapter interface. Implement for Claude adapter.",
   "creator": "Alexander Terp",
   "created_at_millis": 1769056992396,
-  "updated_at_millis": 1769056992396,
-  "column": "backlog-lo",
-  "position": "i!",
+  "updated_at_millis": 1791253699686,
+  "comments": [
+    {
+      "id": "c_2cbwdRKoU",
+      "body": "Stale: config assets go through the adapter interface (internal/configasset).",
+      "author": "Alexander Terp",
+      "created_at_millis": 1791253699657
+    }
+  ],
+  "column": "done",
+  "position": "!!0",
   "history": [
-    {"field":"column","value":"backlog-lo","at":1769056992396}
+    {"field":"column","value":"backlog-lo","at":1769056992396},
+    {"field":"column","value":"done","at":1791253699686}
   ]
 }
