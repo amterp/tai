@@ -16,8 +16,9 @@ import (
 // short enough that debris does not survive a working session.
 const staleBackupAge = 30 * time.Minute
 
-// SwapInto replaces dest with staging as atomically as the filesystem allows.
-// An existing dest is first renamed aside rather than removed, so a failure
+// SwapInto replaces dest with staging, a directory or a file, as atomically as
+// the filesystem allows. An existing dest is first renamed aside rather than
+// removed, so a failure
 // mid-swap restores the previous state instead of destroying it - callers
 // rely on "fetch failed, previous content intact". os.Rename is atomic on
 // POSIX within a single filesystem; on EXDEV we fall back to recursive
@@ -88,7 +89,11 @@ func SwapInto(staging, dest string) error {
 	// them. Harmless in practice - the install-time copy paths reject
 	// symlinks anyway, so they never reach a target either way - but scripts
 	// should not rely on symlinks surviving a fetch.
-	if err := pathutil.CopyDir(staging, dest); err != nil {
+	copyStaging := pathutil.CopyDir
+	if info, err := os.Stat(staging); err == nil && !info.IsDir() {
+		copyStaging = pathutil.CopyFile
+	}
+	if err := copyStaging(staging, dest); err != nil {
 		restoreOld()
 		return fmt.Errorf("cross-fs copy: %w", err)
 	}

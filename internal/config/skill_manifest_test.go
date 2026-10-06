@@ -109,19 +109,19 @@ func TestIncludeValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "command dest cannot be skill root .",
+			name:    "command dest can be skill root .",
 			include: Include{Command: []string{"echo"}, Dest: "."},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
-			name:    "command dest cannot be skill root ./",
+			name:    "command dest can be skill root ./",
 			include: Include{Command: []string{"echo"}, Dest: "./"},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
-			name:    "command dest cannot be skill root /",
+			name:    "command dest can be skill root /",
 			include: Include{Command: []string{"echo"}, Dest: "/"},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name:    "command include rejects fields",

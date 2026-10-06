@@ -783,23 +783,43 @@ func TestResolveCommandInclude(t *testing.T) {
 		}
 	})
 
-	t.Run("dest pointing at skill root rejected by runtime", func(t *testing.T) {
-		// Validate() would normally reject this, but the resolver's own
-		// computeCommandDestPath also guards against it - exercising that
-		// backstop guards against future validation bypasses or callers that
-		// skip Validate().
-		targetDir := t.TempDir()
-		resolver := NewIncludeResolver(nil, nil)
+	t.Run("dest at skill root merges into the skill", func(t *testing.T) {
+		for _, dest := range []string{".", "./", "/"} {
+			targetDir := t.TempDir()
+			resolver := NewIncludeResolver(nil, nil)
 
-		for _, dest := range []string{".", "./", ""} {
+			if err := os.WriteFile(filepath.Join(targetDir, "SKILL.md"), []byte("old"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(targetDir, "keep.md"), []byte("keep"), 0644); err != nil {
+				t.Fatal(err)
+			}
+
 			inc := config.Include{
-				Command: []string{"sh", "-c", `printf 'x' > "$TAI_DEST_DIR/out"`},
+				Command: []string{"sh", "-c", `printf 'new' > "$TAI_DEST_DIR/SKILL.md" && mkdir "$TAI_DEST_DIR/refs" && printf 'r' > "$TAI_DEST_DIR/refs/r.md"`},
 				Dest:    dest,
 			}
-			err := resolver.resolveCommandInclude(inc, targetDir)
-			if err == nil {
-				t.Errorf("dest %q should be rejected at runtime", dest)
+			if err := resolver.resolveCommandInclude(inc, targetDir); err != nil {
+				t.Fatalf("dest %q: resolveCommandInclude() error = %v", dest, err)
 			}
+
+			for file, want := range map[string]string{"SKILL.md": "new", "keep.md": "keep", "refs/r.md": "r"} {
+				if got := string(mustReadFile(t, filepath.Join(targetDir, file))); got != want {
+					t.Errorf("dest %q: %s = %q, want %q", dest, file, got, want)
+				}
+			}
+		}
+	})
+
+	t.Run("empty dest rejected by runtime", func(t *testing.T) {
+		// Validate() would normally reject this; the resolver guards it too,
+		// for callers that skip Validate().
+		resolver := NewIncludeResolver(nil, nil)
+		inc := config.Include{
+			Command: []string{"sh", "-c", `printf 'x' > "$TAI_DEST_DIR/out"`},
+		}
+		if err := resolver.resolveCommandInclude(inc, t.TempDir()); err == nil {
+			t.Error("empty dest should be rejected at runtime")
 		}
 	})
 

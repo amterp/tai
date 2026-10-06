@@ -15,6 +15,11 @@ import (
 // the staging directory's contents are atomically swapped into the include's
 // final destination. On failure, the staging directory is preserved for
 // debugging and its path is included in the returned error.
+//
+// A dest at the skill root is merged rather than swapped: each file or
+// directory the command wrote replaces the same path in the skill, and the
+// rest of the skill stays. Swapping would replace the whole skill with the
+// command's output; merging is what lets a command produce SKILL.md itself.
 func (r *IncludeResolver) resolveCommandInclude(inc config.Include, targetSkillPath string) error {
 	// Compute the final destination first so we fail fast on path-traversal
 	// before spending time running the script.
@@ -23,7 +28,7 @@ func (r *IncludeResolver) resolveCommandInclude(inc config.Include, targetSkillP
 		return err
 	}
 
-	return cmdexec.FetchInto(cmdexec.Spec{
+	spec := cmdexec.Spec{
 		Argv:    inc.Command,
 		Timeout: inc.ResolvedTimeout(),
 		Env: map[string]string{
@@ -33,20 +38,22 @@ func (r *IncludeResolver) resolveCommandInclude(inc config.Include, targetSkillP
 			"TAI_MANIFEST_DIR": r.cmdCtx.ManifestDir,
 			"TAI_VERSION":      r.cmdCtx.Version,
 		},
-	}, destPath, "")
+	}
+	if destPath == targetSkillPath {
+		return cmdexec.MergeInto(spec, destPath)
+	}
+	return cmdexec.FetchInto(spec, destPath, "")
 }
 
 // computeCommandDestPath resolves the final dest path for a command include,
-// applying the same path-traversal guards as the URL/source paths. Validate
-// already rejects dest values that resolve to the skill root (".", "/", etc.)
-// - this is the runtime backstop.
+// applying the same path-traversal guards as the URL/source paths. A dest at
+// the skill root (".", "./", "/") resolves to targetSkillPath itself.
 func (r *IncludeResolver) computeCommandDestPath(dest, targetSkillPath string) (string, error) {
-	cleaned := strings.TrimRight(dest, "/")
-	if cleaned == "" || filepath.Clean(cleaned) == "." {
-		return "", fmt.Errorf("dest %q resolves to the skill root; choose a subdirectory (e.g. refs/)", dest)
+	if dest == "" {
+		return "", fmt.Errorf("include with 'command' requires 'dest'")
 	}
-	destPath := filepath.Join(targetSkillPath, cleaned)
-	if !pathutil.IsContainedIn(destPath, targetSkillPath) || destPath == targetSkillPath {
+	destPath := filepath.Join(targetSkillPath, strings.TrimRight(dest, "/"))
+	if !pathutil.IsContainedIn(destPath, targetSkillPath) {
 		return "", fmt.Errorf("destination %q escapes skill directory (path traversal not allowed)", dest)
 	}
 	return destPath, nil

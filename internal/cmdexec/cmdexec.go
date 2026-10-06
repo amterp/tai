@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -55,18 +56,55 @@ func Run(spec Spec) error {
 // under - pass a directory on the same filesystem as dest to guarantee the
 // swap is a true atomic rename. When empty, the system temp dir is used.
 func FetchInto(spec Spec, dest, stagingParent string) error {
+	staging, err := stage(spec, stagingParent)
+	if err != nil {
+		return err
+	}
+	if err := SwapInto(staging, dest); err != nil {
+		return fmt.Errorf("swapping staging into %q (staging: %s): %w", dest, staging, err)
+	}
+	return nil
+}
+
+// MergeInto runs the command like FetchInto, but swaps each top-level entry
+// the command wrote into dest individually, leaving every other entry of dest
+// in place. It is for a dest that already holds content the command must add
+// to rather than replace - a skill's root directory, say. Each entry is
+// replaced atomically; the merge as a whole is not, so a failure partway can
+// leave earlier entries replaced.
+func MergeInto(spec Spec, dest string) error {
+	staging, err := stage(spec, "")
+	if err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(staging)
+	if err != nil {
+		return fmt.Errorf("reading staging dir %q: %w", staging, err)
+	}
+	for _, e := range entries {
+		if err := SwapInto(filepath.Join(staging, e.Name()), filepath.Join(dest, e.Name())); err != nil {
+			return fmt.Errorf("merging %q into %q (staging: %s): %w", e.Name(), dest, staging, err)
+		}
+	}
+	return os.Remove(staging)
+}
+
+// stage runs the command with a fresh staging directory exposed via
+// TAI_DEST_DIR and returns that directory once the command has written
+// something into it.
+func stage(spec Spec, stagingParent string) (string, error) {
 	var staging string
 	var err error
 	if stagingParent != "" {
 		if err = os.MkdirAll(stagingParent, 0755); err != nil {
-			return fmt.Errorf("creating staging parent: %w", err)
+			return "", fmt.Errorf("creating staging parent: %w", err)
 		}
 		staging, err = os.MkdirTemp(stagingParent, "tai-fetch-*")
 	} else {
 		staging, err = os.MkdirTemp("", "tai-fetch-*")
 	}
 	if err != nil {
-		return fmt.Errorf("creating staging dir: %w", err)
+		return "", fmt.Errorf("creating staging dir: %w", err)
 	}
 	// Staging is consumed by the swap on success; on failure we leave it for
 	// debugging and surface the path in the error.
@@ -78,7 +116,7 @@ func FetchInto(spec Spec, dest, stagingParent string) error {
 	env["TAI_DEST_DIR"] = staging
 
 	if err := execute(spec, BuildEnv(env), staging); err != nil {
-		return err
+		return "", err
 	}
 
 	// Verify the script actually produced output. Silent zero-output success
@@ -86,17 +124,13 @@ func FetchInto(spec Spec, dest, stagingParent string) error {
 	// contract.
 	empty, err := isDirEmpty(staging)
 	if err != nil {
-		return fmt.Errorf("inspecting staging dir %q: %w", staging, err)
+		return "", fmt.Errorf("inspecting staging dir %q: %w", staging, err)
 	}
 	if empty {
-		return fmt.Errorf("command %v exited 0 but wrote no files; scripts must write into $TAI_DEST_DIR (= %s)",
+		return "", fmt.Errorf("command %v exited 0 but wrote no files; scripts must write into $TAI_DEST_DIR (= %s)",
 			redactArgv(spec.Argv), staging)
 	}
-
-	if err := SwapInto(staging, dest); err != nil {
-		return fmt.Errorf("swapping staging into %q (staging: %s): %w", dest, staging, err)
-	}
-	return nil
+	return staging, nil
 }
 
 // execute runs the command with the given env. staging, when non-empty, is

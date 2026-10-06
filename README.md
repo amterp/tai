@@ -613,6 +613,11 @@ include:
       - -c
       - "glab api 'projects/123/repository/files/foo%2Fbar/raw?ref=main' > $TAI_DEST_DIR/foo.md"
     dest: refs/          # final location inside the installed skill
+
+  # A dest of ./ merges the output into the skill root instead of replacing
+  # it, so a command can generate the skill's own SKILL.md.
+  - command: ["sh", "-c", "mytool skill > \"$TAI_DEST_DIR/SKILL.md\""]
+    dest: ./
 ```
 
 > Note: tai runs `command` directly, with no shell - wrap in `["sh", "-c", "..."]`

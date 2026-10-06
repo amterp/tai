@@ -2342,3 +2342,34 @@ func TestDirAssetTemplateErrorCaughtInPhase1(t *testing.T) {
 		t.Error("good-skill should not be installed when bad-skill fails in Phase 1")
 	}
 }
+
+// A CLI that prints its own skill is the natural source for SKILL.md, so a
+// command include must be able to write the skill's main file - and have it
+// transformed like any other SKILL.md.
+func TestInstallerSkillMdFromCommandInclude(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	skillDir := filepath.Join(env.ConfigRepo, "assets", "skills", "gen")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, SkillManifestFilename), []byte(`include:
+  - command: ["sh", "-c", "printf -- '---\\nname: gen\\ndescription: Generated\\n---\\n\\n# Gen\\n' > \"$TAI_DEST_DIR/SKILL.md\""]
+    dest: ./
+`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	assets := []*config.Asset{
+		{Type: "skill", Name: "gen", SourceName: "local", SourcePath: skillDir, IsDir: true},
+	}
+	if _, err := installer.Install(adapter, "test-profile", assets, InstallOptions{}); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	content := env.ReadTargetFile("skills/gen/SKILL.md")
+	expected := "---\nname: gen\ndescription: Generated\n---\n\n# Gen\n"
+	if content != expected {
+		t.Errorf("content = %q, want %q", content, expected)
+	}
+}

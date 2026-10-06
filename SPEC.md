@@ -1875,6 +1875,23 @@ For each `command:` include:
 4. On success with non-empty output, tai removes any existing content at the
    final `dest` and atomically renames the staging dir into place
    (cross-filesystem fallback: recursive copy + remove).
+
+   A `dest` at the skill root (`./`) is merged instead: each file or
+   directory the script wrote replaces the same path in the skill, one atomic
+   swap per entry, and everything else in the skill stays. This is how a
+   command produces the skill's own `SKILL.md` - for example a CLI that prints
+   its skill text:
+
+   ```yaml
+   include:
+     - command: ["sh", "-c", "mytool skill > \"$TAI_DEST_DIR/SKILL.md\""]
+       dest: ./
+   ```
+
+   The generated SKILL.md is then transformed like any other. Replacing the
+   root wholesale is never what a script means, since it would delete every
+   other file in the skill; a merge that fails partway can leave earlier
+   entries replaced, and the install then fails and removes the skill.
 5. On failure (nonzero exit, timeout, empty output, swap failure) tai leaves
    the staging dir in place and surfaces its path plus the script's stderr
    tail in the returned error. The previous install state is untouched.

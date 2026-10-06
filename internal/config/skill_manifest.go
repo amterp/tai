@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -75,12 +74,6 @@ func (i *Include) Validate() error {
 		}
 		if i.Dest == "" {
 			return fmt.Errorf("include with 'command' requires 'dest'")
-		}
-		// Reject dest values that resolve to the skill root itself - swapping
-		// the staging dir into place would otherwise wipe the just-copied
-		// skill contents (including SKILL.md).
-		if cleanedDest := filepath.Clean(strings.TrimRight(i.Dest, "/")); cleanedDest == "." || cleanedDest == "" {
-			return fmt.Errorf("include 'dest' %q resolves to the skill root; choose a subdirectory (e.g. refs/)", i.Dest)
 		}
 		// 'fields' is a frontmatter-remap feature for source-based includes
 		// of SKILL.md - meaningless and silently ignored otherwise.
