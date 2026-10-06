@@ -1854,6 +1854,15 @@ For each `command:` include:
    the staging dir in place and surfaces its path plus the script's stderr
    tail in the returned error. The previous install state is untouched.
 
+`--dry-run` runs command includes too. A dry run builds each skill directory
+in a scratch directory and discards it, because the manifest records the
+checksum of the built directory: without building it, the preview cannot tell
+an unchanged skill from an updated one, nor report the frontmatter fields its
+SKILL.md would drop. The script's output never reaches the target, but
+anything else the script does happens during a preview as well. This differs
+from command *sources*, which a dry run never fetches, because fetching one
+replaces tai's cached copy of the source.
+
 #### Environment variables injected
 
 All `TAI_*` variables are always set (possibly to empty string), so scripts

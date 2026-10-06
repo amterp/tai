@@ -872,6 +872,10 @@ contents as the include's output and atomically swaps them into `dest` on
 success. Empty output is an error; non-zero exit or timeout is an error and
 preserves the staging dir for debugging.
 
+`--dry-run` runs command includes as well, building the skill in a scratch
+directory it then discards, so a script should have no effects beyond writing
+to `$TAI_DEST_DIR`.
+
 Env vars injected for the script (all always set, possibly to empty string,
 so `set -u` is safe):
 
