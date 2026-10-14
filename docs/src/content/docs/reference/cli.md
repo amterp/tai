@@ -185,7 +185,7 @@ tai show profile <name>
 |----------|----------|-------------|
 | `name` | yes | Profile name to inspect |
 
-Resolves all bundles and displays the final asset list with source information.
+Resolves all bundles and displays the final asset list with source information, then the [post_install](/tai/reference/profile-format/#post_install) steps an install would run, in order, including those its bundles declare.
 
 ```
 Profile: work
@@ -197,6 +197,10 @@ Assets:  5
   delegate/code-reviewer.md (local)
   skill/council-participant (local)
   file/CLAUDE.md (local)
+
+Post-install steps:
+  "render" from bundle "work-shared:approval": ./scripts/render-approval.sh
+  "notify": ./scripts/after-install.sh
 ```
 
 ### tai show bundle
@@ -211,7 +215,7 @@ tai show bundle <name>
 |----------|----------|-------------|
 | `name` | yes | Bundle name to inspect, optionally source-qualified (`source:name`) |
 
-Resolves nested bundles and shows the flattened asset list.
+Resolves nested bundles and shows the flattened asset list, followed by any post_install steps the bundle and its includes declare.
 
 ```
 Bundle:      full-setup

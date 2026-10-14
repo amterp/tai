@@ -130,6 +130,24 @@ Tai detects circular bundle references and fails immediately with a clear error.
 
 This follows tai's fail-fast philosophy - a configuration error should produce a loud failure, not a silent loop or partial install.
 
+## Post-install steps
+
+A bundle that does nothing until a command runs can carry that command itself, so every profile installing the bundle doesn't have to repeat it:
+
+```yaml
+# bundles/approval.yaml
+name: approval
+assets:
+  - type: file
+    path: assets/files/approval-policy.yaml
+    dest: ""
+post_install:
+  - name: render
+    command: [./scripts/render-approval.sh]
+```
+
+The step runs after any install that includes the bundle, once even if the bundle is reached through several imports, and before the profile's own steps. It runs in the root of the repo the bundle came from, so the script path works whichever repo imports it. See [post_install](/tai/reference/bundle-format/#post_install) for the details.
+
 ## Complete example
 
 ```yaml

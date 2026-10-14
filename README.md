@@ -130,6 +130,12 @@ assets:
 # Bundles can include other bundles
 bundles:
   - base-setup
+
+# Optional: steps run after any install including this bundle, from this
+# repo's root, so profiles don't each repeat them
+post_install:
+  - name: render
+    command: [./scripts/render-approval.sh]
 ```
 
 Reference assets from other sources with `source:path` syntax in the path field:
@@ -172,11 +178,12 @@ post_install:
 ```
 
 `post_install` steps get `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`,
-`TAI_MANIFEST_DIR`, and `TAI_VERSION` in their env. They may modify files tai
-installed - after each step that succeeds, tai re-baselines the checksums of
-the files it changed so those edits don't show up as conflicts on the next
-install. A failed step's edits are not re-baselined. See SPEC.md for the full
-contract.
+`TAI_MANIFEST_DIR`, `TAI_SOURCE_DIR`, and `TAI_VERSION` in their env. Steps
+declared by bundles run first, once each, then the profile's own. They may
+modify files tai installed - after each step that succeeds, tai re-baselines
+the checksums of the files it changed so those edits don't show up as conflicts
+on the next install. A failed step's edits are not re-baselined. See SPEC.md
+for the full contract.
 
 Note these are tai's own install-time commands, and are unrelated to the `hook`
 asset type, which installs commands the *target* runs during a session.

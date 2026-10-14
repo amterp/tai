@@ -35,6 +35,7 @@ assets:
 | `description` | string | no | Human-readable description of the bundle's purpose. |
 | `bundles` | list | no | Other bundles to include; see [entry forms](#entry-forms). |
 | `assets` | list of [asset entries](#asset-entry-format) | no | Individual asset references. |
+| `post_install` | list of steps | no | Commands run after any install that includes this bundle. See [post_install](#post_install). |
 
 A bundle must have at least one of `bundles` or `assets` to be useful, but neither is strictly required by validation.
 
@@ -187,6 +188,31 @@ bundles:
   - overrides
 ```
 
+## post_install
+
+Optional. Steps that run after any install whose resolved set includes this bundle, for a bundle that does nothing until a command runs - a policy file a script has to render, a tool that has to register itself. Declaring the step on the bundle means profiles don't each have to repeat it.
+
+```yaml
+name: approval
+assets:
+  - type: file
+    path: assets/files/approval-policy.yaml
+    dest: ""
+post_install:
+  - name: render
+    command: [./scripts/render-approval.sh]
+    timeout: 1m
+```
+
+Steps take the same fields as a [profile's steps](/tai/reference/profile-format/#post_install): `name`, `command`, and optional `timeout`. A bundle must use the list of named steps; the plain argv shorthand is rejected.
+
+- **Working directory.** A bundle step runs in the root of the repo the bundle came from - the directory holding its `bundles/` dir - so `./scripts/render-approval.sh` names a script shipped beside the bundle, whichever repo imports it. For an imported bundle that is the source's root, or its patched view or fetched cache where those apply. The step also sees that path as `TAI_SOURCE_DIR`.
+- **Order.** Bundle steps run before the profile's own steps, in bundle resolution order: an included bundle's steps before those of the bundle including it.
+- **Once per install.** A bundle reached through two imports runs its steps once; a step is identified by its bundle plus its name. Output names the bundle each step came from, as in `post_install step "render" from bundle "work:approval"`.
+- **Timeouts.** A step uses its own `timeout`, then `30s`. A profile's `post_install_timeout` does not apply to bundle steps.
+
+`tai show bundle` and `tai show profile` list the steps that would run. A profile cannot yet opt out of a bundle's step, so importing a bundle means trusting its steps to run on your machine at install.
+
 ## Validation rules
 
 Tai validates bundles on load and fails fast if:
@@ -198,3 +224,5 @@ Tai validates bundles on load and fails fast if:
 - A `dest` value is an absolute path or contains path traversal (`..`)
 - A `bundles` entry has no name, or names a source but no bundle
 - A `bundles` entry's `exclude` pattern is empty, absolute, or contains an interior `**`
+- `post_install` is a plain argv list rather than a list of named steps
+- A `post_install` step is missing `name` or `command`, repeats another step's `name`, has an unknown field, or has an invalid `timeout`

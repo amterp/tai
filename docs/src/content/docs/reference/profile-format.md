@@ -184,9 +184,9 @@ A plain argv list is shorthand for one unnamed step, and was the only form befor
 post_install: [./scripts/after-install.sh]
 ```
 
-Every step sees the inherited user environment plus `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, and `TAI_VERSION` (always set, so `set -u` scripts are safe). `TAI_TARGET_DIR` is where the target's files were installed, such as `~/.claude`. Steps do not run on `--dry-run` or when the install fails.
+Every step sees the inherited user environment plus `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, `TAI_SOURCE_DIR`, and `TAI_VERSION` (always set, so `set -u` scripts are safe). `TAI_TARGET_DIR` is where the target's files were installed, such as `~/.claude`. `TAI_SOURCE_DIR` is the config repo's root for a profile's steps. Profile steps run in the directory tai was run from. Steps do not run on `--dry-run` or when the install fails.
 
-Steps run in order, and each one runs whether or not earlier steps failed. A failing step does not undo the install - files and manifest are already in place. Tai prints each failure with a tail of its stderr, runs the remaining steps, lists the steps that failed, reports the install as succeeded, and exits nonzero.
+Bundles can declare [steps of their own](/tai/reference/bundle-format/#post_install). Those run first, and the profile's steps run last. Steps run in order, and each one runs whether or not earlier steps failed. A failing step does not undo the install - files and manifest are already in place. Tai prints each failure with a tail of its stderr, runs the remaining steps, lists the steps that failed, reports the install as succeeded, and exits nonzero.
 
 A step may modify files tai installed. After each step that succeeds, tai records the new checksums of the files that step changed, so its edits are not reported as conflicts on the next install. A failed step's edits are not recorded: the next install reports those files as conflicts, since a step that failed partway may have left a partial edit. Prefer separate steps over chaining commands in one `sh -c`, so one failing command does not hold back the others.
 

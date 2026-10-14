@@ -402,6 +402,23 @@ assets:
     path: assets/personas/brainstormer.md
 ```
 
+```yaml
+# my-tai-config/bundles/approval.yaml
+name: approval
+description: Auto-approval policy, rendered after install
+
+assets:
+  - type: file
+    path: assets/files/approval-policy.yaml
+    dest: ""
+
+# Steps any install including this bundle runs afterwards, so profiles don't
+# have to repeat them. Run from this repo's root. See Post-Install Hooks.
+post_install:
+  - name: render
+    command: [./scripts/render-approval.sh]
+```
+
 #### Importing Bundles From Other Sources
 
 A `bundles:` entry may name a source, importing that bundle from the source's
@@ -521,22 +538,62 @@ post_install_timeout: 1m  # optional, default 30s; applies to each step
 `post_install` runs only after the install completes (never on dry-run, never
 when the install itself failed). Every step's command sees the inherited user
 env plus `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`,
-and `TAI_VERSION` - all always set, so `set -u` scripts are safe.
-`TAI_TARGET_DIR` is where the target's files were installed (e.g.
+`TAI_SOURCE_DIR`, and `TAI_VERSION` - all always set, so `set -u` scripts are
+safe. `TAI_TARGET_DIR` is where the target's files were installed (e.g.
 `~/.claude`), so hooks can find what they need to post-process.
+`TAI_SOURCE_DIR` is the root of the repo that declared the step: the config
+repo for a profile's steps, the bundle's repo for a bundle's (below).
 
 `post_install` takes one of two forms:
 
 - **A list of steps**, each a mapping with `name`, `command` (an argv list,
   run with no shell), and optional `timeout`. Names are required and must be
-  unique within the profile; reports refer to steps by name. A step's
+  unique within the profile or bundle; reports refer to steps by name. A step's
   timeout falls back to `post_install_timeout`, then to 30s. Unknown fields
   in a step are an error, so a misspelled `timeout` cannot silently fall back
   to the default.
 - **A plain argv list**, shorthand for one unnamed step. This was the only
   form before steps existed, and its output is unchanged.
 
-A list that mixes strings and steps is an error.
+A list that mixes strings and steps is an error. Bundles accept only the list
+of steps.
+
+##### Steps Declared by Bundles
+
+A bundle can declare `post_install` steps too, for a bundle that does nothing
+until a command runs - a policy file a script has to render, a tool that has
+to register itself. Its steps run after any install whose resolved set
+includes the bundle, so profiles don't each have to repeat them.
+
+- **Order.** Bundle steps run first, in bundle resolution order: an included
+  bundle's steps before those of the bundle including it, and each bundle's
+  steps in the order written. The profile's own steps run last, since the
+  profile is the most specific layer and may build on what a bundle set up.
+- **Once per install.** A step is identified by its bundle's qualified name
+  plus the step name, so a bundle reached through two imports runs its steps
+  once. A bundle step and a profile step with the same name are different
+  steps, and output names the bundle a step came from:
+  `post_install step "render" from bundle "work:approval"`.
+- **Working directory.** A bundle step runs in the root of the repo the
+  bundle came from: the directory holding the `bundles/` dir it was loaded
+  from. For the config repo's own bundles that is the config repo; for an
+  imported bundle it is the source's content root - its patched view or
+  fetched cache where those apply. `TAI_SOURCE_DIR` holds the same path. A
+  command such as `./scripts/render.sh` therefore names a script shipped
+  beside the bundle, whichever repo imports it. Profile steps run in tai's own
+  working directory.
+- **Timeouts.** A bundle step uses its own `timeout`, then 30s. A profile's
+  `post_install_timeout` does not apply, since the bundle's author cannot see
+  the profiles that import it.
+
+`tai install --dry-run` lists every step it would run with its origin, and
+`tai show profile` and `tai show bundle` list each step's command. There is no
+way yet for a profile to opt out of a bundle's step.
+
+Importing a bundle means trusting its steps to run on your machine at install.
+That is not a new kind of trust: an imported bundle could already ship hook
+assets and skill scripts that the target runs. Bundle steps change when that
+code runs, not whether it can.
 
 Steps run in order, and each one runs whether or not earlier steps failed.
 Before steps existed, profiles chained commands inside one `sh -c`, so one
@@ -2434,7 +2491,7 @@ Items considered during design but explicitly deferred. These inform future deve
 **Future scope:** `--strict` mode that fails on conflicts; explicit aliasing in tai.yaml.
 
 ### Pre-Install Hooks
-**What:** Commands that run before an install writes anything. Post-install commands shipped as a profile's `post_install` steps (see Post-Install Hooks).
+**What:** Commands that run before an install writes anything. Post-install commands shipped as `post_install` steps on profiles and bundles (see Post-Install Hooks).
 **Why deferred:** No use case yet; everything asked for so far post-processes what an install wrote.
 
 ### Adapter as State Synchronizer

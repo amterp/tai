@@ -109,9 +109,9 @@ post_install_timeout: 1m  # optional, default 30s per step
 
 A plain argv list such as `post_install: [./scripts/after-install.sh]` is shorthand for a single step.
 
-Steps see your environment plus `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, and `TAI_VERSION` (always set, so `set -u` scripts are safe). They do not run on dry-run or when the install fails.
+Steps see your environment plus `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, `TAI_SOURCE_DIR`, and `TAI_VERSION` (always set, so `set -u` scripts are safe). They do not run on dry-run or when the install fails.
 
-Each step runs whether or not earlier steps failed. A failing step does not undo the install - files and manifest are already in place. tai prints each step's error with its stderr, lists the failed steps, reports the install as succeeded, and exits nonzero so scripts and CI notice. See [post_install](/tai/reference/profile-format/#post_install) for step fields and how steps that edit installed files are handled.
+Bundles can declare [steps of their own](/tai/concepts/bundles/#post-install-steps), which run before the profile's. Each step runs whether or not earlier steps failed. A failing step does not undo the install - files and manifest are already in place. tai prints each step's error with its stderr, lists the failed steps, reports the install as succeeded, and exits nonzero so scripts and CI notice. See [post_install](/tai/reference/profile-format/#post_install) for step fields and how steps that edit installed files are handled.
 
 ## Default profile
 

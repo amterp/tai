@@ -373,7 +373,24 @@ bundles:
 # assets:
 #   - type: persona
 #     path: work-shared:personas/company-style.md
+
+# Optional: steps run after any install that includes this bundle, so profiles
+# don't each repeat them. Same fields as a profile's steps; names required (no
+# argv shorthand). Each runs once per install, before the profile's own steps,
+# in this repo's root (also TAI_SOURCE_DIR), with its own timeout or 30s.
+post_install:
+  - name: render
+    command: [./scripts/render-approval.sh]  # Relative to this repo's root
 ```
+
+Use a bundle step when the bundle does nothing until a command runs (a policy
+a script renders, a tool that registers itself). The script path stays valid
+whichever repo imports the bundle, because the step runs in the root of the
+repo holding the bundle's `bundles/` dir - for an imported source, its content
+root. A bundle reached through several imports runs each step once; output
+names the bundle, e.g. `post_install step "render" from bundle "work:approval"`.
+`tai show profile` lists every step that will run. A profile cannot opt out of
+a bundle's step.
 
 ### Importing bundles
 
@@ -425,9 +442,10 @@ assets:
 
 # Optional: named steps run after a successful install - notifications,
 # follow-up scripts, or post-processing installed files. Env: TAI_TARGET,
-# TAI_TARGET_DIR, TAI_PROFILE, TAI_MANIFEST_DIR, TAI_VERSION. Every step runs
-# even if an earlier one failed. Failure does NOT undo the install; tai
-# prints each step's error, lists the failed steps, and exits nonzero.
+# TAI_TARGET_DIR, TAI_PROFILE, TAI_MANIFEST_DIR, TAI_SOURCE_DIR (config repo
+# root), TAI_VERSION. Run after any bundles' steps. Every step runs even if an
+# earlier one failed. Failure does NOT undo the install; tai prints each
+# step's error, lists the failed steps, and exits nonzero.
 post_install:
   - name: notify                           # Required, unique in the profile
     command: [./scripts/after-install.sh]  # argv, no shell
