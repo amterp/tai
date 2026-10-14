@@ -23,6 +23,11 @@ type PostInstallStep struct {
 	// Timeout bounds this step, parsed via time.ParseDuration. Empty falls
 	// back to whatever the declaring config provides.
 	Timeout string `yaml:"timeout"`
+
+	// shorthand marks the step built from a plain argv. A name being empty is
+	// not enough to tell: a one-step list that forgot its name looks the same,
+	// and must be rejected rather than taken for the shorthand.
+	shorthand bool
 }
 
 var postInstallStepKeys = []string{"name", "command", "timeout"}
@@ -93,7 +98,7 @@ func (ps *PostInstallSteps) UnmarshalYAML(node *yaml.Node) error {
 		if err := node.Decode(&argv); err != nil {
 			return err
 		}
-		*ps = PostInstallSteps{{Command: argv}}
+		*ps = PostInstallSteps{{Command: argv, shorthand: true}}
 		return nil
 	case 0:
 		var steps []PostInstallStep
@@ -109,7 +114,7 @@ func (ps *PostInstallSteps) UnmarshalYAML(node *yaml.Node) error {
 
 // IsShorthand reports whether the steps came from the single-argv form.
 func (ps PostInstallSteps) IsShorthand() bool {
-	return len(ps) == 1 && ps[0].Name == ""
+	return len(ps) == 1 && ps[0].shorthand
 }
 
 // validatePostInstallSteps checks every step can run and, in the list form,

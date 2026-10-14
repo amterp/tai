@@ -707,6 +707,17 @@ post_install:
 			wantErrContains: "post_install[1]: missing 'name'",
 		},
 		{
+			name: "post_install single step without name rejected",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install:
+  - command: [./render.rad]
+`,
+			wantErrContains: "post_install[0]: missing 'name'",
+		},
+		{
 			name: "post_install duplicate step names rejected",
 			content: `name: work
 target: claude
