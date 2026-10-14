@@ -100,6 +100,14 @@ type AppliedEdit struct {
 	// way to tell "the user edited tai's entry" from "the user deleted it".
 	// Unused by the other modes.
 	Index int `yaml:"index,omitempty"`
+
+	// Siblings holds the checksum of every element in the array, tai's and
+	// everyone else's, as it stood when this install finished. It is what
+	// tells a deleted element from an edited one once the checksum no longer
+	// matches: if every element now in the array was there before, nothing was
+	// edited, so tai's element was deleted. Position cannot answer that, since
+	// any change earlier in the array shifts it. AppendToArray only.
+	Siblings []string `yaml:"siblings,omitempty"`
 }
 
 // Request is the input to a handler: one config asset, already templated,

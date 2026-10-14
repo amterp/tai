@@ -604,7 +604,10 @@ func ParseApprovalPolicy(data []byte) ([]ApprovalEntry, error) {
 		lines = nil
 	}
 
-	for _, line := range strings.Split(string(data), "\n") {
+	// An editor's byte-order mark would sit in front of the first heading and
+	// hide it.
+	text := strings.TrimPrefix(string(data), "\ufeff")
+	for _, line := range strings.Split(text, "\n") {
 		if !strings.HasPrefix(line, "## ") {
 			lines = append(lines, line)
 			continue

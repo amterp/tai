@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
@@ -288,14 +289,15 @@ func applyEdit(doc map[string]any, e configasset.Edit) (configasset.AppliedEdit,
 // - churning the file and silently changing the order handlers run in on every
 // reinstall.
 //
-// Returns found=false when the previous element is no longer recognizable, in
-// which case the caller applies the edit fresh.
-//
-// With force set, an element the user has edited is reclaimed by position -
-// which is what --force means, and the alternative is appending tai's version
-// beside theirs so the hook runs twice. See locateElement for when a position
-// counts as an edited element; recorded is passed through to it.
-func updateEdit(doc map[string]any, prev configasset.AppliedEdit, e configasset.Edit, force bool, recorded map[string]bool) (configasset.AppliedEdit, bool, error) {
+// An element found by checksum is rewritten where it sits. Otherwise this
+// returns found=false and the caller appends the edit fresh - except under
+// --force, when the element at tai's recorded position is one the snapshot
+// does not know: that is the ordinary edit, the user's version sitting exactly
+// where tai's was, and --force means taking it back. Appending there instead
+// would leave both, and an edited hook would fire beside tai's original. A
+// position holding a known element means the array shifted, so whatever is at
+// tai's old position is someone else's, and is never overwritten.
+func updateEdit(doc map[string]any, prev configasset.AppliedEdit, e configasset.Edit, force bool) (configasset.AppliedEdit, bool, error) {
 	if e.Mode != configasset.AppendToArray {
 		return configasset.AppliedEdit{}, false, nil
 	}
@@ -309,8 +311,12 @@ func updateEdit(doc map[string]any, prev configasset.AppliedEdit, e configasset.
 		return configasset.AppliedEdit{}, false, nil
 	}
 
-	idx, exact := locateElement(arr, prev, recorded)
-	if idx < 0 || (!exact && !force) {
+	idx, state := locateElement(arr, prev)
+	switch {
+	case state == elementFound:
+	case force && state == elementEdited && unknownAt(arr, prev):
+		idx = prev.Index
+	default:
 		return configasset.AppliedEdit{}, false, nil
 	}
 
@@ -330,36 +336,78 @@ func updateEdit(doc map[string]any, prev configasset.AppliedEdit, e configasset.
 	}, true, nil
 }
 
-// locateElement finds the array element an applied edit wrote. exact reports a
-// checksum match. Without one, idx is the element the user edited it into, or
-// -1 when it was deleted.
+// elementState is what became of an array element tai wrote.
+type elementState int
+
+const (
+	elementFound elementState = iota
+	// elementEdited means tai's element may have been edited by the user. The
+	// index names an element that is not tai's: the edit, or one the user
+	// added, which tai cannot tell apart.
+	elementEdited
+	elementDeleted
+)
+
+// locateElement finds the array element an applied edit wrote.
 //
 // The recorded position is tried first, so an array whose elements tai is
 // rewriting in place keeps its order: matching on checksum alone would find
 // an element written moments earlier in the same install and overwrite it.
 //
-// Failing a checksum match anywhere, the recorded position decides between
-// edited and deleted, and the difference matters: an edited element read as
-// deleted is appended a second time, so a hook runs twice. A position holding
-// something tai did not write is read as the edit. A position holding another
-// of tai's own elements cannot be the edit - that element matches its own
-// record - so the element was deleted, and the array merely closed up. recorded
-// holds the checksums of every element tai wrote to this array.
-func locateElement(arr []any, a configasset.AppliedEdit, recorded map[string]bool) (idx int, exact bool) {
-	inRange := a.Index >= 0 && a.Index < len(arr)
-	if inRange && checksumMatches(arr[a.Index], a.Checksum) {
-		return a.Index, true
+// Failing a checksum match anywhere, the snapshot in Siblings decides between
+// edited and deleted. Reading an edit as a deletion appends tai's original
+// beside the user's version - a hook running twice, or a policy rule the user
+// narrowed coming back at full width - so anything tai cannot account for
+// reads as an edit: an element missing from the snapshot, or no snapshot at
+// all. Only an array holding nothing new reads as a deletion.
+func locateElement(arr []any, a configasset.AppliedEdit) (int, elementState) {
+	if a.Index >= 0 && a.Index < len(arr) && checksumMatches(arr[a.Index], a.Checksum) {
+		return a.Index, elementFound
 	}
 	if idx := indexOfChecksum(arr, a.Checksum); idx >= 0 {
-		return idx, true
+		return idx, elementFound
 	}
-	if !inRange {
-		return -1, false
+	if len(arr) == 0 {
+		return -1, elementDeleted
 	}
-	if checksum, err := valueChecksum(arr[a.Index]); err == nil && recorded[checksum] {
-		return -1, false
+	if a.Siblings == nil {
+		return 0, elementEdited
 	}
-	return a.Index, false
+
+	known := make(map[string]bool, len(a.Siblings))
+	for _, c := range a.Siblings {
+		known[c] = true
+	}
+	for idx, elem := range arr {
+		if checksum, err := valueChecksum(elem); err != nil || !known[checksum] {
+			return idx, elementEdited
+		}
+	}
+	return -1, elementDeleted
+}
+
+// unknownAt reports whether the element at an applied edit's recorded position
+// is missing from its snapshot. With no snapshot, nothing is known.
+func unknownAt(arr []any, a configasset.AppliedEdit) bool {
+	if a.Index < 0 || a.Index >= len(arr) {
+		return false
+	}
+	checksum, err := valueChecksum(arr[a.Index])
+	if err != nil {
+		return true
+	}
+	return !slices.Contains(a.Siblings, checksum)
+}
+
+// arrayChecksums hashes every element of an array, for a Siblings snapshot.
+func arrayChecksums(arr []any) []string {
+	out := make([]string, 0, len(arr))
+	for _, elem := range arr {
+		if checksum, err := valueChecksum(elem); err == nil {
+			out = append(out, checksum)
+		}
+	}
+	return out
 }
 
 // indexOfChecksum finds the array element hashing to want, or -1.
@@ -375,9 +423,10 @@ func indexOfChecksum(arr []any, want string) int {
 // findEntry returns the value an applied edit currently points at, for
 // comparing against what tai recorded.
 //
-// Arrays are the awkward case; locateElement says how an element is found, and
-// recorded is passed through to it.
-func findEntry(doc map[string]any, a configasset.AppliedEdit, recorded map[string]bool) (any, bool) {
+// Arrays are the awkward case; locateElement says how an element is found. An
+// element that may have been edited yields a value that will not match its
+// checksum, which is what makes the caller report drift.
+func findEntry(doc map[string]any, a configasset.AppliedEdit) (any, bool) {
 	parent, key, err := descend(doc, a.KeyPath, false)
 	if err != nil || parent == nil {
 		return nil, false
@@ -401,7 +450,7 @@ func findEntry(doc map[string]any, a configasset.AppliedEdit, recorded map[strin
 		if !ok {
 			return nil, false
 		}
-		if idx, _ := locateElement(arr, a, recorded); idx >= 0 {
+		if idx, state := locateElement(arr, a); state != elementDeleted {
 			return arr[idx], true
 		}
 		return nil, false
@@ -461,8 +510,8 @@ func removeEdit(doc map[string]any, a configasset.AppliedEdit) (changed bool, fo
 			return false, false, nil
 		}
 		// Only an exact match is removed: an element the user edited is theirs.
-		idx, exact := locateElement(arr, a, nil)
-		if !exact {
+		idx, state := locateElement(arr, a)
+		if state != elementFound {
 			return false, false, nil
 		}
 		parent[key] = append(arr[:idx:idx], arr[idx+1:]...)

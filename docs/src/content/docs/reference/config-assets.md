@@ -415,6 +415,8 @@ Each entry installs as one array element, `<title>: <body>`, with each paragraph
 
 **`$defaults`.** A Claude auto mode array without the element `"$defaults"` replaces Claude's built-in rules instead of adding to them. So when tai creates one of these arrays, it starts it with `"$defaults"`. An array you already have is left as you wrote it, since leaving `$defaults` out is how you opt out of the defaults. tai never removes the seed: after uninstalling, an array tai created holds `["$defaults"]`, which means the same as no array.
 
+A file with no recognized headings - `# allow:` with one `#`, or `##allow:` with no space - installs no entries, and tai warns, since installing nothing removes whatever that file installed before.
+
 **User scope only.** Claude's classifier ignores `autoMode` in project and local settings, so approval assets install into `~/.claude/settings.json` only. At another scope the install fails rather than writing a policy Claude would never read; set `scope: user` on the asset's entry.
 
 Only Claude installs approval policies today. On Codex and OpenCode an approval asset is skipped with a warning when one of its entries applies to that target, and silently otherwise.
@@ -439,7 +441,7 @@ Three consequences worth knowing:
 
 - **Editing an installed entry takes ownership of it.** tai notices the entry no longer matches what it wrote. Reinstalling reports a conflict instead of quietly restoring its own version - pass `--force` to take the entry back, or `--skip-conflicts` to keep your edit and carry on. Uninstalling leaves an edited entry in place entirely.
 - **Unchanged means untouched.** Reinstalling an asset that produces the same entries rewrites nothing, so tai does not churn a file the target may also be writing. An entry sharing an array with other tools keeps its position, so the order things run in does not drift between installs.
-- **Removing an entry by hand is not an error.** tai simply puts it back on the next install.
+- **Removing an entry by hand is not an error.** tai simply puts it back on the next install. In an array, tai can tell a removal from an edit only if nothing else in the array changed: delete one of tai's elements and also add or edit another, and the next install reports a conflict rather than guess.
 
 ### Codex
 

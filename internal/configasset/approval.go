@@ -55,6 +55,16 @@ func (h *approvalHandler) Plan(req Request) (*Plan, error) {
 	}
 
 	plan := &Plan{}
+	if len(entries) == 0 {
+		// Almost always a mistyped heading - "# allow:" or "##allow:" reads as
+		// notes - and installing nothing removes whatever this file put there
+		// before, which is otherwise reported only as a removal.
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"approval %s: no entries found, so none are installed and any this file installed before are removed. "+
+				"Each entry needs a heading '## <kind> [target...]: <title>' with kind one of: %s",
+			req.Name, strings.Join(config.ValidApprovalKinds(), ", ")))
+		return plan, nil
+	}
 	texts := map[string][]any{}
 	var kinds []string
 	for _, entry := range entries {

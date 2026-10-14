@@ -167,11 +167,6 @@ type installContext struct {
 	claimedSlots map[editSlot]string
 	managedSlots map[editSlot]configasset.AppliedEdit
 
-	// recordedElements holds, per array, the checksums of every element the
-	// previous install wrote there - what locateElement needs to tell one of
-	// tai's elements deleted from one the user edited.
-	recordedElements map[string]map[string]bool
-
 	opts InstallOptions
 }
 
@@ -281,17 +276,9 @@ func (i *Installer) buildInstallContext(adap adapter.Adapter, existing *Manifest
 	}
 
 	managedSlots := make(map[editSlot]configasset.AppliedEdit)
-	recordedElements := make(map[string]map[string]bool)
 	for _, entry := range existingConfigEntries {
 		for _, a := range entry.Edits {
 			managedSlots[slotOf(a.File, a.KeyPath, a.Mode, a.ID)] = a
-			if a.Mode == configasset.AppendToArray {
-				key := arrayKey(a.File, a.KeyPath)
-				if recordedElements[key] == nil {
-					recordedElements[key] = make(map[string]bool)
-				}
-				recordedElements[key][a.Checksum] = true
-			}
 		}
 	}
 
@@ -322,7 +309,6 @@ func (i *Installer) buildInstallContext(adap adapter.Adapter, existing *Manifest
 		configFiles:           newConfigFileSet(),
 		consent:               make(map[string]bool),
 		managedSlots:          managedSlots,
-		recordedElements:      recordedElements,
 		opts:                  opts,
 	}
 }
@@ -568,6 +554,7 @@ func (i *Installer) executeInstall(
 ) ([]ManifestEntry, []ConfigEntry, error) {
 	var newEntries []ManifestEntry
 	var newConfigEntries []ConfigEntry
+	var freshConfigEntries []int
 	opts := ctx.opts
 
 	// Install file assets
@@ -612,7 +599,7 @@ func (i *Installer) executeInstall(
 			}
 		}
 
-		configEntry, err := i.installConfigAsset(ctx, key, rca, result)
+		configEntry, fresh, err := i.installConfigAsset(ctx, key, rca, result)
 		if err != nil {
 			return nil, nil, fmt.Errorf("installing config asset %s/%s: %w", asset.Type, asset.ConfigName(), err)
 		}
@@ -638,6 +625,9 @@ func (i *Installer) executeInstall(
 			result.Updated = append(result.Updated, label)
 		}
 
+		if fresh {
+			freshConfigEntries = append(freshConfigEntries, len(newConfigEntries))
+		}
 		newConfigEntries = append(newConfigEntries, *configEntry)
 		delete(ctx.existingConfigEntries, key)
 	}
@@ -649,6 +639,17 @@ func (i *Installer) executeInstall(
 
 	// Remove config entries that are no longer in the profile
 	i.removeStaleConfigEntries(ctx, result)
+
+	// Snapshot each array only now that every entry has written to it and
+	// stale ones are gone, so the snapshot is the array as this install leaves
+	// it. Entries carried over unchanged keep their old snapshot: refreshing a
+	// skipped conflict's would record the user's unresolved edit as known, and
+	// the next install would read tai's element as deleted and restore it.
+	for _, idx := range freshConfigEntries {
+		if err := snapshotArrays(ctx, newConfigEntries[idx].Edits); err != nil {
+			return nil, nil, err
+		}
+	}
 
 	// Every config file edit so far has been in memory. Commit them together,
 	// after all adds and removals, so each file is written once.
@@ -901,7 +902,7 @@ func (i *Installer) checkConfigConflict(ctx *installContext, key string, rca res
 			return nil // Unreadable config file; install will report it properly.
 		}
 		if prev, managed := ctx.managedSlots[slotOf(edit.File, edit.KeyPath, edit.Mode, edit.ID)]; managed {
-			current, exists := findEntry(doc, prev, ctx.recordedIn(prev))
+			current, exists := findEntry(doc, prev)
 			if exists && !checksumMatches(current, prev.Checksum) {
 				return &ConflictDetail{
 					Path:   fmt.Sprintf("[%s] %s", rca.asset.Type, rca.asset.ConfigName()),
@@ -933,7 +934,7 @@ func (i *Installer) configEntryDrifted(ctx *installContext, entry ConfigEntry) (
 		if err != nil {
 			return "", false // Unreadable; install will report it properly.
 		}
-		current, exists := findEntry(doc, applied, ctx.recordedIn(applied))
+		current, exists := findEntry(doc, applied)
 		if !exists {
 			continue
 		}
@@ -958,7 +959,7 @@ func (i *Installer) configEntryVanished(ctx *installContext, entry ConfigEntry) 
 		if err != nil {
 			return false // Unreadable; install will report it properly.
 		}
-		if _, exists := findEntry(doc, applied, ctx.recordedIn(applied)); !exists {
+		if _, exists := findEntry(doc, applied); !exists {
 			return true
 		}
 	}
@@ -1092,10 +1093,10 @@ func (i *Installer) installConfigAsset(
 	key string,
 	rca resolvedConfigAsset,
 	result *InstallResult,
-) (*ConfigEntry, error) {
+) (entry *ConfigEntry, fresh bool, err error) {
 	plan, err := i.planConfigAsset(ctx, rca)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	result.Warnings = append(result.Warnings, plan.Warnings...)
 
@@ -1108,15 +1109,15 @@ func (i *Installer) installConfigAsset(
 	if plan.Consent != nil {
 		granted, err := i.askConsent(ctx, *plan.Consent)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if !granted {
 			result.Warnings = append(result.Warnings,
 				noConsentWarning(ctx, rca, plan, wasManaged))
 			if wasManaged {
-				return &prev, nil
+				return &prev, false, nil
 			}
-			return nil, nil
+			return nil, false, nil
 		}
 	}
 
@@ -1127,7 +1128,7 @@ func (i *Installer) installConfigAsset(
 	// previous entry in place hands it to the stale-entry sweep, which removes
 	// it properly and reports it.
 	if len(plan.Edits) == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	// Each new edit is matched against the one it supersedes so it can be
@@ -1143,7 +1144,7 @@ func (i *Installer) installConfigAsset(
 		stale := prev.withoutEdits(superseded)
 		if len(prev.Edits) == 0 || len(stale.Edits) > 0 {
 			if err := i.revertConfigEdits(ctx, stale); err != nil {
-				return nil, err
+				return nil, false, err
 			}
 		}
 	}
@@ -1152,18 +1153,18 @@ func (i *Installer) installConfigAsset(
 	for _, edit := range plan.Edits {
 		doc, err := ctx.configFiles.load(edit.File)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
-		record, updated, err := updateSupersededEdit(ctx, doc, superseded, edit)
+		record, updated, err := updateSupersededEdit(doc, superseded, edit, ctx.opts.Force)
 		if err != nil {
-			return nil, fmt.Errorf("merging %s/%s into %s: %w",
+			return nil, false, fmt.Errorf("merging %s/%s into %s: %w",
 				rca.asset.Type, rca.asset.ConfigName(), edit.File, err)
 		}
 		if !updated {
 			record, err = applyEdit(doc, edit)
 			if err != nil {
-				return nil, fmt.Errorf("merging %s/%s into %s: %w",
+				return nil, false, fmt.Errorf("merging %s/%s into %s: %w",
 					rca.asset.Type, rca.asset.ConfigName(), edit.File, err)
 			}
 		}
@@ -1176,7 +1177,7 @@ func (i *Installer) installConfigAsset(
 		applied = append(applied, record)
 	}
 
-	entry := &ConfigEntry{
+	entry = &ConfigEntry{
 		Type:         rca.asset.Type,
 		Name:         rca.asset.ConfigName(),
 		SourceName:   rca.asset.SourceName,
@@ -1187,7 +1188,29 @@ func (i *Installer) installConfigAsset(
 		Edits:        applied,
 	}
 
-	return entry, nil
+	return entry, true, nil
+}
+
+// snapshotArrays records, on each array element among edits, the checksums of
+// the whole array as it now stands.
+func snapshotArrays(ctx *installContext, edits []configasset.AppliedEdit) error {
+	for j := range edits {
+		if edits[j].Mode != configasset.AppendToArray {
+			continue
+		}
+		doc, err := ctx.configFiles.load(edits[j].File)
+		if err != nil {
+			return err
+		}
+		parent, key, err := descend(doc, edits[j].KeyPath, false)
+		if err != nil || parent == nil {
+			continue
+		}
+		if arr, ok := parent[key].([]any); ok {
+			edits[j].Siblings = arrayChecksums(arr)
+		}
+	}
+	return nil
 }
 
 // askConsent resolves a consent request once per install, caching the answer
@@ -1253,26 +1276,16 @@ func supersededEdits(prev ConfigEntry, edits []configasset.Edit) map[editSlot]co
 // updateSupersededEdit rewrites an edit in the place its predecessor occupies,
 // reporting whether it did.
 func updateSupersededEdit(
-	ctx *installContext,
 	doc map[string]any,
 	superseded map[editSlot]configasset.AppliedEdit,
 	e configasset.Edit,
+	force bool,
 ) (configasset.AppliedEdit, bool, error) {
 	prev, ok := superseded[slotOf(e.File, e.KeyPath, e.Mode, e.ID)]
 	if !ok {
 		return configasset.AppliedEdit{}, false, nil
 	}
-	return updateEdit(doc, prev, e, ctx.opts.Force, ctx.recordedIn(prev))
-}
-
-// recordedIn returns the checksums of every element the previous install
-// wrote to the array an applied edit belongs to.
-func (ctx *installContext) recordedIn(a configasset.AppliedEdit) map[string]bool {
-	return ctx.recordedElements[arrayKey(a.File, a.KeyPath)]
-}
-
-func arrayKey(file string, keyPath []string) string {
-	return file + "\x00" + strings.Join(keyPath, "\x00")
+	return updateEdit(doc, prev, e, force)
 }
 
 // noConsentWarning explains a config write that did not go ahead: what was
