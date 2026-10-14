@@ -147,7 +147,10 @@ func (a *Adapter) Run(args []string) error {
 
 // SupportedConfigAssetTypes returns the config asset types Claude supports.
 func (a *Adapter) SupportedConfigAssetTypes() []string {
-	return []string{config.AssetTypeStatusLine, config.AssetTypeHook, config.AssetTypeMCP, config.AssetTypeSettings}
+	return []string{
+		config.AssetTypeStatusLine, config.AssetTypeHook, config.AssetTypeMCP,
+		config.AssetTypeSettings, config.AssetTypeApproval,
+	}
 }
 
 // TransformMCP renders an MCP server in Claude's shape.
@@ -225,10 +228,36 @@ func (a *Adapter) ConfigFilePath(assetType, scope string) string {
 		return a.settingsFilePath(scope)
 	case config.AssetTypeMCP:
 		return a.mcpFilePath(scope)
+	case config.AssetTypeApproval:
+		// The auto mode classifier ignores autoMode in project and local
+		// settings, so those scopes have nowhere to put a policy.
+		if scope != config.ScopeUser {
+			return ""
+		}
+		return a.settingsFilePath(scope)
 	default:
 		return ""
 	}
 }
+
+// ApprovalKeyPath locates the auto mode array holding entries of kind.
+func (a *Adapter) ApprovalKeyPath(kind string) []string {
+	switch kind {
+	case config.ApprovalContext:
+		return []string{"autoMode", "environment"}
+	case config.ApprovalAllow:
+		return []string{"autoMode", "allow"}
+	case config.ApprovalDeny:
+		return []string{"autoMode", "soft_deny"}
+	default:
+		return nil
+	}
+}
+
+// ApprovalArraySeed is "$defaults": an auto mode array without it replaces
+// Claude's built-in rules instead of adding to them, so a soft_deny array
+// holding only tai's entries would quietly drop every default block rule.
+func (a *Adapter) ApprovalArraySeed() any { return "$defaults" }
 
 // mcpFilePath locates the file Claude reads MCP servers from.
 //

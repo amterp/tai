@@ -418,6 +418,7 @@ const (
 	AssetTypeHook       = "hook"
 	AssetTypeMCP        = "mcp"
 	AssetTypeSettings   = "settings"
+	AssetTypeApproval   = "approval"
 )
 
 // MainFileName constants for directory assets.
@@ -433,7 +434,7 @@ const (
 // entries in target settings files (rather than as standalone files).
 func IsConfigAssetType(t string) bool {
 	switch t {
-	case AssetTypeStatusLine, AssetTypeHook, AssetTypeMCP, AssetTypeSettings:
+	case AssetTypeStatusLine, AssetTypeHook, AssetTypeMCP, AssetTypeSettings, AssetTypeApproval:
 		return true
 	default:
 		return false
@@ -444,7 +445,7 @@ func IsConfigAssetType(t string) bool {
 func ValidAssetTypes() []string {
 	return []string{
 		AssetTypePersona, AssetTypeDelegate, AssetTypeSkill, AssetTypeFile,
-		AssetTypeStatusLine, AssetTypeHook, AssetTypeMCP, AssetTypeSettings,
+		AssetTypeStatusLine, AssetTypeHook, AssetTypeMCP, AssetTypeSettings, AssetTypeApproval,
 	}
 }
 
@@ -477,6 +478,8 @@ func AssetTypeDirName(t string) string {
 		return "mcps"
 	case AssetTypeSettings:
 		return "settings"
+	case AssetTypeApproval:
+		return "approvals"
 	default:
 		return t
 	}
@@ -512,6 +515,8 @@ func AssetTypeFromDirName(d string) string {
 		return AssetTypeMCP
 	case "settings":
 		return AssetTypeSettings
+	case "approvals":
+		return AssetTypeApproval
 	default:
 		return d
 	}
@@ -751,4 +756,45 @@ func (m *MCPConfig) IsEnabled() bool {
 // over them would be escaped on first use.
 type SettingsConfig struct {
 	Native map[string]map[string]any `yaml:"native"`
+}
+
+// Approval policy entry kinds.
+const (
+	// ApprovalContext is background the reviewer should know when judging an
+	// action.
+	ApprovalContext = "context"
+
+	// ApprovalAllow describes actions to approve that a block rule would
+	// otherwise stop.
+	ApprovalAllow = "allow"
+
+	// ApprovalDeny describes actions to stop even where they would otherwise
+	// be approved.
+	ApprovalDeny = "deny"
+)
+
+// ValidApprovalKinds returns every approval entry kind, in the order entries
+// are documented.
+func ValidApprovalKinds() []string {
+	return []string{ApprovalContext, ApprovalAllow, ApprovalDeny}
+}
+
+// ApprovalEntry is one entry of an approval policy: a piece of standing prose
+// for the reviewer that approves agent actions without asking the user.
+type ApprovalEntry struct {
+	Kind string
+
+	// Targets limits the entry to the named targets. Empty means every target.
+	Targets []string
+
+	Title string
+
+	// Body is the entry's prose, each paragraph unwrapped onto one line and
+	// paragraphs separated by a blank line.
+	Body string
+}
+
+// AppliesTo reports whether the entry is meant for target.
+func (e ApprovalEntry) AppliesTo(target string) bool {
+	return len(e.Targets) == 0 || slices.Contains(e.Targets, target)
 }

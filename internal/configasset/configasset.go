@@ -52,6 +52,15 @@ const (
 	// checksum. This is how hooks merge, since an event's array is shared with
 	// entries tai did not write.
 	AppendToArray MergeMode = "append_to_array"
+
+	// SeedArray creates the array at KeyPath holding just Value when no array
+	// is there, and otherwise does nothing. It exists for arrays whose target
+	// gives a missing array a meaning that an array holding only tai's entries
+	// would lose - Claude reads an auto mode rule list without "$defaults" as
+	// replacing its built-in rules. A seed is never recorded, never conflicts
+	// and never removed: once tai's own entries are gone, the array holds the
+	// seed alone, which means what no array meant.
+	SeedArray MergeMode = "seed_array"
 )
 
 // Edit is one declarative mutation of one target config file.

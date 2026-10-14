@@ -145,7 +145,34 @@ func rejectOwnedKeys(adap adapter.Adapter, fields map[string]any) error {
 			return fmt.Errorf("%q is managed by %s assets; write it as one of those instead", key, t)
 		}
 	}
+
+	// Approval policies own arrays rather than a top-level key, so a settings
+	// asset may still set the rest of the object holding them.
+	if translator, ok := adap.(ApprovalTranslator); ok {
+		for _, kind := range config.ValidApprovalKinds() {
+			path := translator.ApprovalKeyPath(kind)
+			if path != nil && hasPath(fields, path) {
+				return fmt.Errorf("%q is managed by %s assets (%s entries); write it as one of those instead",
+					strings.Join(path, "."), config.AssetTypeApproval, kind)
+			}
+		}
+	}
 	return nil
+}
+
+// hasPath reports whether fields holds a value at path.
+func hasPath(fields map[string]any, path []string) bool {
+	var current any = fields
+	for _, key := range path {
+		obj, ok := jsonValue(current).(map[string]any)
+		if !ok {
+			return false
+		}
+		if current, ok = obj[key]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // unknownNativeTargetWarnings flags `native` keys naming no target, since

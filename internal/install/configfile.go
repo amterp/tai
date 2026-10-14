@@ -264,6 +264,15 @@ func applyEdit(doc map[string]any, e configasset.Edit) (configasset.AppliedEdit,
 		applied.Index = len(arr)
 		parent[key] = append(arr, e.Value)
 
+	case configasset.SeedArray:
+		parent, key, err := descend(doc, e.KeyPath, true)
+		if err != nil {
+			return applied, err
+		}
+		if _, exists := parent[key]; !exists {
+			parent[key] = []any{e.Value}
+		}
+
 	default:
 		return applied, fmt.Errorf("unknown merge mode %q", e.Mode)
 	}

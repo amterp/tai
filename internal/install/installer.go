@@ -362,16 +362,20 @@ func (i *Installer) separateAssets(adap adapter.Adapter, assets []*config.Asset,
 }
 
 // namesTarget reports whether a config asset is meant for target at all. Only
-// a settings asset can say no: its fields sit under `native.<target>`, so one
-// written for Claude says nothing to Codex, and warning that Codex cannot
-// install it would flag the normal case on every install.
+// settings and approval assets can say no: a settings asset's fields sit under
+// `native.<target>` and an approval entry can name its targets, so one written
+// for Claude may say nothing to Codex, and warning that Codex cannot install it
+// would flag the normal case on every install.
 func namesTarget(asset *config.Asset, target string) bool {
-	if asset.Type != config.AssetTypeSettings {
+	if asset.Type != config.AssetTypeSettings && asset.Type != config.AssetTypeApproval {
 		return true
 	}
 	data, err := os.ReadFile(asset.SourcePath)
 	if err != nil {
 		return true
+	}
+	if asset.Type == config.AssetTypeApproval {
+		return configasset.ApprovalAppliesTo(data, target)
 	}
 	return configasset.NamesTarget(data, target)
 }
@@ -985,6 +989,9 @@ func (i *Installer) claimConfigSlots(ctx *installContext, configByKey map[string
 			continue // Reported with full context at install time.
 		}
 		for _, edit := range plan.Edits {
+			if edit.Mode == configasset.SeedArray {
+				continue // Shared by every entry writing the array, and never owned.
+			}
 			slot := slotOf(edit.File, edit.KeyPath, edit.Mode, edit.ID)
 			if owner, taken := ctx.claimedSlots[slot]; taken && owner != key {
 				where := pathString(edit.KeyPath)
@@ -1137,6 +1144,11 @@ func (i *Installer) installConfigAsset(
 			}
 		}
 		ctx.configFiles.markDirty(edit.File)
+		if edit.Mode == configasset.SeedArray {
+			// Recording it would make an array that already existed, which the
+			// seed left alone, look like an entry that vanished on every install.
+			continue
+		}
 		applied = append(applied, record)
 	}
 

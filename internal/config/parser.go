@@ -2,11 +2,13 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	pathpkg "path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -552,6 +554,78 @@ func ParseSettingsConfig(data []byte) (*SettingsConfig, error) {
 		return nil, fmt.Errorf("parsing settings config (fields belong under 'native.<target>'): %w", err)
 	}
 	return &cfg, nil
+}
+
+// ParseApprovalPolicy parses an approval asset: Markdown where each
+// "## <kind> [target...]: <title>" heading starts an entry and the prose under
+// it is the entry's body. Text before the first heading is notes for whoever
+// edits the file and is not part of any entry.
+//
+// Target names are returned unchecked; the list of real targets lives in the
+// adapter package, which config cannot import.
+func ParseApprovalPolicy(data []byte) ([]ApprovalEntry, error) {
+	var entries []ApprovalEntry
+	var lines []string
+	var current *ApprovalEntry
+
+	finish := func() {
+		if current != nil {
+			current.Body = unwrapParagraphs(lines)
+			entries = append(entries, *current)
+		}
+		lines = nil
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "## ") {
+			lines = append(lines, line)
+			continue
+		}
+		finish()
+		entry, err := parseApprovalHeading(line)
+		if err != nil {
+			return nil, err
+		}
+		current = &entry
+	}
+	finish()
+
+	return entries, nil
+}
+
+func parseApprovalHeading(line string) (ApprovalEntry, error) {
+	usage := fmt.Sprintf("heading %q must be '## <kind> [target...]: <title>' with kind one of: %s",
+		line, strings.Join(ValidApprovalKinds(), ", "))
+
+	spec, title, ok := strings.Cut(strings.TrimPrefix(line, "## "), ":")
+	title = strings.TrimSpace(title)
+	words := strings.Fields(spec)
+	if !ok || title == "" || len(words) == 0 || !slices.Contains(ValidApprovalKinds(), words[0]) {
+		return ApprovalEntry{}, errors.New(usage)
+	}
+
+	return ApprovalEntry{Kind: words[0], Targets: words[1:], Title: title}, nil
+}
+
+// unwrapParagraphs joins each paragraph onto one line. Policy files are
+// wrapped for reading, but a reviewer takes each entry as one string, where a
+// hard line break is noise.
+func unwrapParagraphs(lines []string) string {
+	var paragraphs, current []string
+	for _, line := range lines {
+		if text := strings.TrimSpace(line); text != "" {
+			current = append(current, text)
+			continue
+		}
+		if len(current) > 0 {
+			paragraphs = append(paragraphs, strings.Join(current, " "))
+			current = nil
+		}
+	}
+	if len(current) > 0 {
+		paragraphs = append(paragraphs, strings.Join(current, " "))
+	}
+	return strings.Join(paragraphs, "\n\n")
 }
 
 // LoadProfilesFromDir loads all profile files from a directory.
