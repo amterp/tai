@@ -31,7 +31,7 @@ Tai uses target-agnostic terminology. Here's how asset types map to current targ
 | Tai Type | Claude | Codex | OpenCode | Purpose |
 |----------|--------|-------|----------|---------|
 | `persona` | `output-styles/` | `skills/` (mapped) | `agents/` | Behavioral styles and roles |
-| `delegate` | `agents/` | `delegates/` (passive) | `agents/` | Specialized helper agents |
+| `delegate` | `agents/` | `agents/<name>.toml` | `agents/` | Specialized helper agents |
 | `skill` | `skills/` | `skills/` | `skills/` | Procedural capabilities |
 | `file` | (per `dest`) | (per `dest`) | (per `dest`) | Loose files copied as-is |
 | `statusline` | `settings.json` | unsupported | unsupported | Status bar configuration |
@@ -41,7 +41,7 @@ Tai uses target-agnostic terminology. Here's how asset types map to current targ
 The last two are **config assets**: they merge as entries into the target's config files instead of being written as files. See "Config Assets" below.
 
 Target-specific notes:
-- **Codex**: Personas are mapped to skills since Codex has no persona concept (single-file personas wrap as `skills/<name>/SKILL.md`). Delegates are installed as passive reference files (warns per asset).
+- **Codex**: Personas are mapped to skills since Codex has no persona concept (single-file personas wrap as `skills/<name>/SKILL.md`). Delegates are installed as custom agents (`agents/<name>.toml`, body as `developer_instructions`). A Claude `model` (`opus`, `claude-*`) and `tools` are dropped with a warning; put Codex fields (`model`, `model_reasoning_effort`, `features: {shell_tool: false}`) under `native.codex`, which also silences the matching warning. Directory delegates stay passive reference files under `delegates/`.
 - **OpenCode**: Both personas and delegates map to `agents/`, distinguished by `mode: subagent` on delegates.
 
 ## CLI Commands

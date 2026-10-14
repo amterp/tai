@@ -28,12 +28,12 @@ Each adapter maps tai's asset types to the target's directory structure:
 | Tai type | Claude Code | Codex | OpenCode |
 |----------|------------|-------|----------|
 | `persona` | `output-styles/` | `skills/` (mapped to skills) | `agents/` |
-| `delegate` | `agents/` | `delegates/` (passive reference) | `agents/` |
+| `delegate` | `agents/` | `agents/` (custom agent TOML) | `agents/` |
 | `skill` | `skills/` | `skills/` | `skills/` |
 | `file` | Location from `dest` | Location from `dest` | Location from `dest` |
 | `statusline` | `settings.json` (merged) | Not supported (skipped) | Not supported (skipped) |
 
-Codex has no native persona concept, so personas are installed as skills (single-file personas are wrapped as `skills/<name>/SKILL.md`). Codex does not natively consume delegates either, so they are installed as passive reference files that you can point Codex to manually. Tai warns per asset in both cases.
+Codex has no native persona concept, so personas are installed as skills (single-file personas are wrapped as `skills/<name>/SKILL.md`), with a warning per asset. Delegates become Codex custom agents: TOML files in `agents/`, with the delegate's body as the agent's instructions.
 
 OpenCode maps both personas and delegates to `agents/`, using a `mode: subagent` field to distinguish delegates from primary agents.
 

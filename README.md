@@ -553,13 +553,13 @@ An import stays current: assets added to `personal:core` upstream arrive on your
 - Target directory: `$CODEX_HOME` (if set), otherwise `~/.codex/`
 - Asset mapping:
     - `personas/` → `skills/` (mapped to skills since Codex has no persona concept; warns per asset)
-    - `delegates/` → `delegates/` (passive reference files)
+    - `delegates/` → `agents/<name>.toml` (Codex custom agents)
     - `skills/` → `skills/`
     - `files/` → location specified by `dest` field
 - Behavior note:
     - Codex has first-class support for `AGENTS.md` and skills.
     - Personas are installed as skills (`skills/<name>/SKILL.md`) so Codex actually consumes them; tai warns for each one.
-    - Delegates are installed as fallback reference files and warned about.
+    - Delegates are installed as custom agents. A Claude model name and `tools` are dropped with a warning; set Codex fields such as `model` or `features` under `native.codex`.
 
 ### OpenCode
 

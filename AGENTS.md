@@ -118,7 +118,7 @@ Claude's `ProvideVariables()` returns: `target_name: "claude"`, `target_name_dis
 
 The Codex adapter maps:
 - `personas/` → `skills/` (mapped to skills since Codex has no persona concept; renders `name`, `description` frontmatter; warns on install)
-- `delegates/` → `delegates/` (passive reference files; tai warns per asset)
+- `delegates/` → `agents/<name>.toml`, a Codex custom agent: `name`, `description`, and the body as `developer_instructions`. `model` is kept unless it names a Claude model, and `tools` is dropped (Codex has no tool allowlist), each with a warning unless `native.codex` covers it. `native.codex` merges at the top level of the TOML. A directory delegate has no single-file form and stays a passive reference under `delegates/`, with a warning
 - `skills/` → `skills/` (SKILL.md gets `name`, `description` frontmatter)
 - `files/` → location specified by `dest` field (content copied as-is, no transformation)
 - `statuslines/` → unsupported (skipped with warning)

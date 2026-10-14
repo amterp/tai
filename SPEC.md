@@ -1347,14 +1347,26 @@ The Codex adapter:
 - Targets `$CODEX_HOME` if set, otherwise `~/.codex/`
 - Maps tai terminology to Codex-oriented paths:
   - `personas/` → `skills/` (mapped to skills since Codex has no persona concept; single-file personas are wrapped as `skills/<name>/SKILL.md`)
-  - `delegates/` → `delegates/` (passive reference files)
+  - `delegates/` → `agents/<name>.toml` (Codex custom agents; see below)
   - `skills/` → `skills/`
   - `files/` → location specified by `dest` field (empty = root level)
 - Installs files additively like other adapters
-- Emits a warning for each `persona` asset noting the persona-to-skill remapping, and for each `delegate` asset because Codex does not natively consume delegates as first-class config entries
+- Emits a warning for each `persona` asset noting the persona-to-skill remapping
 - Uses `target_agents_file: AGENTS.md`
 
 `statusline` assets are currently unsupported for Codex and are skipped with a warning.
+
+A single-file delegate becomes a Codex custom agent, a TOML file Codex loads from `agents/`:
+
+- `name` and `description` come from the frontmatter. Codex skips an agent without a description, so an empty one falls back to the name.
+- The body becomes `developer_instructions`. Codex skips an agent with a blank one, so an empty body warns.
+- `model` is written unless it names a Claude model: `sonnet`, `opus`, `haiku`, `fable`, `opusplan`, `best`, `default`, or a `claude-` ID, ignoring a suffix such as `[1m]`. A Claude model is dropped with a warning, because tai's `model` field is written for Claude and Codex cannot run it. `inherit` is dropped silently, since an agent without a `model` already uses the parent session's.
+- `tools` is dropped with a warning, because Codex agents have no tool allowlist. The agent can use every tool the parent session can.
+- `native.codex` fields merge at the top level of the TOML and win over generated ones. This is how a delegate sets a Codex `model`, `model_reasoning_effort`, or `features` such as `shell_tool: false`. A `native.codex.model` silences the model warning, and `native.codex.features` silences the tools warning, since each says what to do instead on Codex.
+
+A directory delegate (`DELEGATE.md` plus supporting files) cannot become one TOML file. It is installed as before, as a Markdown reference under `delegates/<name>/` that Codex does not load, with a warning per asset.
+
+Delegates installed by an earlier tai under `delegates/<name>.md` are removed on the next install, like any file the profile no longer produces.
 
 ### OpenCode Adapter Specifics
 

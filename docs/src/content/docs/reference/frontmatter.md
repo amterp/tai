@@ -123,7 +123,7 @@ Note that `depends` is consumed during resolution and not written to the target.
 | Target | Personas | Delegates | Skills |
 |--------|----------|-----------|--------|
 | Claude | `name`, `description` | `name`, `description`, `tools`, `model` | `name`, `description`, `tools`, `model` |
-| Codex | `name`, `description` | `name`, `description`, `tools`, `model` | `name`, `description` |
+| Codex | `name`, `description` | `name`, `description`, `model` (as TOML; a Claude model is dropped) | `name`, `description` |
 
 ## Unknown fields
 
