@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "tai-manifest-dir",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1791952862459,
+  "creator": "Alexander Terp",
+  "description": "For skill command includes, `TAI_MANIFEST_DIR` is the skill's source directory (SPEC.md's env table for includes). For post_install steps it is tai's manifest directory (`~/.config/tai/manifests`). One name for two unrelated paths invites a script written for one context to read the wrong directory in the other. Rename one of them (keeping the old name as an alias for a release, with a warning in the docs), and state each variable's meaning in one env-var reference.\n\nRelated: `TAI_SOURCE_DIR` (post_install, a path) vs `TAI_SOURCE` (command sources, a source name) are also close; the docs now state the difference.",
+  "id": "a_2hLJ3NBo8",
+  "position": "aE",
+  "title": "TAI_MANIFEST_DIR means two unrelated paths",
+  "type": "bug",
+  "updated_at_millis": 1791952862459,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791952862459}
+  ]
+}

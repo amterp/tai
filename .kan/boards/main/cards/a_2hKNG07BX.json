@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "make-no-color-a",
+  "alias_explicit": false,
+  "column": "done",
+  "created_at_millis": 1791950640770,
+  "creator": "Alexander Terp",
+  "description": "`--no-color` is registered on the root command only, so `tai list profiles --no-color` is rejected while `--config` works in that position (it is registered with `ra.WithGlobal(true)`). Register `--no-color` the same way, before any `RegisterCmd`.",
+  "id": "a_2hKNG07BX",
+  "position": "Zn",
+  "title": "Make --no-color a global flag",
+  "type": "enhancement",
+  "updated_at_millis": 1791951197966,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791950640770},
+    {"field":"column","value":"done","at":1791951197966}
+  ]
+}

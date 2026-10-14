@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "a-file-dest-ending",
   "alias_explicit": false,
-  "column": "next",
+  "column": "done",
   "created_at_millis": 1791945931443,
   "creator": "Alexander Terp",
   "description": "A file asset with `dest: skills/tool-lines/.claude-plugin` writes `plugin.json` to a file named `.claude-plugin`, while the same asset with `dest: skills/tool-lines/hooks` puts `hooks.json` inside `hooks/`. The dry-run prints `+ skills/tool-lines/.claude-plugin (new)` with no warning, which is easy to read as the directory. Claude Code plugin folders (`.claude-plugin/plugin.json`, `hooks/hooks.json`) are now something people install with tai, so this will keep coming up.\n\n`ResolveFileDest` in `internal/adapter/shared.go` treats a dest whose basename contains a `.` as a full file path, so `.claude-plugin` counts as a file name. A trailing slash (`dest: skills/tool-lines/.claude-plugin/`) already forces a directory. That is documented in `docs/src/content/docs/reference/asset-formats.md`, but not in SPEC.md's file-asset rules (near line 1681) or in the tai skill (`assets/skills/tai/SKILL.md`).\n\nChanging the heuristic outright would break real dotfile names: `dest: .gitignore` or `dest: .envrc` has the same shape and means a file. One option is to treat a basename that starts with a dot and has no other dot as a directory only when the source file has an extension, since renaming `plugin.json` to `.claude-plugin` is implausible. Another is to keep the rule and warn in that case, naming the trailing-slash fix. Either way, state the rule beside file assets' `dest` in SPEC.md, the tai skill and the docs site, and cover both shapes (`.claude-plugin` as a directory, `.gitignore` as a file) in `ResolveFileDest`'s tests.\n\n(Moved from GitHub issue #12, part 1.)",
   "id": "a_2hIOkKwIU",
-  "position": "a2",
+  "position": "Zt",
   "title": "A file dest ending in a dot-directory is written as a file",
   "type": "bug",
-  "updated_at_millis": 1791945931443,
+  "updated_at_millis": 1791947925776,
   "history": [
-    {"field":"column","value":"next","at":1791945931443}
+    {"field":"column","value":"next","at":1791945931443},
+    {"field":"column","value":"done","at":1791947925776}
   ]
 }

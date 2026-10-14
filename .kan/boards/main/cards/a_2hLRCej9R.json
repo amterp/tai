@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "same-named-config",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1791953175730,
+  "creator": "Alexander Terp",
+  "description": "The installer keys config entries on type plus name (`ConfigEntryKey(type, ConfigName())`, `internal/install/installer.go` around `configByKey`). Two approval files both called `policy.md`, one from the config repo and one from an imported source, are one entry: only the later one's policy installs, with an \"Override\" info line. Hooks and settings behave the same. Approval files make it likely, since repos pick conventional names, and design decision 18 already prefers an error to later-wins for two assets writing one slot.\n\nOptions: include the source in the key for Collection types (renames every recorded config entry, so it needs a migration that maps old keys), or error on a duplicate name from different sources. Documented as a known limitation for approvals in v0.3.0.",
+  "id": "a_2hLRCej9R",
+  "position": "aF",
+  "title": "Same-named config assets from two sources silently replace each other",
+  "type": "bug",
+  "updated_at_millis": 1791953175730,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791953175730}
+  ]
+}

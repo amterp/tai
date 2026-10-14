@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "settings-assets-for",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1791951829713,
+  "creator": "Alexander Terp",
+  "description": "The `settings` config asset installs only to Claude Code today (`native.claude` fields into settings.json, each value owned separately via `configasset.FieldEdits`). Codex and OpenCode are declared unsupported and warn when an asset has a block for them.\n\nCodex: fields under `native.codex` would go into `~/.codex/config.toml`, behind the existing `ConfigWriteConsent` prompt (tai re-renders that file, losing comments and key order). OpenCode: its own config file. Each needs the adapter's `ConfigFilePath` and `SupportedConfigAssetTypes` updated, and a check that the config-file engine's TOML path handles nested tables and arrays the way `FieldEdits` emits them.\n\nSplit out of card support-settings.",
+  "id": "a_2hKsBf3Qt",
+  "position": "aD",
+  "title": "Settings assets for Codex and OpenCode",
+  "type": "feature",
+  "updated_at_millis": 1791951829713,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791951829713}
+  ]
+}

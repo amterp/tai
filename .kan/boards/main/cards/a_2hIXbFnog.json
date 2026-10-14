@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "run-post-install-as",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1791946271781,
   "creator": "Alexander Terp",
   "description": "One failed command in a profile's `post_install` stops tai from re-baselining the managed files that the other commands changed, so the next install stops on a conflict that isn't one. Profiles now hide failures to avoid that.\n\n`post_install` is a single argv. Profiles chain several commands inside it with `sh -c`. memri's setup is one of them: it writes a block into `CLAUDE.md` or `AGENTS.md`, which tai manages. SPEC.md (\"A failed hook does not rebaseline\") says tai re-baselines managed files only after the hook succeeds, so when any command in the chain fails, memri's block looks like a hand edit and every later install stops on that conflict. One chain ran `render.rad` before memri, and a non-executable `render.rad` skipped memri as well.\n\nTo dodge this, every config repo now hides failures. One Codex post-install script exits 0 and lists what failed; the Claude Code profiles wrap `render.rad` in `{ ... || echo WARNING \u003e\u00262; }`. A broken approval policy then shows up as one easy-to-miss line in a long install log.\n\nDecided direction (2026-10-13): make `post_install` a list of named steps.\n\n- Each step runs whether or not earlier steps failed.\n- tai re-hashes managed files after each step. Changes from a step that succeeded are re-baselined; changes from a step that failed are not. This keeps SPEC.md's carve-out (\"a partial edit is a conflict worth surfacing\") at the level of the step that made the partial edit, instead of letting it block unrelated steps.\n- After the last step, tai prints a summary of failed steps and exits non-zero, as a failed hook does today.\n\nKeep accepting today's single-argv form as one unnamed step, so existing profiles keep working. Update SPEC.md's \"Post-Install Hooks\" section and the tai skill to match. Each step's timeout is open: one per step, falling back to `post_install_timeout`, is the obvious reading.\n\nThe code is `runPostInstallHook` in `cmd/tai/main.go`, `PostInstall` in `internal/profile/resolver.go`, and its validation in `internal/config/parser.go`. Card `let-a-bundle-declare` (bundle-declared steps) builds on this one, so do this first.\n\n(Moved from GitHub issue #13, part 3.)",
   "id": "a_2hIXbFnog",
-  "position": "aD",
+  "position": "Zr",
   "title": "Run post_install as named steps that each succeed or fail on their own",
   "type": "enhancement",
-  "updated_at_millis": 1791946278670,
+  "updated_at_millis": 1791948152498,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791946271781}
+    {"field":"column","value":"backlog-hi","at":1791946271781},
+    {"field":"column","value":"done","at":1791948152498}
   ]
 }

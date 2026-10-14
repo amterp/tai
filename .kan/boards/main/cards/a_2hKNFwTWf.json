@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "tai-run-passes-only",
+  "alias_explicit": false,
+  "column": "done",
+  "created_at_millis": 1791950640728,
+  "creator": "Alexander Terp",
+  "description": "`tai run claude -- --resume` works, but `tai run claude -- --model x` fails with \"Too many positional arguments. Unused: [x]\", and `tai run claude --help` (a documented example) prints tai's own help instead of passing `--help` to the target. The `args` positional in `cmd/tai/main.go` probably needs to be variadic in Ra, with everything after the target (or after `--`) passed through verbatim. Until then `run` is close to unusable with arguments.\n\nSeparately, `tai run \u003ctarget\u003e --config ...` is now refused with an explanation, because `--config` is tai's global config-repo flag (codex has a `--config` of its own). Once pass-through works, check that `tai run codex -- --config k=v` reaches codex.\n\nFound while adding --config / TAI_CONFIG; predates that work (same on v0.2.0).",
+  "id": "a_2hKNFwTWf",
+  "position": "Zo",
+  "title": "tai run passes only one argument through to the target",
+  "type": "bug",
+  "updated_at_millis": 1791951197930,
+  "history": [
+    {"field":"column","value":"next","at":1791950640728},
+    {"field":"column","value":"done","at":1791951197930}
+  ]
+}

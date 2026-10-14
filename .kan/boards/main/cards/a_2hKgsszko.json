@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "run-go-mod-tidy-in",
+  "alias_explicit": false,
+  "column": "done",
+  "created_at_millis": 1791951395225,
+  "creator": "Alexander Terp",
+  "description": "`github.com/pelletier/go-toml/v2` is imported directly (the Codex adapter renders custom agents with it) but go.mod still marks it `// indirect`. `go mod tidy` fixes that, and also moves `amterp/radish` and prunes unrelated go.sum lines, so it belongs in a commit of its own, checked with the full suite.",
+  "id": "a_2hKgsszko",
+  "position": "Zj",
+  "title": "Run go mod tidy in its own commit",
+  "type": "chore",
+  "updated_at_millis": 1791952485578,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791951395225},
+    {"field":"column","value":"done","at":1791952485578}
+  ]
+}

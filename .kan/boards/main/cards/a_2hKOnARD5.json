@@ -1,0 +1,18 @@
+{
+  "_v": 3,
+  "alias": "let-a-profile-opt",
+  "alias_explicit": false,
+  "column": "done",
+  "created_at_millis": 1791950699767,
+  "creator": "Alexander Terp",
+  "description": "Bundles can now declare post_install steps, which run whenever the bundle is in a profile's resolved set. A profile has no way to skip one: when an upstream bundle's step misbehaves on one machine, the only fix is to stop importing the bundle or patch the source. A per-import option beside `exclude` (for example `skip_post_install: [render]` under a `bundles:` entry) would cover it. Not needed for the first cut; SPEC.md's Post-Install Hooks section explains why (upstream bundles could already ship hooks and scripts the target runs).",
+  "id": "a_2hKOnARD5",
+  "position": "Zl",
+  "title": "Let a profile opt out of an imported bundle's post_install step",
+  "type": "enhancement",
+  "updated_at_millis": 1791951822834,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791950699767},
+    {"field":"column","value":"done","at":1791951822834}
+  ]
+}

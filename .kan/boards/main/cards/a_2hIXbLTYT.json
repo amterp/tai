@@ -2,16 +2,17 @@
   "_v": 3,
   "alias": "let-a-bundle-declare",
   "alias_explicit": false,
-  "column": "backlog-hi",
+  "column": "done",
   "created_at_millis": 1791946271840,
   "creator": "Alexander Terp",
   "description": "A bundle can't carry the `post_install` step it depends on, so every profile that installs the bundle has to repeat the step, and a profile that forgets it installs a bundle that does nothing.\n\nThe auto-approval bundle does nothing until `render.rad` runs, so the same step sits in five places across three config repos: two profiles in one, a profile and a Codex post-install script in another, and a profile in the third. The bundle's description has to warn: \"A profile that installs this must run auto-approval/render.rad in its post_install, or the policy only sits on disk.\" memri's install step is repeated per profile the same way.\n\nProposed: let a bundle (or an asset) declare `post_install` steps that run whenever it is in the resolved set, deduplicated across imports and run after files are written.\n\nThings to decide while building it:\n\n- Order: where bundle steps run relative to the profile's own steps, and to each other. Resolution order of the bundles is the natural default.\n- Identity for deduplication: a bundle imported twice, through two paths, should run its step once. Keying on bundle plus step name probably works.\n- Paths: a step's command will usually live in the bundle's own source, so it needs a way to name a file relative to that source (or to `TAI_TARGET_DIR`) that works whichever repo imports it.\n\nThis builds on card `run-post-install-as` (each step succeeds or fails on its own, with its own re-baseline), so do that one first. The approval-policy asset (card `add-an-approval`) would remove the auto-approval case, but memri's setup still needs this.\n\n(Moved from GitHub issue #13, part 2.)",
   "id": "a_2hIXbLTYT",
-  "position": "aE",
+  "position": "Zp",
   "title": "Let a bundle declare the post_install steps it depends on",
   "type": "feature",
-  "updated_at_millis": 1791946278712,
+  "updated_at_millis": 1791950699715,
   "history": [
-    {"field":"column","value":"backlog-hi","at":1791946271840}
+    {"field":"column","value":"backlog-hi","at":1791946271840},
+    {"field":"column","value":"done","at":1791950699715}
   ]
 }

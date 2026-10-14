@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "refresh-installation",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1791952862511,
+  "creator": "Alexander Terp",
+  "description": "`docs/src/content/docs/` installation-behavior page: its config pipeline section (\"Read - load the YAML config\") predates hooks, MCPs, settings and Markdown approval assets. The type lists were fixed; the pipeline description needs a read-through. Also SPEC.md's scope table has no `statuslines | local` row, though `ConfigFilePath` routes statuslines through `settingsFilePath(scope)` like hooks; verify and add it.",
+  "id": "a_2hLJ3Sztk",
+  "position": "a1",
+  "title": "Refresh installation-behavior.md for current config assets",
+  "type": "chore",
+  "updated_at_millis": 1791952862511,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1791952862511}
+  ]
+}
