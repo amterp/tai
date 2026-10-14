@@ -19,7 +19,7 @@ func setupCodexInstallTest(t *testing.T) (*testutil.TestEnv, *Installer, *codex.
 	return env, installer, adapter
 }
 
-func TestInstallCodexMappingsAndPassiveWarnings(t *testing.T) {
+func TestInstallCodexMappingsAndWarnings(t *testing.T) {
 	env, installer, adapter := setupCodexInstallTest(t)
 
 	env.SetupAsset("personas", "p.md", `---
@@ -79,8 +79,8 @@ Skill body.
 	if !env.TargetFileExists("skills/p/SKILL.md") {
 		t.Fatal("skills/p/SKILL.md not created")
 	}
-	if !env.TargetFileExists("delegates/d.md") {
-		t.Fatal("delegates/d.md not created")
+	if !env.TargetFileExists("agents/d.toml") {
+		t.Fatal("agents/d.toml not created")
 	}
 	if !env.TargetFileExists("skills/s/SKILL.md") {
 		t.Fatal("skills/s/SKILL.md not created")
@@ -89,8 +89,10 @@ Skill body.
 	if !containsWarning(result.Warnings, "installed as skill instead") {
 		t.Errorf("missing persona-as-skill warning, warnings: %#v", result.Warnings)
 	}
-	if !containsWarning(result.Warnings, "delegate assets") {
-		t.Errorf("missing delegate passive warning, warnings: %#v", result.Warnings)
+	// The adapter drops tools from a Codex agent, and that has to reach the
+	// user rather than stay on the resolved asset.
+	if !containsWarning(result.Warnings, "no tool allowlist") {
+		t.Errorf("missing delegate tools warning, warnings: %#v", result.Warnings)
 	}
 
 	persona := env.ReadTargetFile("skills/p/SKILL.md")
@@ -98,9 +100,9 @@ Skill body.
 		t.Errorf("persona missing rendered name field: %q", persona)
 	}
 
-	delegate := env.ReadTargetFile("delegates/d.md")
-	if !strings.Contains(delegate, "tools: Read, Edit") {
-		t.Errorf("delegate missing tools frontmatter: %q", delegate)
+	delegate := env.ReadTargetFile("agents/d.toml")
+	if !strings.Contains(delegate, "name = 'delegate-a'") || !strings.Contains(delegate, "Delegate body.") {
+		t.Errorf("delegate not rendered as a Codex agent: %q", delegate)
 	}
 
 	skill := env.ReadTargetFile("skills/s/SKILL.md")
@@ -109,6 +111,44 @@ Skill body.
 	}
 	if strings.Contains(skill, "tools:") {
 		t.Errorf("skill should not include tools frontmatter for codex: %q", skill)
+	}
+}
+
+func TestInstallCodexRemovesDelegateFromOldLayout(t *testing.T) {
+	// Delegates used to install as passive files under delegates/. An install
+	// recorded that way must have its file swept on the next install, or the
+	// old copy lingers next to the agent that replaced it.
+	env, installer, adapter := setupCodexInstallTest(t)
+
+	content := "---\nname: delegate-a\ndescription: D\n---\n\nBody.\n"
+	env.SetupAsset("delegates", "d.md", content)
+	assets := []*config.Asset{{
+		Type:       config.AssetTypeDelegate,
+		Name:       "d.md",
+		SourceName: "local",
+		SourcePath: filepath.Join(env.ConfigRepo, "assets", "delegates", "d.md"),
+	}}
+
+	env.WriteTargetFile("delegates/d.md", content)
+	store := NewManifestStore(filepath.Join(env.ConfigDir, "manifests"))
+	if err := store.Save(BuildManifest("codex", "codex-profile", env.ConfigRepo, []ManifestEntry{{
+		Path:       "delegates/d.md",
+		SourceName: "local",
+		SourcePath: assets[0].SourcePath,
+		Checksum:   ComputeChecksum([]byte(content)),
+	}}, nil)); err != nil {
+		t.Fatalf("saving old-layout manifest: %v", err)
+	}
+
+	if _, err := installer.Install(adapter, "codex-profile", assets, InstallOptions{}); err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+
+	if env.TargetFileExists("delegates/d.md") {
+		t.Error("delegates/d.md from the old layout was not removed")
+	}
+	if !env.TargetFileExists("agents/d.toml") {
+		t.Error("agents/d.toml not created")
 	}
 }
 

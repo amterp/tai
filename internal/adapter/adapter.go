@@ -30,7 +30,11 @@ type Adapter interface {
 	// expected format. For example, the Claude adapter converts tai frontmatter
 	// into Claude-specific frontmatter for personas and delegates.
 	// The asset's Content holds the body (frontmatter already stripped) and
-	// Metadata holds the parsed frontmatter fields.
+	// Metadata holds the parsed frontmatter fields. For the main file of a
+	// directory asset, IsDir is true and Name is the main file's name.
+	//
+	// A field the target cannot express is dropped with a warning appended to
+	// the asset's Warnings, which the installer reports.
 	TransformContent(asset *config.ResolvedAsset) ([]byte, error)
 
 	// Run invokes the target with the given arguments.

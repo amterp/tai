@@ -8,6 +8,7 @@ import (
 
 	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/frontmatter"
+	"github.com/pelletier/go-toml/v2"
 )
 
 func TestAdapterName(t *testing.T) {
@@ -23,7 +24,7 @@ func TestAdapterAssetMapping(t *testing.T) {
 
 	expected := map[string]string{
 		"persona":  "skills",
-		"delegate": "delegates",
+		"delegate": "agents",
 		"skill":    "skills",
 	}
 
@@ -80,8 +81,14 @@ func TestAdapterMapAssetPath(t *testing.T) {
 			expected: "skills/senior-swe/SKILL.md",
 		},
 		{
+			// A single-file delegate becomes a custom agent TOML file
 			asset:    &config.Asset{Type: "delegate", Name: "code-reviewer.md"},
-			expected: "delegates/code-reviewer.md",
+			expected: "agents/code-reviewer.toml",
+		},
+		{
+			// A directory delegate has no TOML form and stays a passive reference
+			asset:    &config.Asset{Type: "delegate", Name: "researcher", IsDir: true},
+			expected: "delegates/researcher",
 		},
 		{
 			// Single-file skill also wrapped in directory
@@ -175,10 +182,158 @@ func TestAdapterTransformPersona(t *testing.T) {
 	}
 }
 
-func TestAdapterTransformDelegate(t *testing.T) {
+// transformDelegate runs a single-file delegate through the adapter and
+// returns the installed bytes and the warnings it raised.
+func transformDelegate(t *testing.T, metadata map[string]string, native map[string]any, body string) (string, []string) {
+	t.Helper()
+	asset := &config.ResolvedAsset{
+		Asset:    config.Asset{Type: config.AssetTypeDelegate, Name: "code-reviewer.md"},
+		Metadata: metadata,
+		Content:  []byte(body),
+	}
+	if native != nil {
+		asset.Native = frontmatter.Native{"codex": native}
+	}
+	got, err := New("").TransformContent(asset)
+	if err != nil {
+		t.Fatalf("TransformContent failed: %v", err)
+	}
+	return string(got), asset.Warnings
+}
+
+// parseAgent decodes an installed agent file, failing the test if Codex
+// could not parse it either.
+func parseAgent(t *testing.T, content string) map[string]any {
+	t.Helper()
+	var parsed map[string]any
+	if err := toml.Unmarshal([]byte(content), &parsed); err != nil {
+		t.Fatalf("installed agent is not valid TOML: %v\n%s", err, content)
+	}
+	return parsed
+}
+
+func TestAdapterTransformDelegateAsAgent(t *testing.T) {
+	got, warnings := transformDelegate(t, map[string]string{
+		"name":        "code-reviewer",
+		"description": "Reviews code for quality",
+		"model":       "gpt-5",
+	}, nil, "You are a code reviewer.\n")
+
+	want := "name = 'code-reviewer'\n" +
+		"description = 'Reviews code for quality'\n" +
+		"model = 'gpt-5'\n" +
+		"developer_instructions = \"\"\"\nYou are a code reviewer.\n\"\"\"\n"
+	if got != want {
+		t.Errorf("agent mismatch:\n got: %q\nwant: %q", got, want)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %q, want none", warnings)
+	}
+}
+
+func TestAdapterTransformDelegateBodyRoundTrips(t *testing.T) {
+	// Characters that need escaping in a TOML multi-line string must come
+	// back unchanged, or Codex runs different instructions than were written.
+	body := "Quote: \"\"\" and ''' and a path C:\\tmp\\x.\nTab\there.\n"
+	got, _ := transformDelegate(t, map[string]string{"name": "r", "description": "d"}, nil, body)
+
+	if parsed := parseAgent(t, got); parsed["developer_instructions"] != body {
+		t.Errorf("developer_instructions = %q, want %q", parsed["developer_instructions"], body)
+	}
+}
+
+func TestAdapterTransformDelegateModel(t *testing.T) {
+	tests := []struct {
+		name      string
+		model     string
+		native    map[string]any
+		wantModel any // nil means no model key
+		wantWarn  bool
+	}{
+		{name: "codex model kept", model: "gpt-5", wantModel: "gpt-5"},
+		{name: "claude alias dropped", model: "opus", wantWarn: true},
+		{name: "claude alias with context suffix dropped", model: "Sonnet[1m]", wantWarn: true},
+		{name: "claude model id dropped", model: "claude-opus-5-5", wantWarn: true},
+		{name: "inherit dropped silently", model: "inherit"},
+		{name: "native model replaces claude alias", model: "opus", native: map[string]any{"model": "gpt-5"}, wantModel: "gpt-5"},
+		{name: "native model replaces codex model", model: "gpt-4", native: map[string]any{"model": "gpt-5"}, wantModel: "gpt-5"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, warnings := transformDelegate(t, map[string]string{
+				"name": "r", "description": "d", "model": tt.model,
+			}, tt.native, "Body.\n")
+
+			if model := parseAgent(t, got)["model"]; model != tt.wantModel {
+				t.Errorf("model = %v, want %v", model, tt.wantModel)
+			}
+			if warned := containsSubstring(warnings, "is a Claude model"); warned != tt.wantWarn {
+				t.Errorf("model warning = %v, want %v; warnings: %q", warned, tt.wantWarn, warnings)
+			}
+		})
+	}
+}
+
+func TestAdapterTransformDelegateTools(t *testing.T) {
+	metadata := map[string]string{"name": "r", "description": "d", "tools": "Read, Grep"}
+
+	got, warnings := transformDelegate(t, metadata, nil, "Body.\n")
+	if strings.Contains(got, "tools") {
+		t.Errorf("tools should not reach a Codex agent:\n%s", got)
+	}
+	if !containsSubstring(warnings, "no tool allowlist") {
+		t.Errorf("missing tools warning, warnings: %q", warnings)
+	}
+
+	// Restricting the agent in Codex's own terms answers the warning.
+	_, warnings = transformDelegate(t, metadata,
+		map[string]any{"features": map[string]any{"shell_tool": false}}, "Body.\n")
+	if containsSubstring(warnings, "no tool allowlist") {
+		t.Errorf("tools warning should be silenced by native.codex.features, warnings: %q", warnings)
+	}
+}
+
+func TestAdapterTransformDelegateNative(t *testing.T) {
+	got, _ := transformDelegate(t, map[string]string{
+		"name": "r", "description": "generated",
+	}, map[string]any{
+		"description":            "native wins",
+		"model_reasoning_effort": "high",
+		"features":               map[string]any{"shell_tool": false},
+	}, "Body.\n")
+
+	parsed := parseAgent(t, got)
+	if parsed["description"] != "native wins" {
+		t.Errorf("description = %v, want the native value", parsed["description"])
+	}
+	if parsed["model_reasoning_effort"] != "high" {
+		t.Errorf("model_reasoning_effort = %v, want high", parsed["model_reasoning_effort"])
+	}
+	if parsed["developer_instructions"] != "Body.\n" {
+		t.Errorf("developer_instructions = %v, want the body", parsed["developer_instructions"])
+	}
+	if features, _ := parsed["features"].(map[string]any); features["shell_tool"] != false {
+		t.Errorf("features = %v, want shell_tool = false", parsed["features"])
+	}
+}
+
+func TestAdapterTransformDelegateRequiredFields(t *testing.T) {
+	// Codex ignores an agent missing a description or instructions, so the
+	// description falls back to the name and an empty body warns.
+	got, warnings := transformDelegate(t, map[string]string{"name": "r"}, nil, "  \n")
+
+	if description := parseAgent(t, got)["description"]; description != "r" {
+		t.Errorf("description = %v, want the name as fallback", description)
+	}
+	if !containsSubstring(warnings, "body is empty") {
+		t.Errorf("missing empty-body warning, warnings: %q", warnings)
+	}
+}
+
+func TestAdapterTransformDirectoryDelegateStaysMarkdown(t *testing.T) {
 	a := New("")
 	asset := &config.ResolvedAsset{
-		Asset: config.Asset{Type: config.AssetTypeDelegate},
+		Asset: config.Asset{Type: config.AssetTypeDelegate, Name: "DELEGATE.md", IsDir: true},
 		Metadata: map[string]string{
 			"name":        "code-reviewer",
 			"description": "Reviews code for quality",
@@ -195,8 +350,17 @@ func TestAdapterTransformDelegate(t *testing.T) {
 
 	want := "---\nname: code-reviewer\ndescription: Reviews code for quality\ntools: Read, Glob, Grep\nmodel: gpt-5\n---\n\nYou are a code reviewer.\n"
 	if string(got) != want {
-		t.Errorf("delegate transform mismatch:\n got: %q\nwant: %q", string(got), want)
+		t.Errorf("directory delegate transform mismatch:\n got: %q\nwant: %q", string(got), want)
 	}
+}
+
+func containsSubstring(items []string, sub string) bool {
+	for _, item := range items {
+		if strings.Contains(item, sub) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestAdapterTransformSkill(t *testing.T) {
@@ -279,12 +443,16 @@ func TestAdapterInstallWarnings(t *testing.T) {
 		t.Errorf("persona warning should mention skill directory path, got: %q", personaWarnings[0])
 	}
 
-	delegateWarnings := a.InstallWarnings(&config.Asset{Type: config.AssetTypeDelegate, Name: "d.md"})
-	if len(delegateWarnings) != 1 {
-		t.Fatalf("len(delegate warnings) = %d, want 1", len(delegateWarnings))
+	if warnings := a.InstallWarnings(&config.Asset{Type: config.AssetTypeDelegate, Name: "d.md"}); len(warnings) != 0 {
+		t.Errorf("single-file delegate warnings = %q, want none: it installs as a Codex agent", warnings)
 	}
-	if !strings.Contains(delegateWarnings[0], "passive reference") {
-		t.Errorf("delegate warning = %q, want passive reference message", delegateWarnings[0])
+
+	dirWarnings := a.InstallWarnings(&config.Asset{Type: config.AssetTypeDelegate, Name: "d", IsDir: true})
+	if len(dirWarnings) != 1 {
+		t.Fatalf("len(directory delegate warnings) = %d, want 1", len(dirWarnings))
+	}
+	if !strings.Contains(dirWarnings[0], "passive reference at delegates/d") {
+		t.Errorf("directory delegate warning = %q, want passive reference message", dirWarnings[0])
 	}
 
 	if warnings := a.InstallWarnings(&config.Asset{Type: config.AssetTypeSkill, Name: "s.md"}); len(warnings) != 0 {

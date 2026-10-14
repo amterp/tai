@@ -379,8 +379,9 @@ func (a *Asset) ConfigName() string {
 //   - Native holds per-target fields the author wrote for a specific target.
 //     The adapter merges its own entry over the frontmatter it generated.
 //
-// For directory assets (skills), Content and Metadata are nil; the directory is
-// copied and SKILL.md is transformed separately via transformSkillMd.
+// For directory assets, Content and Metadata are nil; the directory is copied
+// and its main file is transformed separately, through a ResolvedAsset that
+// stands for the main file alone (IsDir set, Name the main file's name).
 type ResolvedAsset struct {
 	Asset
 	Content     []byte             // Body after tai frontmatter stripped; final installed bytes after transform

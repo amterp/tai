@@ -13,6 +13,7 @@ import (
 	"github.com/amterp/tai/internal/configasset"
 	fm "github.com/amterp/tai/internal/frontmatter"
 	"github.com/amterp/tai/internal/template"
+	"github.com/pelletier/go-toml/v2"
 )
 
 func init() {
@@ -30,6 +31,11 @@ const HooksSettingsKey = "hooks"
 // MCPSettingsKey is the TOML table Codex reads MCP servers from. Note the
 // snake_case spelling, unlike the mcpServers other targets use.
 const MCPSettingsKey = "mcp_servers"
+
+// passiveDelegateDir holds directory delegates. A Codex custom agent is a
+// single TOML file, which a DELEGATE.md plus supporting files cannot become,
+// so these are installed as reference material that Codex does not load.
+const passiveDelegateDir = "delegates"
 
 // mcpConsentKey identifies the "may tai rewrite config.toml" decision, so the
 // answer can be remembered across runs.
@@ -90,10 +96,11 @@ func (a *Adapter) Name() string {
 
 // AssetMapping returns how tai asset types map to Codex paths.
 // Codex has no native persona concept, so personas are mapped to skills.
+// Delegates become custom agents; see MapAssetPath for the file name.
 func (a *Adapter) AssetMapping() map[string]string {
 	return map[string]string{
 		config.AssetTypePersona:  "skills",
-		config.AssetTypeDelegate: "delegates",
+		config.AssetTypeDelegate: "agents",
 		config.AssetTypeSkill:    "skills",
 		// Note: "file" type uses asset.Dest directly, not this mapping
 	}
@@ -107,10 +114,17 @@ func (a *Adapter) TargetDir() string {
 // MapAssetPath maps a tai asset to a Codex target path.
 // Single-file assets that map to skills/ are wrapped in a directory
 // (skills/name/SKILL.md) because Codex only discovers directory-format skills.
+// A single-file delegate becomes agents/name.toml, a Codex custom agent.
 func (a *Adapter) MapAssetPath(asset *config.Asset) string {
 	if !asset.IsDir && a.mapsToSkills(asset.Type) {
 		name := strings.TrimSuffix(asset.Name, ".md")
 		return filepath.Join("skills", name, "SKILL.md")
+	}
+	if asset.Type == config.AssetTypeDelegate {
+		if asset.IsDir {
+			return filepath.Join(passiveDelegateDir, asset.Name)
+		}
+		return filepath.Join("agents", strings.TrimSuffix(asset.Name, ".md")+".toml")
 	}
 	return adapter.DefaultMapAssetPath(a.AssetMapping(), asset)
 }
@@ -122,13 +136,18 @@ func (a *Adapter) mapsToSkills(assetType string) bool {
 
 // TransformContent transforms asset content into Codex-compatible format.
 // Personas are mapped to skills, so they get the same frontmatter (name + description).
-// Files are returned as-is. Other types get frontmatter re-rendered from tai metadata.
+// Delegates become custom agent TOML files, except the main file of a
+// directory delegate, which stays Markdown (see passiveDelegateDir).
+// Files are returned as-is.
 func (a *Adapter) TransformContent(asset *config.ResolvedAsset) ([]byte, error) {
 	switch asset.Type {
 	case config.AssetTypePersona, config.AssetTypeSkill:
 		return a.transformSkill(asset), nil
 	case config.AssetTypeDelegate:
-		return a.transformDelegate(asset), nil
+		if asset.IsDir {
+			return a.transformPassiveDelegate(asset), nil
+		}
+		return a.transformAgent(asset)
 	case config.AssetTypeFile:
 		return asset.Content, nil
 	default:
@@ -136,7 +155,9 @@ func (a *Adapter) TransformContent(asset *config.ResolvedAsset) ([]byte, error) 
 	}
 }
 
-func (a *Adapter) transformDelegate(asset *config.ResolvedAsset) []byte {
+// transformPassiveDelegate renders a directory delegate's main file as
+// Markdown with the delegate's frontmatter. Codex does not read it.
+func (a *Adapter) transformPassiveDelegate(asset *config.ResolvedAsset) []byte {
 	var fields fm.Fields
 	fields.Set(fm.FieldName, asset.Metadata[fm.FieldName])
 	fields.SetString(fm.FieldDescription, asset.Metadata[fm.FieldDescription])
@@ -145,6 +166,118 @@ func (a *Adapter) transformDelegate(asset *config.ResolvedAsset) []byte {
 	fields.Merge(asset.Native[a.Name()])
 
 	return fm.Render(fields, asset.Content)
+}
+
+// agentFields are the custom agent fields tai generates, in the order they
+// are written. DeveloperInstructions is multiline so the body stays readable
+// in the installed file, and last because it is long.
+type agentFields struct {
+	Name                  string `toml:"name,omitempty"`
+	Description           string `toml:"description,omitempty"`
+	Model                 string `toml:"model,omitempty"`
+	DeveloperInstructions string `toml:"developer_instructions,multiline,omitempty"`
+}
+
+// transformAgent renders a single-file delegate as a Codex custom agent: a
+// TOML file whose developer_instructions is the delegate's body.
+//
+// Codex has nowhere to put a Claude model or a tool allowlist, so both are
+// dropped, with a warning unless native.codex already says what to do instead.
+func (a *Adapter) transformAgent(asset *config.ResolvedAsset) ([]byte, error) {
+	native := asset.Native[a.Name()]
+	warn := func(format string, args ...any) {
+		asset.Warnings = append(asset.Warnings,
+			fmt.Sprintf("delegate %q: ", asset.Name)+fmt.Sprintf(format, args...))
+	}
+
+	fields := agentFields{
+		Name:                  asset.Metadata[fm.FieldName],
+		Description:           asset.Metadata[fm.FieldDescription],
+		DeveloperInstructions: string(asset.Content),
+	}
+	if fields.Description == "" {
+		// Codex ignores an agent without a description.
+		fields.Description = fields.Name
+	}
+
+	if model := asset.Metadata[fm.FieldModel]; model != "" {
+		_, nativeModel := native[fm.FieldModel]
+		switch {
+		case !isClaudeModel(model):
+			fields.Model = model
+		case strings.EqualFold(model, "inherit") || nativeModel:
+			// Omitting model already means "use the parent's" in Codex.
+		default:
+			warn("model %q is a Claude model, so it was not installed and the Codex agent uses the parent session's model. "+
+				"To choose a Codex model, set 'native.codex.model'.", model)
+		}
+	}
+
+	if asset.Metadata[fm.FieldTools] != "" {
+		if _, restricted := native["features"]; !restricted {
+			warn("Codex agents have no tool allowlist, so 'tools' was not installed and the agent can use every tool the parent session can. " +
+				"To restrict it, turn tools off under 'native.codex', for example 'features: {shell_tool: false}'.")
+		}
+	}
+
+	if strings.TrimSpace(fields.DeveloperInstructions) == "" {
+		if _, set := native["developer_instructions"]; !set {
+			warn("the body is empty, and Codex ignores an agent without developer_instructions. Write the agent's instructions as the body.")
+		}
+	}
+
+	// A native field replaces the generated one. Clearing it here leaves the
+	// native map as the only place the key is written, since TOML rejects a
+	// key defined twice.
+	for key, field := range map[string]*string{
+		fm.FieldName:             &fields.Name,
+		fm.FieldDescription:      &fields.Description,
+		fm.FieldModel:            &fields.Model,
+		"developer_instructions": &fields.DeveloperInstructions,
+	} {
+		if _, ok := native[key]; ok {
+			*field = ""
+		}
+	}
+
+	out, err := toml.Marshal(fields)
+	if err != nil {
+		return nil, fmt.Errorf("rendering Codex agent: %w", err)
+	}
+	if len(native) > 0 {
+		// The generated part holds only top-level keys, so the native part
+		// can follow it even when it opens tables such as [features].
+		extra, err := toml.Marshal(map[string]any(native))
+		if err != nil {
+			return nil, fmt.Errorf("rendering native.codex fields: %w", err)
+		}
+		out = append(out, extra...)
+	}
+	return out, nil
+}
+
+// claudeModelAliases are the model names Claude Code accepts besides full
+// claude-* IDs. tai's model field is written for Claude, so one of these in a
+// Codex install is a Claude model, not a Codex one.
+var claudeModelAliases = map[string]bool{
+	"sonnet":   true,
+	"opus":     true,
+	"haiku":    true,
+	"fable":    true,
+	"opusplan": true,
+	"best":     true,
+	"default":  true,
+	"inherit":  true,
+}
+
+// isClaudeModel reports whether model names a Claude model, ignoring a
+// context-window suffix such as "[1m]".
+func isClaudeModel(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	if i := strings.IndexByte(m, '['); i > 0 && strings.HasSuffix(m, "]") {
+		m = m[:i]
+	}
+	return claudeModelAliases[m] || strings.HasPrefix(m, "claude-")
 }
 
 func (a *Adapter) transformSkill(asset *config.ResolvedAsset) []byte {
@@ -321,8 +454,13 @@ func (a *Adapter) InstallWarnings(asset *config.Asset) []string {
 				strings.TrimSuffix(asset.Name, ".md")),
 		}
 	case config.AssetTypeDelegate:
+		if !asset.IsDir {
+			return nil
+		}
 		return []string{
-			fmt.Sprintf("Codex does not natively consume delegate assets - installed as passive reference file: delegates/%s", asset.Name),
+			fmt.Sprintf("delegate %q: Codex custom agents are single TOML files, so this directory delegate was installed "+
+				"as a passive reference at %s/%s that Codex does not load. Make it a single-file delegate to install it as a Codex agent.",
+				asset.Name, passiveDelegateDir, asset.Name),
 		}
 	case config.AssetTypeHook:
 		// Codex will not run a hook until it is trusted, and trust is keyed on

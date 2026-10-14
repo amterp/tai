@@ -1752,8 +1752,9 @@ func (i *Installer) transformMainFileContent(resolved *config.ResolvedAsset, con
 	// Build a synthetic ResolvedAsset so the adapter can transform it
 	synthetic := &config.ResolvedAsset{
 		Asset: config.Asset{
-			Type: assetType,
-			Name: mainFileName,
+			Type:  assetType,
+			Name:  mainFileName,
+			IsDir: true,
 		},
 		Content:  parsed.Body,
 		Metadata: parsed.Metadata,
@@ -1764,6 +1765,7 @@ func (i *Installer) transformMainFileContent(resolved *config.ResolvedAsset, con
 	if err != nil {
 		return nil, fmt.Errorf("transforming %s: %w", mainFileName, err)
 	}
+	resolved.Warnings = append(resolved.Warnings, synthetic.Warnings...)
 
 	return transformed, nil
 }
