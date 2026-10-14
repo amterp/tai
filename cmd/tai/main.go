@@ -23,7 +23,7 @@ import (
 	"github.com/amterp/tai/internal/template"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
 
 // out is the global output instance, initialized after flag parsing.
 var out output.Output
