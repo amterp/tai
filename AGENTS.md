@@ -18,7 +18,7 @@ go test ./e2e -v                 # E2E tests verbose
 go test -run TestBundle ./...    # Run specific test by name
 
 # Lint
-golangci-lint run ./...          # Runs errcheck, govet, staticcheck, unused, ineffassign
+golangci-lint run ./...          # Runs errcheck, govet, staticcheck, unused, ineffassign, and checks gofmt
 
 # Dev script (build + test + lint)
 ./dev -v                         # Full validation
