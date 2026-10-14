@@ -233,10 +233,18 @@ type BundleEntry struct {
 	// mirroring the whole bundle to drop it - mirrors are what this feature
 	// exists to stop.
 	Exclude []string `yaml:"exclude"`
+
+	// SkipPostInstall names post_install steps this import does not run. Like
+	// Exclude it applies to the import's fully resolved step set, so it
+	// reaches steps of bundles the import includes, and a name matches every
+	// step of that name there. It exists for the machine where an upstream
+	// step misbehaves: without it the only fixes are dropping the import or
+	// patching the source.
+	SkipPostInstall []string `yaml:"skip_post_install"`
 }
 
 // UnmarshalYAML accepts a bare name as well as the mapping form. Almost every
-// entry carries no exclusions, and `- core` should not have to become
+// entry carries no exclusions or skips, and `- core` should not have to become
 // `- name: core`.
 func (be *BundleEntry) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind == yaml.ScalarNode {

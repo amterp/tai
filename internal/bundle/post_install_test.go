@@ -145,3 +145,90 @@ func TestImportExclusionKeepsBundleSteps(t *testing.T) {
 		t.Errorf("steps = %v, want setup's and tools-a's", got)
 	}
 }
+
+// A skip reaches the steps of bundles the import includes, and a plain name
+// matches every step of that name: tools-b's render and setup's both go.
+func TestSkipPostInstallReachesIncludedSteps(t *testing.T) {
+	sources := setupStepsEnv(t)
+	logger := &recordingLogger{}
+	resolver := NewResolver(map[string]*config.Bundle{}, sources)
+	resolver.SetLogger(logger)
+
+	resolved, err := resolveOne(t, resolver, config.BundleEntry{
+		Name:            "work:tools-b",
+		SkipPostInstall: []string{"render"},
+	})
+	if err != nil {
+		t.Fatalf("Resolve failed: %v", err)
+	}
+	if got := stepKeys(resolved.PostInstall); len(got) != 0 {
+		t.Errorf("steps = %v, want none", got)
+	}
+	if len(resolved.Assets) != 2 {
+		t.Errorf("len(Assets) = %d, want 2: skipping steps must leave assets alone", len(resolved.Assets))
+	}
+	if !logger.contains(`Skipped: post_install step "render" from bundle "work:setup"`) {
+		t.Errorf("expected a Skipped line naming the step's bundle; got %v", logger.lines)
+	}
+}
+
+// A skip covers its own import only. Another entry reaching the same bundle
+// without one still runs the step, as with exclusions.
+func TestSkipPostInstallIsPerImport(t *testing.T) {
+	sources := setupStepsEnv(t)
+	resolver := NewResolver(map[string]*config.Bundle{}, sources)
+
+	resolved, _, err := resolver.ResolveMultiple([]config.BundleEntry{
+		{Name: "work:tools-a", SkipPostInstall: []string{"render"}},
+		{Name: "work:setup"},
+	})
+	if err != nil {
+		t.Fatalf("ResolveMultiple failed: %v", err)
+	}
+	got := stepKeys(resolved.PostInstall)
+	if len(got) != 2 || got[0] != "work:tools-a/notify" || got[1] != "work:setup/render" {
+		t.Errorf("steps = %v, want [work:tools-a/notify work:setup/render]", got)
+	}
+}
+
+// A bundle's own `bundles:` entries can skip too, since nested entries
+// resolve through the same path as a profile's.
+func TestSkipPostInstallOnNestedEntry(t *testing.T) {
+	sources := setupStepsEnv(t)
+	mine := &config.Bundle{
+		Name:    "mine",
+		Bundles: []config.BundleEntry{{Name: "work:tools-a", SkipPostInstall: []string{"notify"}}},
+	}
+	resolver := NewResolver(map[string]*config.Bundle{"mine": mine}, sources)
+
+	resolved, err := resolver.Resolve("mine")
+	if err != nil {
+		t.Fatalf("Resolve failed: %v", err)
+	}
+	if got := stepKeys(resolved.PostInstall); len(got) != 1 || got[0] != "work:setup/render" {
+		t.Errorf("steps = %v, want [work:setup/render]", got)
+	}
+}
+
+// Upstream renaming or deleting a step already satisfies the skip, so a stale
+// name warns rather than failing the install.
+func TestUnmatchedSkipPostInstallWarnsButSucceeds(t *testing.T) {
+	sources := setupStepsEnv(t)
+	logger := &recordingLogger{}
+	resolver := NewResolver(map[string]*config.Bundle{}, sources)
+	resolver.SetLogger(logger)
+
+	resolved, err := resolveOne(t, resolver, config.BundleEntry{
+		Name:            "work:tools-a",
+		SkipPostInstall: []string{"no-such-step"},
+	})
+	if err != nil {
+		t.Fatalf("a stale skip must not fail resolution: %v", err)
+	}
+	if got := stepKeys(resolved.PostInstall); len(got) != 2 {
+		t.Errorf("steps = %v, want setup's and tools-a's", got)
+	}
+	if !logger.contains(`skip_post_install name "no-such-step"`) {
+		t.Errorf("expected a warning about the unmatched name; got %v", logger.lines)
+	}
+}

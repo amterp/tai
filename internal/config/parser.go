@@ -289,6 +289,12 @@ func validateBundleEntry(entry BundleEntry, index int) error {
 		}
 	}
 
+	for j, name := range entry.SkipPostInstall {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("bundle[%d]: skip_post_install[%d] is empty", index, j)
+		}
+	}
+
 	return nil
 }
 

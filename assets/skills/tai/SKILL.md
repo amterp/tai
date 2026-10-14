@@ -391,14 +391,19 @@ whichever repo imports the bundle, because the step runs in the root of the
 repo holding the bundle's `bundles/` dir - for an imported source, its content
 root. A bundle reached through several imports runs each step once; output
 names the bundle, e.g. `post_install step "render" from bundle "work:approval"`.
-`tai show profile` lists every step that will run. A profile cannot opt out of
-a bundle's step.
+`tai show profile` lists every step that will run.
+
+To skip an imported bundle's step on one machine, add `skip_post_install` to
+the `bundles:` entry (see the example below). It lists plain step names, reaches
+steps of bundles the import includes, and covers that entry only: another entry
+reaching the same bundle still runs the step. A name matching no step warns
+rather than failing. `tai install` prints a `Skipped:` line for each skip.
 
 ### Importing bundles
 
 A `bundles:` entry can name a source, pulling in that source's bundle instead of
 restating its contents. An entry is a bare name or a mapping; the mapping form
-exists for `exclude`.
+exists for `exclude` and `skip_post_install`.
 
 ```yaml
 bundles:
@@ -407,6 +412,9 @@ bundles:
   - name: work:extras
     exclude:
       - assets/skills/beagle    # this machine cannot use it
+  - name: work:approval
+    skip_post_install:
+      - render                  # don't run this bundle's "render" step here
 ```
 
 Imports are read at install time, so assets added upstream arrive on the next

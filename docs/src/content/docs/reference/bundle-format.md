@@ -70,12 +70,13 @@ bundles:
 
 ### Entry forms
 
-An entry is either a bare name or a mapping. The mapping form exists for `exclude`; everything else reads better bare.
+An entry is either a bare name or a mapping. The mapping form exists for `exclude` and `skip_post_install`; everything else reads better bare.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | yes | Bundle name, or `source:name` to import from another source. |
 | `exclude` | string list | no | Root-relative paths or globs to drop from this import. |
+| `skip_post_install` | string list | no | Names of [post_install steps](#post_install) this import does not run. |
 
 ```yaml
 bundles:
@@ -84,6 +85,9 @@ bundles:
   - name: work:extras
     exclude:
       - assets/skills/beagle
+  - name: work:approval
+    skip_post_install:
+      - render
 ```
 
 ### Imported bundles
@@ -211,7 +215,22 @@ Steps take the same fields as a [profile's steps](/tai/reference/profile-format/
 - **Once per install.** A bundle reached through two imports runs its steps once; a step is identified by its bundle plus its name. Output names the bundle each step came from, as in `post_install step "render" from bundle "work:approval"`.
 - **Timeouts.** A step uses its own `timeout`, then `30s`. A profile's `post_install_timeout` does not apply to bundle steps.
 
-`tai show bundle` and `tai show profile` list the steps that would run. A profile cannot yet opt out of a bundle's step, so importing a bundle means trusting its steps to run on your machine at install.
+`tai show bundle` and `tai show profile` list the steps that would run. Importing a bundle means trusting its steps to run on your machine at install.
+
+To skip a step on one machine, list its name under `skip_post_install` on the `bundles:` entry that imports it:
+
+```yaml
+bundles:
+  - name: work:approval
+    skip_post_install:
+      - render
+```
+
+- **Reach.** The skip applies to the import's fully resolved steps, so it reaches steps of bundles the import includes. A name matches every step of that name there; there is no `bundle:step` form.
+- **Per entry.** Another `bundles:` entry that reaches the same bundle without the skip still runs the step.
+- **Stale names warn.** A name matching no step warns rather than failing: upstream deleting or renaming the step already satisfies the intent.
+
+`tai install` prints a `Skipped:` line for each skipped step, and `tai show` leaves it out of the step list.
 
 ## Validation rules
 
@@ -224,5 +243,6 @@ Tai validates bundles on load and fails fast if:
 - A `dest` value is an absolute path or contains path traversal (`..`)
 - A `bundles` entry has no name, or names a source but no bundle
 - A `bundles` entry's `exclude` pattern is empty, absolute, or contains an interior `**`
+- A `bundles` entry's `skip_post_install` lists an empty name
 - `post_install` is a plain argv list rather than a list of named steps
 - A `post_install` step is missing `name` or `command`, repeats another step's `name`, has an unknown field, or has an invalid `timeout`

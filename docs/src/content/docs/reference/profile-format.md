@@ -71,7 +71,7 @@ If the target name does not match a registered adapter, tai exits with an error.
 
 ## bundles
 
-Optional. The bundles to resolve and include. Entries take the same forms as in a bundle's own `bundles:` list - a bare name, a `source:name` import, or a mapping carrying `exclude`. See [bundle format](/tai/reference/bundle-format/#entry-forms).
+Optional. The bundles to resolve and include. Entries take the same forms as in a bundle's own `bundles:` list - a bare name, a `source:name` import, or a mapping carrying `exclude` or `skip_post_install`. See [bundle format](/tai/reference/bundle-format/#entry-forms).
 
 ```yaml
 bundles:
@@ -80,6 +80,9 @@ bundles:
   - name: work:extras
     exclude:
       - assets/skills/beagle
+  - name: work:approval
+    skip_post_install:
+      - render
 ```
 
 Bundles are resolved in declaration order. When the same asset path appears in multiple bundles, the **later bundle's version wins**. Tai logs an info message when such overrides occur.

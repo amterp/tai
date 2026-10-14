@@ -517,6 +517,31 @@ bundles:
 			wantErr: true,
 		},
 		{
+			name: "bundle entry skipping post_install steps",
+			content: `name: mixed
+bundles:
+  - name: work:approval
+    skip_post_install:
+      - render
+`,
+			check: func(t *testing.T, b *Bundle) {
+				if got := b.Bundles[0].SkipPostInstall; len(got) != 1 || got[0] != "render" {
+					t.Errorf("SkipPostInstall = %v, want [render]", got)
+				}
+			},
+		},
+		{
+			name: "empty skip_post_install name is rejected",
+			content: `name: broken
+bundles:
+  - name: work:approval
+    skip_post_install:
+      - ""
+`,
+			wantErr:         true,
+			wantErrContains: "skip_post_install[0] is empty",
+		},
+		{
 			name: "bundle with source prefix",
 			content: `name: work
 assets:

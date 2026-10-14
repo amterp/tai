@@ -115,7 +115,8 @@ func (r *Resolver) Resolve(name string) (*ResolvedBundle, error) {
 }
 
 // resolveEntry resolves one `bundles:` entry: it resolves the bundle the entry
-// names, then applies the entry's own exclusions to the fully resolved result.
+// names, then applies the entry's own exclusions and step skips to the fully
+// resolved result.
 //
 // from is the origin of the config that wrote this entry, which an unprefixed
 // name resolves against. path tracks the resolution path for cycle detection.
@@ -133,7 +134,45 @@ func (r *Resolver) resolveEntry(entry config.BundleEntry, from origin, path []st
 	}
 
 	resolved.Assets = r.applyExclusions(resolved.Assets, entry, resolved.Name)
+	resolved.PostInstall = r.applyStepSkips(resolved.PostInstall, entry, resolved.Name)
 	return resolved, nil
+}
+
+// applyStepSkips drops the post_install steps an import opted out of. Like
+// exclusions, skips reach the steps of nested includes and cover this import
+// only: another entry reaching the same bundle without the skip still runs it.
+func (r *Resolver) applyStepSkips(steps []Step, entry config.BundleEntry, bundleName string) []Step {
+	if len(entry.SkipPostInstall) == 0 {
+		return steps
+	}
+
+	matched := make([]bool, len(entry.SkipPostInstall))
+	kept := make([]Step, 0, len(steps))
+	for _, step := range steps {
+		skipped := false
+		for i, name := range entry.SkipPostInstall {
+			if step.Name == name {
+				matched[i] = true
+				skipped = true
+			}
+		}
+		if skipped {
+			r.logger.Printf("Skipped: post_install step %q from bundle %q (skip_post_install on bundle %s)",
+				step.Name, step.Bundle, bundleName)
+			continue
+		}
+		kept = append(kept, step)
+	}
+
+	// Upstream deleting or renaming the step already satisfies the intent, as
+	// with an unmatched exclude pattern.
+	for i, name := range entry.SkipPostInstall {
+		if !matched[i] {
+			r.logger.Printf("Warning: skip_post_install name %q in bundle %s matched no post_install steps", name, bundleName)
+		}
+	}
+
+	return kept
 }
 
 // applyExclusions drops the assets an import carved out.

@@ -423,7 +423,8 @@ post_install:
 
 A `bundles:` entry may name a source, importing that bundle from the source's
 `bundles/` directory. An entry is a bare name or a mapping; the mapping form
-exists for `exclude`.
+exists for `exclude` and `skip_post_install` (see
+[Steps Declared by Bundles](#steps-declared-by-bundles)).
 
 ```yaml
 bundles:
@@ -432,6 +433,9 @@ bundles:
   - name: work:extras
     exclude:
       - assets/skills/beagle
+  - name: work:approval
+    skip_post_install:
+      - render
 ```
 
 The problem this solves is drift. Without imports, sharing a bundle across
@@ -587,8 +591,23 @@ includes the bundle, so profiles don't each have to repeat them.
   the profiles that import it.
 
 `tai install --dry-run` lists every step it would run with its origin, and
-`tai show profile` and `tai show bundle` list each step's command. There is no
-way yet for a profile to opt out of a bundle's step.
+`tai show profile` and `tai show bundle` list each step's command.
+
+A `bundles:` entry can skip steps with `skip_post_install`, a list of step
+names, for the machine where an upstream step misbehaves. Without it the only
+fixes are dropping the import or patching the source. It follows `exclude`:
+
+- It applies to the import's fully resolved step set, so it reaches steps of
+  bundles the import includes. A name matches every step of that name there.
+- It covers that entry only. Another entry reaching the same bundle without
+  the skip still runs the step.
+- A name that matches no step warns rather than failing, since upstream
+  deleting or renaming the step already satisfies the intent.
+- Names are plain step names. There is no `bundle:step` form: step names may
+  contain `:`, so such a form could not be split reliably.
+
+`tai install` prints a `Skipped:` line for each skipped step, and `tai show`
+leaves skipped steps out of its list.
 
 Importing a bundle means trusting its steps to run on your machine at install.
 That is not a new kind of trust: an imported bundle could already ship hook
