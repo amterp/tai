@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/amterp/tai/internal/config"
 	"github.com/amterp/tai/internal/frontmatter"
 )
 
@@ -154,5 +155,50 @@ func TestFrontmatterWarningsRetiredField(t *testing.T) {
 	}
 	if !strings.Contains(warnings[0], "tai.yaml") {
 		t.Errorf("warning does not say what replaced it: %s", warnings[0])
+	}
+}
+
+func TestFileDestWarning(t *testing.T) {
+	tests := []struct {
+		name      string
+		assetType string
+		assetName string
+		dest      string
+		wantWarn  bool
+	}{
+		{"extensioned source into dot-name", "file", "plugin.json", "skills/tool-lines/.claude-plugin", true},
+		{"dot-name at target root", "file", "plugin.json", ".claude-plugin", true},
+		{"trailing slash makes it a directory", "file", "plugin.json", "skills/tool-lines/.claude-plugin/", false},
+		{"dotfile source keeps its name", "file", ".gitignore", ".gitignore", false},
+		{"stem rename to dotfile", "file", "gitignore.txt", ".gitignore", false},
+		{"stem rename in subdirectory", "file", "envrc.sh", "project/.envrc", false},
+		{"extensionless source", "file", "plugin", ".claude-plugin", false},
+		{"ordinary file path", "file", "AGENTS.md", "CLAUDE.md", false},
+		{"dot-name with its own extension", "file", "plugin.json", ".config.json", false},
+		{"empty dest", "file", "plugin.json", "", false},
+		{"non-file asset", "skill", "plugin.json", ".claude-plugin", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			asset := &config.Asset{Type: tt.assetType, Name: tt.assetName, Dest: tt.dest}
+			got := fileDestWarning(asset, tt.dest)
+			if (got != "") != tt.wantWarn {
+				t.Errorf("fileDestWarning() = %q, want warning: %v", got, tt.wantWarn)
+			}
+		})
+	}
+}
+
+// The fix the warning suggests has to be the dest as written, since that is
+// the text the user edits; the resolved dest is what describes the outcome.
+func TestFileDestWarningQuotesWrittenDestInFix(t *testing.T) {
+	asset := &config.Asset{Type: "file", Name: "plugin.json", Dest: "{{ target_name }}/.claude-plugin"}
+
+	got := fileDestWarning(asset, "claude/.claude-plugin")
+
+	for _, want := range []string{`"claude/.claude-plugin"`, `"{{ target_name }}/.claude-plugin/"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("warning missing %s: %s", want, got)
+		}
 	}
 }

@@ -251,6 +251,8 @@ After variables are substituted, the resolved dest is interpreted as:
 - **No extension** (e.g., `config`, `subdir`) - treated as a directory; the source filename is appended
 - **Trailing `/`** (e.g., `output/`) - explicitly a directory
 
+A leading dot counts as an extension here: `.claude-plugin` is a file name, like `.gitignore`. Use `.claude-plugin/` for the directory.
+
 ### Error handling
 
 If a dest template resolves to an empty string (because all variables are undefined), tai exits with an error rather than silently installing to the target root. The error message includes the original template for debugging.

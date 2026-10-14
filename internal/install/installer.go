@@ -461,6 +461,9 @@ func (i *Installer) resolveFileAsset(ctx *installContext, asset *config.Asset) (
 	if err != nil {
 		return resolvedFileAsset{}, nil, fmt.Errorf("resolving asset %s: %w", workingAsset.SourcePath, err)
 	}
+	if warning := fileDestWarning(asset, workingAsset.Dest); warning != "" {
+		resolved.Warnings = append(resolved.Warnings, warning)
+	}
 
 	existingEntry, wasManaged := ctx.existingFiles[targetPath]
 	conflict, existsOnDisk := i.checkConflict(fullTargetPath, existingEntry, wasManaged, resolved)

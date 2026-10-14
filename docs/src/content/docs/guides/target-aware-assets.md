@@ -62,7 +62,7 @@ The `dest` field is template-processed before the path is interpreted:
 2. The resolved path is interpreted using standard dest rules:
    - Has extension (e.g., `CLAUDE.md`) - treated as full file path
    - No extension (e.g., `config`) - treated as directory, original filename appended
-   - Ends with `/` - explicitly a directory
+   - Ends with `/` - explicitly a directory. A dot-named directory needs it: `.claude-plugin` is read as a file name, like `.gitignore`, and `.claude-plugin/` is the directory
 
 You can combine target variables with static paths:
 

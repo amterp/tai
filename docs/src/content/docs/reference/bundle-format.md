@@ -169,6 +169,7 @@ The `dest` field is valid only for `file` type assets. It controls where the fil
 | `"config"` | Subdirectory (no extension in basename) | `~/.claude/config/README.md` |
 | `"config/"` | Explicit subdirectory (trailing slash) | `~/.claude/config/README.md` |
 | `"CLAUDE.md"` | Exact file path (extension in basename) | `~/.claude/CLAUDE.md` |
+| `".claude-plugin/"` | Dot-named subdirectory (needs the trailing slash, or it is read as a file name like `.gitignore`) | `~/.claude/.claude-plugin/README.md` |
 
 Using `dest` on a non-file asset type produces a validation error.
 

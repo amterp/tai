@@ -1682,6 +1682,8 @@ assets:
 - If dest has no extension (e.g., `config`, `subdir`) -> treated as directory, filename appended
 - If dest ends with `/` (e.g., `output/`) -> explicitly a directory
 
+A leading dot counts as a dot in the basename, so `.gitignore` and `.claude-plugin` are both read as file names. To install into a dot-named directory, end dest with `/` (`.claude-plugin/`). Because `plugin.json` installing as a file named `.claude-plugin` is almost always a mistake, tai warns (including on `--dry-run`) when a source whose name has an extension would be installed under a dot-name with no other dot. Renaming a source to its own stem with a leading dot (`envrc.sh` -> `.envrc`) does not warn.
+
 This allows a single file asset definition to install to different locations per target.
 
 ### Special Variables

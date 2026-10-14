@@ -2,6 +2,7 @@ package install
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -84,6 +85,35 @@ func frontmatterWarnings(parsed *frontmatter.Parsed, assetType, assetName, targe
 	}
 
 	return warnings
+}
+
+// fileDestWarning flags a file asset whose dest ends in a dot-name such as
+// `.claude-plugin`. A dot anywhere in the last segment makes dest a file path,
+// so `plugin.json` installs as a file named `.claude-plugin` rather than into
+// that directory, and the dry-run line reads the same either way. The rule
+// stays, since `.gitignore` and `.envrc` have the same shape and are files;
+// the warning only fires when the source has an extension, because renaming
+// `plugin.json` to an extensionless dotfile is unlikely. A dest that is the
+// source's stem with a leading dot (`envrc.sh` to `.envrc`) is that rename,
+// so it does not warn. resolvedDest is the dest after template processing.
+func fileDestWarning(asset *config.Asset, resolvedDest string) string {
+	if asset.Type != config.AssetTypeFile || resolvedDest == "" || strings.HasSuffix(resolvedDest, "/") {
+		return ""
+	}
+	base := filepath.Base(resolvedDest)
+	if len(base) < 2 || base[0] != '.' || strings.Contains(base[1:], ".") {
+		return ""
+	}
+	if !strings.Contains(strings.TrimLeft(asset.Name, "."), ".") {
+		return ""
+	}
+	if base == "."+strings.TrimSuffix(asset.Name, filepath.Ext(asset.Name)) {
+		return ""
+	}
+	return fmt.Sprintf(
+		"file %q: dest %q installs it as a file named %q, because a dest whose last segment contains a dot is read as a file path. "+
+			"If %s is meant to be a directory, end the dest with a slash: %q.",
+		asset.Name, resolvedDest, base, base, asset.Dest+"/")
 }
 
 // validateAssetMetadata checks that parsed frontmatter satisfies tai's

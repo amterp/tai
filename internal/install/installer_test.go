@@ -1181,6 +1181,30 @@ func TestInstallerFileWithCustomDest(t *testing.T) {
 	}
 }
 
+// The dry-run line for this dest looks the same whether .claude-plugin is a
+// file or a directory, so the warning has to come out of a dry run too.
+func TestInstallerDryRunWarnsOnDotNameFileDest(t *testing.T) {
+	env, installer, adapter := setupInstallTest(t)
+
+	env.SetupAsset("files", "plugin.json", `{"name": "tool-lines"}`)
+	assets := []*config.Asset{
+		{Type: "file", Name: "plugin.json", SourceName: "local", Dest: "skills/tool-lines/.claude-plugin",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "files", "plugin.json")},
+	}
+
+	result, err := installer.Install(adapter, "test-profile", assets, InstallOptions{DryRun: true})
+	if err != nil {
+		t.Fatalf("Dry run failed: %v", err)
+	}
+
+	if len(result.Added) != 1 || result.Added[0] != "skills/tool-lines/.claude-plugin" {
+		t.Errorf("Added = %v, want [skills/tool-lines/.claude-plugin]", result.Added)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], `"skills/tool-lines/.claude-plugin/"`) {
+		t.Errorf("Warnings = %v, want one naming the trailing-slash fix", result.Warnings)
+	}
+}
+
 func TestInstallerSkillDirectoryTransformsSKILLMd(t *testing.T) {
 	env, installer, adapter := setupInstallTest(t)
 

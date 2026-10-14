@@ -694,6 +694,11 @@ assets:
 **Key points:**
 - `dest` is required for file type
 - Empty `dest` (`""`) means target root directory
+- A dot in the last segment makes `dest` a file path, a leading dot included:
+  `.gitignore` and `.claude-plugin` are file names. For a dot-named directory,
+  end with a slash: `dest: "skills/x/.claude-plugin/"` installs
+  `skills/x/.claude-plugin/plugin.json`. Without the slash tai installs a file
+  named `.claude-plugin` and warns
 - Content passes through unchanged except for template rendering
 
 ---

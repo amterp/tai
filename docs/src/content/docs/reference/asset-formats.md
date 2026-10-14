@@ -162,6 +162,10 @@ assets:
 | `"subdir/"` (trailing slash) | Explicit directory - filename appended | `~/.claude/subdir/myfile.md` |
 | `"output.md"` (has extension) | Exact file path | `~/.claude/output.md` |
 | `"sub/output.md"` | Exact file path in subdirectory | `~/.claude/sub/output.md` |
+| `".gitignore"` (leading dot) | Exact file path | `~/.claude/.gitignore` |
+| `".claude-plugin/"` | Explicit directory - filename appended | `~/.claude/.claude-plugin/myfile.md` |
+
+A dot anywhere in the last segment makes `dest` a file path, a leading dot included, so `.claude-plugin` without the trailing slash installs a file named `.claude-plugin`. tai warns when a source with an extension (such as `plugin.json`) would be installed that way, including on `--dry-run`; add the trailing slash to install into the directory.
 
 The `dest` field supports [template variables](/tai/reference/template-syntax/#dest-path-templates) for target-aware file placement.
 
