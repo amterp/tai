@@ -37,13 +37,13 @@ func main() {
 	root.SetDescription("Manage AI agent configurations across targets (v" + version + ")")
 	root.SetAutoHelpOnNoArgs(true)
 
-	// Global flags
+	// Global flags, so they can follow a subcommand. Ra copies globals onto
+	// each subcommand as it is registered, so these must precede every
+	// RegisterCmd.
 	noColor, _ := ra.NewBool("no-color").
 		SetDefault(false).
 		SetUsage("Disable colored output").
-		Register(root)
-	// Global so it can follow a subcommand; Ra copies globals onto each
-	// subcommand as it is registered, so this must precede every RegisterCmd.
+		Register(root, ra.WithGlobal(true))
 	configOverride, _ := ra.NewString("config").
 		SetUsage("Config repo to read for this command instead of the active one (read-only commands; also TAI_CONFIG)").
 		Register(root, ra.WithGlobal(true))

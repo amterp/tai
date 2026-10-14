@@ -7,10 +7,12 @@ This page documents every tai command, flag, and option. For conceptual overview
 
 ## Global flags
 
+Global flags may come before or after the subcommand: `tai --no-color list profiles` and `tai list profiles --no-color` are the same.
+
 | Flag | Description |
 |------|-------------|
 | `--no-color` | Disable colored output |
-| `--config <repo>` | Use this config repo for one command instead of the active one. Read-only commands only; see below. May follow the subcommand. |
+| `--config <repo>` | Use this config repo for one command instead of the active one. Read-only commands only; see below. |
 
 ### Using another config repo for one command
 
