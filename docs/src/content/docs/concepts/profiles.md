@@ -96,19 +96,22 @@ Individual assets can override the profile default with their own `scope` field.
 
 ### `post_install`
 
-An argv list run after the profile installs successfully - for side effects like notifications, restarting tools, or chaining follow-up scripts.
+Named steps run after the profile installs successfully - for side effects like notifications, restarting tools, chaining follow-up scripts, or post-processing installed files.
 
 ```yaml
 post_install:
-  - sh
-  - -c
-  - osascript -e 'display notification "tai installed"'
-post_install_timeout: 1m  # optional, default 30s
+  - name: notify
+    command: [osascript, -e, 'display notification "tai installed"']
+  - name: memri
+    command: [memri, setup, claude]
+post_install_timeout: 1m  # optional, default 30s per step
 ```
 
-The hook sees your environment plus `TAI_TARGET`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, and `TAI_VERSION` (always set, so `set -u` scripts are safe). It does not run on dry-run or when the install fails.
+A plain argv list such as `post_install: [./scripts/after-install.sh]` is shorthand for a single step.
 
-A failing hook does not undo the install - files and manifest are already in place. tai reports the install as succeeded, prints the hook's error with its stderr, and exits nonzero so scripts and CI notice.
+Steps see your environment plus `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, and `TAI_VERSION` (always set, so `set -u` scripts are safe). They do not run on dry-run or when the install fails.
+
+Each step runs whether or not earlier steps failed. A failing step does not undo the install - files and manifest are already in place. tai prints each step's error with its stderr, lists the failed steps, reports the install as succeeded, and exits nonzero so scripts and CI notice. See [post_install](/tai/reference/profile-format/#post_install) for step fields and how steps that edit installed files are handled.
 
 ## Default profile
 

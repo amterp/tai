@@ -241,7 +241,7 @@ tai install <profile> [flags]
 
 The install pipeline resolves bundles, processes templates, transforms frontmatter, and writes files to the target directory. See [Installation Behavior](/tai/reference/installation-behavior/) for details.
 
-If the config declares [command sources](/tai/concepts/sources/#command-source), install fetches them first so the installed content reflects upstream; a failed fetch fails the install. `--dry-run` never fetches (a preview must not have side effects) - it resolves from the cache and prints what it would refresh. After a successful install, the profile's `post_install` hook runs if declared; a hook failure leaves the install in place but makes tai exit nonzero.
+If the config declares [command sources](/tai/concepts/sources/#command-source), install fetches them first so the installed content reflects upstream; a failed fetch fails the install. `--dry-run` never fetches (a preview must not have side effects) - it resolves from the cache and prints what it would refresh. After a successful install, the profile's [`post_install`](/tai/reference/profile-format/#post_install) steps run if declared, each whether or not earlier ones failed; a failed step leaves the install in place but makes tai exit nonzero.
 
 ```bash
 # Preview what would happen
@@ -305,7 +305,7 @@ tai reinstall [target] [flags]
 
 Reinstall reads the manifest to determine which profile was last installed, then runs the install pipeline again. This is useful after editing assets in your config repo.
 
-Like `tai install`, reinstall re-fetches any command sources first (once, before all targets). If a profile's `post_install` hook fails, reinstall continues with the remaining targets and exits nonzero at the end.
+Like `tai install`, reinstall re-fetches any command sources first (once, before all targets). If a profile's `post_install` step fails, reinstall continues with the remaining targets and exits nonzero at the end.
 
 ```bash
 # Reinstall all targets

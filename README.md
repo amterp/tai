@@ -159,17 +159,24 @@ assets:
   - type: persona
     path: assets/personas/brainstormer.md
 
-# Optional: run a command after a successful install (notifications,
-# follow-up scripts, post-processing installed files). Failure doesn't undo
-# the install, but tai exits nonzero.
+# Optional: run commands after a successful install (notifications,
+# follow-up scripts, post-processing installed files). Each step runs even if
+# an earlier one failed. A failure doesn't undo the install, but tai exits
+# nonzero. A plain argv list (`post_install: [./after-install.sh]`) is
+# shorthand for one step.
 post_install:
-  - ./scripts/after-install.sh
+  - name: notify
+    command: [./scripts/after-install.sh]
+  - name: memri
+    command: [memri, setup, claude]
 ```
 
-`post_install` commands get `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`,
+`post_install` steps get `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`,
 `TAI_MANIFEST_DIR`, and `TAI_VERSION` in their env. They may modify files tai
-installed - afterwards tai re-baselines its checksums so their edits don't show
-up as conflicts on the next install. See SPEC.md for the full contract.
+installed - after each step that succeeds, tai re-baselines the checksums of
+the files it changed so those edits don't show up as conflicts on the next
+install. A failed step's edits are not re-baselined. See SPEC.md for the full
+contract.
 
 Note these are tai's own install-time commands, and are unrelated to the `hook`
 asset type, which installs commands the *target* runs during a session.

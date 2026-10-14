@@ -501,64 +501,97 @@ options:
 # Affects where MCPs and hooks are installed
 scope: project  # or "user" or "local"
 
-# Optional: argv list run after this profile installs successfully.
-# For notifications, restarting tools, chaining scripts, or post-processing
-# installed files.
+# Optional: commands run after this profile installs successfully, for
+# notifications, restarting tools, chaining scripts, or post-processing
+# installed files. Each step runs whether or not earlier steps failed.
 post_install:
-  - sh
-  - -c
-  - osascript -e 'display notification "tai installed"'
-post_install_timeout: 1m  # optional, default 30s
+  - name: notify
+    command: [osascript, -e, 'display notification "tai installed"']
+  - name: memri
+    command: [memri, setup, claude]
+    timeout: 2m  # optional; overrides post_install_timeout for this step
+post_install_timeout: 1m  # optional, default 30s; applies to each step
+
+# A plain argv list is shorthand for one unnamed step:
+# post_install: [./scripts/after-install.sh]
 ```
 
 #### Post-Install Hooks
 
 `post_install` runs only after the install completes (never on dry-run, never
-when the install itself failed). The command sees the inherited user env plus
-`TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, and
-`TAI_VERSION` - all always set, so `set -u` scripts are safe.
+when the install itself failed). Every step's command sees the inherited user
+env plus `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`,
+and `TAI_VERSION` - all always set, so `set -u` scripts are safe.
 `TAI_TARGET_DIR` is where the target's files were installed (e.g.
 `~/.claude`), so hooks can find what they need to post-process.
 
-A failing hook does **not** roll the install back: files and manifest are
+`post_install` takes one of two forms:
+
+- **A list of steps**, each a mapping with `name`, `command` (an argv list,
+  run with no shell), and optional `timeout`. Names are required and must be
+  unique within the profile; reports refer to steps by name. A step's
+  timeout falls back to `post_install_timeout`, then to 30s. Unknown fields
+  in a step are an error, so a misspelled `timeout` cannot silently fall back
+  to the default.
+- **A plain argv list**, shorthand for one unnamed step. This was the only
+  form before steps existed, and its output is unchanged.
+
+A list that mixes strings and steps is an error.
+
+Steps run in order, and each one runs whether or not earlier steps failed.
+Before steps existed, profiles chained commands inside one `sh -c`, so one
+failing command stopped the rest and held back the rebaseline (below) for
+edits that had succeeded.
+
+A failing step does **not** roll the install back: files and manifest are
 already in place, and side effects can't be un-run (the same model as dpkg,
-Homebrew, and npm post-install scripts). tai reports the install as
-succeeded, prints the hook failure with a tail of its stderr, and exits
-nonzero so scripts and CI notice. `tai reinstall` continues across remaining
-targets and aggregates hook failures into its final exit code.
+Homebrew, and npm post-install scripts). tai prints each failure with a tail
+of its stderr, runs the remaining steps, then lists the steps that failed,
+reports the install as succeeded, and exits nonzero so scripts and CI notice:
+
+```
+Error: 1 of 3 post_install steps failed (install succeeded): "render"
+```
+
+`tai reinstall` continues across remaining targets and aggregates step
+failures into its final exit code.
 
 ##### Hooks May Modify Managed Files
 
-Hooks are allowed to post-process files tai installed - reformatting them, or
+Steps are allowed to post-process files tai installed - reformatting them, or
 injecting machine-local config a source asset can't carry. Conflict detection
 compares each file against the checksum recorded when tai wrote it, so left
-alone a hook's own edit would make that file conflict on *every* subsequent
+alone a step's own edit would make that file conflict on *every* subsequent
 install, forever.
 
-So after a hook **succeeds**, tai re-hashes the files that install wrote and
-records the new checksums as the baseline. It reports which managed files the
-hook changed:
+So after each step that **succeeds**, tai re-hashes the files that install
+wrote and records the new checksums of the files the step changed as the
+baseline. It reports which managed files each step changed:
 
 ```
-post_install hook modified 1 managed file(s) (manifest baseline updated):
+post_install step "memri" modified 1 managed file(s) (manifest baseline updated):
     ~ CLAUDE.md
 ```
 
-Note what this trades away: tai no longer flags hook-caused edits to managed
-files, so a buggy hook's changes are accepted rather than reported as
+Note what this trades away: tai no longer flags step-caused edits to managed
+files, so a buggy step's changes are accepted rather than reported as
 conflicts. That report line is the signal you get. The damage stays transient -
-every install re-renders the file from source before the hook runs again.
+every install re-renders the file from source before the step runs again.
 
 Two deliberate carve-outs:
 
-- **A failed hook does not rebaseline.** A hook that edited a file and then
-  failed leaves a partial edit, and that conflict is worth surfacing.
+- **A failed step's edits are not rebaselined.** A step that edited a file
+  and then failed leaves a partial edit, and that conflict is worth
+  surfacing. tai warns with the files it held back. The file stays out of the
+  baseline for the rest of the run, even if a later step that succeeds edits
+  it again, since baselining it then would absorb the partial edit too. Other
+  steps' edits to other files are baselined as usual.
 - **Files skipped via `--skip-conflicts` are never rebaselined.** They keep
   their stale checksum so they keep conflicting until you resolve them;
   baselining them would silently discard a decision you made.
 
-Hooks that edit managed files should be idempotent: tai overwrites the file
-from source on every install, so the hook re-applies its change each run.
+Steps that edit managed files should be idempotent: tai overwrites the file
+from source on every install, so the step re-applies its change each run.
 
 ### File Asset Formats
 

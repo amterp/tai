@@ -39,8 +39,8 @@ scope: user
 | `assets` | list of [asset entries](#assets) | no | | Direct asset references. |
 | `options` | map | no | | Adapter-specific settings (reserved for future use). |
 | `scope` | string | no | `user` | Default installation scope for config assets. |
-| `post_install` | list of strings | no | | Argv list run after a successful install. |
-| `post_install_timeout` | string | no | `30s` | Duration bound for `post_install` (e.g. `"60s"`, `"2m"`). |
+| `post_install` | list of steps, or list of strings | no | | Commands run after a successful install. See [post_install](#post_install). |
+| `post_install_timeout` | string | no | `30s` | Duration bound for each `post_install` step that sets no `timeout` of its own (e.g. `"60s"`, `"2m"`). |
 
 A profile must have at least one of `bundles` or `assets`.
 
@@ -160,19 +160,35 @@ See [Config Assets](/tai/reference/config-assets/) for how each scope maps to a 
 
 ## post_install
 
-Optional. An argv list run after the profile installs successfully - for side effects like notifications or follow-up scripts. The command runs directly with no shell; wrap with `["sh", "-c", ...]` for shell features.
+Optional. Commands run after the profile installs successfully - for side effects like notifications, follow-up scripts, or post-processing installed files. It is a list of named steps:
 
 ```yaml
 post_install:
-  - sh
-  - -c
-  - osascript -e 'display notification "tai installed"'
+  - name: notify
+    command: [osascript, -e, 'display notification "tai installed"']
+  - name: memri
+    command: [memri, setup, claude]
+    timeout: 2m
 post_install_timeout: 1m
 ```
 
-The hook sees the inherited user environment plus `TAI_TARGET`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, and `TAI_VERSION` (always set, so `set -u` scripts are safe). It does not run on `--dry-run` or when the install fails.
+| Step field | Type | Required | Description |
+|------------|------|----------|-------------|
+| `name` | string | yes | Identifies the step in output. Unique within the profile. |
+| `command` | list of strings | yes | Argv to run. It runs directly with no shell; wrap with `["sh", "-c", ...]` for shell features. |
+| `timeout` | string | no | Duration bound for this step. Falls back to `post_install_timeout`, then `30s`. |
 
-A failing hook does not undo the install - files and manifest are already in place. Tai reports the install as succeeded, prints the hook's error with a tail of its stderr, and exits nonzero.
+A plain argv list is shorthand for one unnamed step, and was the only form before steps existed:
+
+```yaml
+post_install: [./scripts/after-install.sh]
+```
+
+Every step sees the inherited user environment plus `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, and `TAI_VERSION` (always set, so `set -u` scripts are safe). `TAI_TARGET_DIR` is where the target's files were installed, such as `~/.claude`. Steps do not run on `--dry-run` or when the install fails.
+
+Steps run in order, and each one runs whether or not earlier steps failed. A failing step does not undo the install - files and manifest are already in place. Tai prints each failure with a tail of its stderr, runs the remaining steps, lists the steps that failed, reports the install as succeeded, and exits nonzero.
+
+A step may modify files tai installed. After each step that succeeds, tai records the new checksums of the files that step changed, so its edits are not reported as conflicts on the next install. A failed step's edits are not recorded: the next install reports those files as conflicts, since a step that failed partway may have left a partial edit. Prefer separate steps over chaining commands in one `sh -c`, so one failing command does not hold back the others.
 
 ## Validation rules
 
@@ -183,6 +199,8 @@ Tai validates profiles on load and fails fast if:
 - Neither `bundles` nor `assets` is specified
 - An asset entry is missing `type` or `path`
 - An asset entry uses an invalid `type`
+- `post_install` mixes argv strings with steps, or is not a list
+- A `post_install` step is missing `name` or `command`, repeats another step's `name`, has an unknown field, or has an invalid `timeout`
 - `post_install` contains an empty argv element
 - `post_install_timeout` is set without `post_install`, is unparseable, or is not positive
 - An asset entry uses `dest` on a non-file type

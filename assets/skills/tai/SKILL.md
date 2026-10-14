@@ -405,26 +405,37 @@ assets:
   - type: persona
     path: assets/personas/brainstormer.md
 
-# Optional: argv run after a successful install - notifications, follow-up
-# scripts, or post-processing installed files. Env: TAI_TARGET,
-# TAI_TARGET_DIR, TAI_PROFILE, TAI_MANIFEST_DIR, TAI_VERSION. Failure does
-# NOT undo the install; tai reports install success, prints the hook error,
-# and exits nonzero.
+# Optional: named steps run after a successful install - notifications,
+# follow-up scripts, or post-processing installed files. Env: TAI_TARGET,
+# TAI_TARGET_DIR, TAI_PROFILE, TAI_MANIFEST_DIR, TAI_VERSION. Every step runs
+# even if an earlier one failed. Failure does NOT undo the install; tai
+# prints each step's error, lists the failed steps, and exits nonzero.
 post_install:
-  - ./scripts/after-install.sh
-post_install_timeout: 1m  # Optional, default 30s; requires post_install
+  - name: notify                           # Required, unique in the profile
+    command: [./scripts/after-install.sh]  # argv, no shell
+  - name: memri
+    command: [memri, setup, claude]
+    timeout: 2m                            # Optional; overrides post_install_timeout
+post_install_timeout: 1m  # Optional, default 30s per step; requires post_install
 ```
 
-A hook may modify files tai installed (use `TAI_TARGET_DIR` to find them).
-After a successful hook, tai re-hashes what it wrote and updates the manifest
-baseline, so the hook's own edits aren't reported as conflicts on the next
-install - it prints which managed files changed. Two exceptions: a *failed*
-hook doesn't rebaseline (a partial edit is a conflict worth seeing), and files
-skipped via `--skip-conflicts` keep their stale checksum so they keep
-conflicting until resolved.
+A plain argv list (`post_install: [./scripts/after-install.sh]`) is shorthand
+for one unnamed step - the original form, still accepted. Don't mix the two
+forms in one list, and don't chain commands with `sh -c 'a; b'` when they can
+be separate steps: separate steps fail independently. Unknown step fields are
+an error.
 
-Make such hooks idempotent - tai overwrites the file from source on every
-install, so the hook re-applies its change each run.
+A step may modify files tai installed (use `TAI_TARGET_DIR` to find them).
+After each step that succeeds, tai re-hashes what the install wrote and
+updates the manifest baseline for the files that step changed, so its edits
+aren't reported as conflicts on the next install - it prints which managed
+files changed. Two exceptions: a *failed* step's edits aren't rebaselined (a
+partial edit is a conflict worth seeing, and the file stays held back even if
+a later step edits it again), and files skipped via `--skip-conflicts` keep
+their stale checksum so they keep conflicting until resolved.
+
+Make such steps idempotent - tai overwrites the file from source on every
+install, so the step re-applies its change each run.
 
 ## Templating
 
