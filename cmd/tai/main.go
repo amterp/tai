@@ -741,7 +741,7 @@ func runShowBundle(name string) {
 
 	steps := make([]profile.PostInstallStep, len(resolved.PostInstall))
 	for i, step := range resolved.PostInstall {
-		steps[i] = profile.PostInstallStep{Name: step.Name, Argv: step.Command, Bundle: step.Bundle}
+		steps[i] = profile.FromBundleStep(step)
 	}
 	showPostInstallSteps(steps)
 }
@@ -755,11 +755,7 @@ func showPostInstallSteps(steps []profile.PostInstallStep) {
 	out.Blank()
 	out.Raw("Post-install steps:")
 	for _, step := range steps {
-		name := "post_install hook"
-		if step.Name != "" {
-			name = postInstallStepName(step)
-		}
-		out.Raw("  " + name + ": " + strings.Join(step.Argv, " "))
+		out.Raw("  " + postInstallStepName(step) + ": " + strings.Join(step.Argv, " "))
 	}
 }
 
@@ -1093,14 +1089,20 @@ func runPostInstall(
 // wording it had before steps existed.
 func postInstallLabel(step profile.PostInstallStep) string {
 	if step.Name == "" {
-		return "post_install hook"
+		return shorthandStepLabel
 	}
 	return "post_install step " + postInstallStepName(step)
 }
 
+// shorthandStepLabel names the unnamed step a single-argv post_install makes.
+const shorthandStepLabel = "post_install hook"
+
 // postInstallStepName quotes a step's name, adding the bundle that declared it
 // so a bundle step and a profile step sharing a name can be told apart.
 func postInstallStepName(step profile.PostInstallStep) string {
+	if step.Name == "" {
+		return shorthandStepLabel
+	}
 	if step.Bundle == "" {
 		return fmt.Sprintf("%q", step.Name)
 	}

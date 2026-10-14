@@ -53,6 +53,19 @@ type PostInstallStep struct {
 	SourceDir string
 }
 
+// FromBundleStep makes a bundle's step ready to run: in the root of the repo
+// that declared it, under its own timeout or the default.
+func FromBundleStep(step bundle.Step) PostInstallStep {
+	return PostInstallStep{
+		Name:      step.Name,
+		Argv:      step.Command,
+		Timeout:   step.ResolvedTimeout(""),
+		Bundle:    step.Bundle,
+		Dir:       step.RootDir,
+		SourceDir: step.RootDir,
+	}
+}
+
 // resolvePostInstall orders a profile's steps: its bundles' steps first, in
 // resolution order, then its own. The profile is the most specific layer, and
 // its steps may build on what a bundle's step set up.
@@ -65,14 +78,7 @@ func resolvePostInstall(profile *config.Profile, bundleSteps []bundle.Step) []Po
 	}
 	resolved := make([]PostInstallStep, 0, len(bundleSteps)+len(profile.PostInstall))
 	for _, step := range bundleSteps {
-		resolved = append(resolved, PostInstallStep{
-			Name:      step.Name,
-			Argv:      step.Command,
-			Timeout:   step.ResolvedTimeout(""),
-			Bundle:    step.Bundle,
-			Dir:       step.RootDir,
-			SourceDir: step.RootDir,
-		})
+		resolved = append(resolved, FromBundleStep(step))
 	}
 	for _, step := range profile.PostInstall {
 		resolved = append(resolved, PostInstallStep{
