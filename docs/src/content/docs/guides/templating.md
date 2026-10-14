@@ -192,7 +192,7 @@ Included content is template-processed with the same variables. If an included a
 
 ### Restrictions
 
-- Only file-shaped assets (personas, delegates, skills, files) can be included. Attempting to include a config asset (statusline, mcp, hook) produces an error.
+- Only file-shaped assets (personas, delegates, skills, files) can be included. Attempting to include a config asset (statusline, mcp, hook, settings, approval) produces an error.
 - The built-in `{% include %}` tag from pongo2/Jinja2 is **disabled** for security. Use `{% include_asset %}` for all inclusion needs - it resolves through tai's source system.
 
 ### Combining with conditionals

@@ -35,7 +35,7 @@ Read -> Template processing -> Frontmatter parsing -> Adapter transform -> Check
 
 ### Config asset pipeline
 
-Config assets (statuslines) follow a different path:
+Config assets (statuslines, hooks, MCPs, settings, approval policies) follow a different path:
 
 1. **Read** - load the YAML config from the source path
 2. **Parse** - determine if tai format (has `level` field) or native format
@@ -152,7 +152,7 @@ Directory conflicts and config asset conflicts display a placeholder instead of 
 
 ## Config asset installation
 
-Config assets (statuslines) are merged into target JSON settings files rather than written as standalone files.
+Config assets (statuslines, hooks, MCPs, settings, approval policies) are merged into the target's config files rather than written as standalone files.
 
 ### Installation process
 

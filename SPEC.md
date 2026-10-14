@@ -86,7 +86,7 @@ This distinction matters because:
 ┌─────────────────────────────────────────────────────────────┐
 │                         Assets                               │
 │  File: personas/, delegates/, skills/, files/               │
-│  Config: statuslines/, mcps/, hooks/                        │
+│  Config: statuslines/, mcps/, hooks/, settings/, approvals/ │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼ composed into
@@ -158,8 +158,12 @@ my-tai-config/
 │   ├── mcps/             # MCP server definitions (→ .mcp.json entries)
 │   │   ├── github.yaml
 │   │   └── postgres.yaml
-│   └── hooks/            # Hook definitions (→ settings.json entries)
-│       └── format-on-save.yaml
+│   ├── hooks/            # Hook definitions (→ settings.json entries)
+│   │   └── format-on-save.yaml
+│   ├── settings/         # Settings fields (→ settings.json fields)
+│   │   └── afk.yaml
+│   └── approvals/        # Auto mode policy (→ autoMode arrays in settings.json)
+│       └── personal.md
 ├── bundles/
 │   ├── core.yaml
 │   └── work-extras.yaml
@@ -245,6 +249,10 @@ than resolves:
 |-----------|----------|
 | `<root>/bundles/` | Bundles this source offers for import as `source:name` |
 | `<root>/<type-dir>/` and `<root>/assets/<type-dir>/` | What `tai list assets` enumerates |
+
+The type dirs are `personas/`, `delegates/`, `skills/`, `files/`,
+`statuslines/`, `hooks/`, `mcps/`, `settings/`, and `approvals/`. A top-level
+folder with one of those names is listed as assets whatever it holds.
 
 Listing scans both asset locations because both layouts exist; there is no
 ambiguity to settle, since each result prints as the literal path it is
@@ -520,8 +528,8 @@ options:
   # Example Claude-specific options (future use)
   # dangerously_skip_permissions: false
 
-# Optional: installation scope for config assets (default: project)
-# Affects where MCPs and hooks are installed
+# Optional: installation scope for config assets (default: user)
+# Picks which config file each config asset is written to
 scope: project  # or "user" or "local"
 
 # Optional: commands run after this profile installs successfully, for
@@ -867,7 +875,7 @@ Skills follow the agentskills.io standard and have additional features like incl
 
 ### Config Asset Definitions
 
-Config assets (status lines, MCPs, and hooks) are defined as YAML files that describe entries to be merged into target configuration files.
+Config assets (status lines, MCPs, hooks, settings, and approval policies) are defined as YAML files (approval policies as Markdown) that describe entries to be merged into target configuration files.
 
 #### StatusLine Definition
 
@@ -1179,8 +1187,8 @@ Objects are never owned whole, so two assets, or an asset and the user, can set
 sibling keys of one object. Array elements carry the asset name and their index
 as the edit ID, which keeps two assets' elements in one array apart. An element
 the user already has is appended again, as with hooks. Keys owned by another
-config asset type (`statusLine`, `hooks`, and the three `autoMode` arrays
-approval assets own) are rejected. The translation is
+config asset type (`statusLine`, `hooks`, `mcpServers`, and the three
+`autoMode` arrays approval assets own) are rejected. The translation is
 `configasset.FieldEdits`, which takes a base key path so a later asset writing
 settings under a key of its own can reuse it.
 
@@ -1460,6 +1468,10 @@ The Claude adapter:
 | `hooks` | project | `.claude/settings.json` |
 | `hooks` | user | `~/.claude/settings.json` |
 | `hooks` | local | `.claude/settings.local.json` |
+| `settings` | project | `.claude/settings.json` |
+| `settings` | user | `~/.claude/settings.json` |
+| `settings` | local | `.claude/settings.local.json` |
+| `approvals` | user | `~/.claude/settings.json` (user scope only: Claude ignores `autoMode` in project and local settings) |
 
 **StatusLine installation:** The `statusLine` key in the target JSON file is set to the transformed config:
 ```json
@@ -1987,7 +1999,7 @@ The `{% include_asset %}` tag inlines another asset's body content (frontmatter 
 
 Without a source prefix, defaults to the "local" source.
 
-**Only file-shaped assets** (personas, delegates, skills, files) can be included. Config assets (statuslines, mcps, hooks) produce a hard error.
+**Only file-shaped assets** (personas, delegates, skills, files) can be included. Config assets (statuslines, mcps, hooks, settings, approvals) produce a hard error. The type comes from the nearest enclosing directory that names a file-shaped type, so a file under `files/settings/` or a skill's own `hooks/` folder is that asset's content; a config type applies only when no file-shaped directory encloses the path.
 
 **Recursive processing:** Included content is template-processed with the same variables, so included assets can themselves use conditionals, variables, and further `{% include_asset %}` calls. Content from a source with `template: false` is inlined as written instead.
 

@@ -364,7 +364,7 @@ tai owns each field at the smallest grain that leaves everything else alone, so 
 
 So two settings assets, or an asset and you, can set different `env` variables side by side, and permission lists from several assets add up. Uninstalling removes only tai's keys and elements, and drops an object such as `env` only once tai has emptied it. An array element you already have gets a second copy from tai, as hooks do.
 
-The keys other config asset types own are rejected: write `statusLine` as a statusline asset, `hooks` as hook assets, and `autoMode.environment`, `autoMode.allow` and `autoMode.soft_deny` as approval assets. The rest of `autoMode` stays settable here.
+The keys other config asset types own are rejected: write `statusLine` as a statusline asset, `hooks` as hook assets, `mcpServers` as MCP assets, and `autoMode.environment`, `autoMode.allow` and `autoMode.soft_deny` as approval assets. The rest of `autoMode` stays settable here.
 
 ### Conflicts
 

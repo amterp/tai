@@ -297,8 +297,8 @@ Use a settings asset instead of a `post_install` script that edits
 inside an object separately (`env.FOO`, not all of `env`) and appends each array
 element, so values from you, other tools and other assets coexist, and uninstall
 takes out only tai's. Two settings assets setting the same field fail the
-install; `statusLine`, `hooks` and the `autoMode` arrays approval assets own
-are rejected (use those asset types). An asset with no block for a target is
+install; `statusLine`, `hooks`, `mcpServers` and the `autoMode` arrays approval
+assets own are rejected (use those asset types). An asset with no block for a target is
 silently skipped there.
 
 ### Approval policies

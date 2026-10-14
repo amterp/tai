@@ -80,7 +80,7 @@ options:
 
 ### `scope`
 
-Sets the default installation scope for config assets (statuslines, and in the future MCPs and hooks). Defaults to `user`, matching where every other asset type installs.
+Sets the default installation scope for config assets: statuslines, hooks, MCPs, settings and approval policies. Defaults to `user`, matching where every other asset type installs.
 
 | Scope | Effect |
 |-------|--------|

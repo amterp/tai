@@ -125,7 +125,7 @@ The included asset's body content is inserted - its frontmatter is stripped. Thi
 
 ### Restrictions
 
-- **Only file-shaped assets** can be included: personas, delegates, skills, and files. Attempting to include a config asset (statusline) produces a hard error.
+- **Only file-shaped assets** can be included: personas, delegates, skills, and files. Attempting to include a config asset (statusline, mcp, hook, settings, approval) produces a hard error.
 - **The `{% include %}` tag is disabled** for security. The built-in pongo2 `{% include %}` would allow arbitrary filesystem access. Use `{% include_asset %}` instead, which goes through tai's source resolution.
 - **Absolute paths are not allowed.** Use relative asset paths like `personas/foo.md`.
 
