@@ -1230,6 +1230,11 @@ unknown kind or target is an error. Entries are tai vocabulary rather than
 stored differs. The format is the one tai-personal's `render.rad` parsed, so a
 repo migrates by moving its policy file.
 
+Give each repo's policy file a distinct name, such as the repo's own name.
+Config entries are keyed on type and name, so two approval files with the same
+name from different sources are one asset, and the later one replaces the
+earlier, as for hooks and settings.
+
 On Claude, `context`, `allow` and `deny` entries go to `autoMode.environment`,
 `autoMode.allow` and `autoMode.soft_deny` in `~/.claude/settings.json`. Each
 entry is one `append_to_array` element, `<title>: <body>` with paragraphs

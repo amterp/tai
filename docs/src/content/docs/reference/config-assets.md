@@ -403,6 +403,8 @@ Never run commands against production hosts.
 
 Each `## <kind> [target...]: <title>` heading starts an entry, and the prose under it is the entry's body. Write entries as plain statements, so they read the same to any target's reviewer. Naming targets after the kind limits the entry to them; an unknown kind or target name is an error.
 
+Give each repo's policy file a distinct name, such as the repo's own name. tai identifies an approval asset by its file name, so two files called `policy.md` from different sources are one asset, and the later one in the profile replaces the earlier.
+
 | Kind | Meaning | Claude array |
 |------|---------|--------------|
 | `context` | Background the reviewer should know | `autoMode.environment` |

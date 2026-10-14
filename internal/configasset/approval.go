@@ -35,7 +35,9 @@ type approvalHandler struct{}
 func (h *approvalHandler) Type() string { return config.AssetTypeApproval }
 
 // Cardinality is Collection: each repo contributes its own policy file, and
-// they coexist.
+// they coexist as long as their names differ. Config entries are keyed on type
+// and name, so two same-named files from different sources are one entry and
+// the later replaces the earlier, as with hooks and settings.
 func (h *approvalHandler) Cardinality() Cardinality { return Collection }
 
 func (h *approvalHandler) Plan(req Request) (*Plan, error) {

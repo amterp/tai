@@ -322,7 +322,9 @@ Each `## <kind> [target...]: <title>` heading is one entry; kinds are
 (other scopes are an error, because the classifier ignores them). An array tai
 creates starts with `"$defaults"` so Claude keeps its built-in rules. Use this
 instead of a `post_install` script that rewrites `autoMode`. Codex and OpenCode
-are not supported yet.
+are not supported yet. Name each repo's file distinctly (e.g. after the repo):
+two same-named approval files from different sources are one asset, and the
+later replaces the earlier.
 
 ## Configuration Files
 
