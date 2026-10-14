@@ -542,6 +542,19 @@ bundles:
 			wantErrContains: "skip_post_install[0] is empty",
 		},
 		{
+			// A misspelled skip would otherwise be dropped, and the step the
+			// user meant to skip would run.
+			name: "bundle entry with unknown field rejected",
+			content: `name: broken
+bundles:
+  - name: work:approval
+    skip_postinstall:
+      - render
+`,
+			wantErr:         true,
+			wantErrContains: `unknown bundle entry field "skip_postinstall"; valid fields: name, exclude, skip_post_install`,
+		},
+		{
 			name: "bundle with source prefix",
 			content: `name: work
 assets:

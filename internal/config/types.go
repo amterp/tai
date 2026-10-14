@@ -244,13 +244,25 @@ type BundleEntry struct {
 	SkipPostInstall []string `yaml:"skip_post_install"`
 }
 
+var bundleEntryKeys = []string{"name", "exclude", "skip_post_install"}
+
 // UnmarshalYAML accepts a bare name as well as the mapping form. Almost every
 // entry carries no exclusions or skips, and `- core` should not have to become
-// `- name: core`.
+// `- name: core`. The mapping form rejects unknown keys: yaml.v3 would drop
+// them, and a misspelled skip_post_install would run the step it meant to skip.
 func (be *BundleEntry) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind == yaml.ScalarNode {
 		be.Name = node.Value
 		return nil
+	}
+	if node.Kind == yaml.MappingNode {
+		for i := 0; i < len(node.Content); i += 2 {
+			key := node.Content[i]
+			if !slices.Contains(bundleEntryKeys, key.Value) {
+				return fmt.Errorf("line %d: unknown bundle entry field %q; valid fields: %s",
+					key.Line, key.Value, strings.Join(bundleEntryKeys, ", "))
+			}
+		}
 	}
 
 	// Avoid infinite recursion by decoding into a plain struct.
