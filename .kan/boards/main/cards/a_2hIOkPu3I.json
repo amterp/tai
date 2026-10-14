@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "fix-the-copy-a",
+  "alias_explicit": false,
+  "column": "next",
+  "created_at_millis": 1791945931500,
+  "creator": "Alexander Terp",
+  "description": "The \"copy a directory\" skill-include example installs to `scripts/helpers/`, not `scripts/`:\n\n```yaml\n- from: shared-scripts\n  path: helpers/\n  dest: scripts/\n```\n\nThe trailing-slash rule (\"preserves filename\") applies to directories too, so the source directory is nested inside `dest`. The example's different `dest` name reads as a rename. Following its pattern with `path: guidelines/`, `dest: guidelines/` produced `guidelines/guidelines/*.md`; `dest: guidelines` gave the intended layout.\n\nThe example appears in four places:\n\n- `assets/skills/tai/SKILL.md` (near line 846)\n- `docs/src/content/docs/reference/skill-includes.md` (twice, near lines 36 and 95)\n- `docs/src/content/docs/guides/creating-skills.md` (near line 323)\n\nChange each to `dest: scripts`, and say beside the trailing-slash rule (SPEC.md near line 1830, the tai skill near line 872, the docs reference) that a trailing slash on a directory `dest` nests the source directory inside it. The nesting comes from `computeDestPath` in `internal/install/include.go`, which appends the source's base name whenever `dest` ends in `/`.\n\n(Moved from GitHub issue #12, part 4.)",
+  "id": "a_2hIOkPu3I",
+  "position": "a3",
+  "title": "Fix the 'copy a directory' include example, which nests the directory",
+  "type": "bug",
+  "updated_at_millis": 1791945931500,
+  "history": [
+    {"field":"column","value":"next","at":1791945931500}
+  ]
+}

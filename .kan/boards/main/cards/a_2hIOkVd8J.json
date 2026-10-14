@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "let-commands-target",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1791945931554,
+  "creator": "Alexander Terp",
+  "description": "There is no way to run one tai command against a config repo other than the active one, and switching the active one with `tai config set` can leave tai unable to run at all, `config set` included.\n\nThe goal was to check one config repo's profiles on a machine where another repo is active. tai has no `--config` flag and ignores `XDG_CONFIG_HOME` (`DefaultPaths` in `internal/state/state.go` hardcodes `~/.config/tai`), so `XDG_CONFIG_HOME=\u003cscratch\u003e tai config set \u003crepo\u003e` rewrote the real `~/.config/tai/config.yaml`. The new repo's sources pointed at paths that don't exist on that machine, and every later command failed:\n\n```\nError: loading state: loading source \"tai-cli\": source path does not exist: ~/src/tai\n```\n\nRecovery meant hand-editing `config.yaml`. Today the only safe way to inspect another repo is running tai with `HOME` pointed at a scratch directory.\n\nTwo changes would cover it:\n\n1. A global `--config \u003crepo\u003e` flag, or a `TAI_CONFIG` env var, for read-only commands such as `show profile` and `list`. Whether it should also cover `install` is open: manifests live under `~/.config/tai/manifests` whichever repo is active, so read-only is the safe first cut.\n2. `tai config set` should not load the current config's state before switching away from it, so a broken active config can always be replaced.\n\nHonoring `XDG_CONFIG_HOME` is a separate decision. It would have made the probe above safe, but a machine that already sets it would silently move tai's config, so it needs a fallback or migration if done.\n\n(Moved from GitHub issue #12, part 2.)",
+  "id": "a_2hIOkVd8J",
+  "position": "aA",
+  "title": "Let commands target another config repo, and let config set recover",
+  "type": "enhancement",
+  "updated_at_millis": 1791945931554,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791945931554}
+  ]
+}

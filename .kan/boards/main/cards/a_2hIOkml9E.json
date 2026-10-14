@@ -1,0 +1,16 @@
+{
+  "_v": 3,
+  "id": "a_2hIOkml9E",
+  "alias": "should-tai-have-a",
+  "alias_explicit": false,
+  "title": "Should tai have a plugin asset type for Claude Code plugin folders?",
+  "description": "Should tai have a `plugin` asset type for Claude Code plugin folders (`.claude-plugin/plugin.json`, `hooks/hooks.json`, skills inside)? Today they install as several file assets with hand-written `dest` paths, which is how the dot-directory `dest` bug surfaced. An asset type would know the folder layout and could map it per target, or skip targets that have no plugin concept.\n\nRaised in GitHub issue #12 (part 1) as worth considering, not as a request.",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1791945931725,
+  "updated_at_millis": 1791945931725,
+  "column": "uncomitted",
+  "position": "a1",
+  "history": [
+    {"field":"column","value":"uncomitted","at":1791945931725}
+  ]
+}

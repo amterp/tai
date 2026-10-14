@@ -1,0 +1,17 @@
+{
+  "_v": 3,
+  "alias": "install-delegates-as",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1791945931611,
+  "creator": "Alexander Terp",
+  "description": "The Codex adapter writes each delegate to `~/.codex/delegates/\u003cname\u003e.md` and warns `Codex does not natively consume delegate assets - installed as passive reference file`. Codex now loads custom agents: one TOML file per agent in `~/.codex/agents/` (or `.codex/agents/` per project), with required `name`, `description` and `developer_instructions`, and optional `model`, `model_reasoning_effort` and `sandbox_mode` ([docs](https://learn.chatgpt.com/docs/agent-configuration/subagents)). Until tai writes those, a Codex agent cannot spawn a delegate by name and a delegate's `model` never applies, so every skill that tells the agent to spawn a reviewer delegate needs a Codex-specific branch.\n\nProbably: write each delegate as `agents/\u003cname\u003e.toml`, with the body as `developer_instructions`, `model` from the delegate's model field, and `tools` mapped to `sandbox_mode` or dropped with a warning. The code is `transformDelegate` and the `delegate: \"delegates\"` entry in the asset mapping in `internal/adapter/codex/codex.go`, with tests in `codex_test.go` (one asserts the passive-reference warning). These are new files rather than edits to `config.toml`, so the `ConfigWriteConsent` prompt does not apply.\n\nThings to check:\n\n- That the installed Codex reads `~/.codex/agents`. The docs say current releases do; the report was on 0.160.x and did not verify it.\n- What a Codex install does with a delegate `model` written for Claude Code (`sonnet`, `opus`). Dropping it with a warning is likely right.\n- That the next install removes the old `~/.codex/delegates/*.md` files once the mapping changes.\n\n(Moved from GitHub issue #12, part 3.)",
+  "id": "a_2hIOka5ed",
+  "position": "aB",
+  "title": "Install delegates as Codex custom agents",
+  "type": "feature",
+  "updated_at_millis": 1791945931611,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1791945931611}
+  ]
+}
