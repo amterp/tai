@@ -21,6 +21,7 @@ The Codex adapter maps tai asset types to Codex's directory structure:
 | `file` | Location specified by `dest` | None (copied as-is) | |
 | `statusline` | N/A | N/A | Unsupported (skipped with warning) |
 | `settings` | N/A | N/A | Unsupported (skipped with warning when the asset has a `native.codex` block, silently otherwise) |
+| `approval` | N/A | N/A | Unsupported (skipped with warning when an entry applies to codex, silently otherwise) |
 
 ## Partial support and warnings
 

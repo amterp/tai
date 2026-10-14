@@ -40,13 +40,14 @@ golangci-lint run ./...          # Runs errcheck, govet, staticcheck, unused, in
 | **MCP** | Model Context Protocol server | `mcpServers` entry |
 | **Hook** | Event-triggered command | Hook entry in settings |
 | **Settings** | Fields in a target's settings file | `env`, `enabledPlugins` in `settings.json` |
-| **Asset** | Atomic configuration unit | Single persona/delegate/skill/file/statusline/mcp/hook/settings |
+| **Approval** | Standing policy for an auto-approval reviewer, as entries of kind context/allow/deny | `autoMode` arrays in `settings.json` |
+| **Asset** | Atomic configuration unit | Single persona/delegate/skill/file/statusline/mcp/hook/settings/approval |
 | **Bundle** | Named collection of assets | Shopping list of related assets |
 | **Profile** | Bundle(s) + target | What you actually install |
 | **Source** | Asset provider | Local dir, tai repo, command (fetched into cache) |
 | **Patch** | Local delta on a source you don't own | - (tai concept) |
 
-**Asset shapes:** File assets (personas, delegates, skills, files) are copied to target paths. Config assets (statuslines, hooks, mcps, settings) are merged into the target's config files - as *entries*, never as whole keys; see design decision 9.
+**Asset shapes:** File assets (personas, delegates, skills, files) are copied to target paths. Config assets (statuslines, hooks, mcps, settings, approvals) are merged into the target's config files - as *entries*, never as whole keys; see design decision 9.
 
 ### Data Flow
 
@@ -69,7 +70,7 @@ Sources → Assets → Bundles → Profiles → Install Pipeline → Target Conf
 - **internal/bundle/** - Recursive bundle composition with cycle detection
 - **internal/profile/** - Composes bundles into profiles, handles asset deduplication
 - **internal/install/** - Installation logic with manifest tracking, conflict detection, backup/restore. `configfile.go` holds the config-file merge engine: batched read/modify/write, plus `applyEdit`/`removeEdit`
-- **internal/configasset/** - Config asset types (statusline, hook, mcp, settings): a `Handler` per type that parses and validates its YAML and returns declarative `Edit`s. Knows nothing about manifests or files
+- **internal/configasset/** - Config asset types (statusline, hook, mcp, settings, approval): a `Handler` per type that parses and validates its YAML and returns declarative `Edit`s. Knows nothing about manifests or files
 - **internal/adapter/** - Target-specific implementations (Claude, Codex, and OpenCode)
 - **internal/frontmatter/** - YAML frontmatter parsing/rendering (target-agnostic)
 - **internal/template/** - Jinja2-style template processing (pongo2): variables, conditionals, `{% include_asset %}`
@@ -115,6 +116,7 @@ The Claude adapter maps:
 - `hooks/` → entries under `hooks.<Event>` in `settings.json`
 - `mcps/` → entries under `mcpServers` in `.mcp.json` (project) or `~/.claude.json` (user); `local` scope nests under `projects.<path>.mcpServers` in the same file, which is where Claude keeps a server private to one project
 - `settings/` → the fields under `native.claude`, merged into `settings.json` with each value inside an object owned separately and each array element appended (`configasset.FieldEdits`)
+- `approvals/` → each entry appended to `autoMode.environment`/`allow`/`soft_deny` in user `settings.json` only (the classifier ignores other scopes); an array tai creates is seeded with `"$defaults"` via the `SeedArray` merge mode, which is never recorded or removed
 
 Claude's `ProvideVariables()` returns: `target_name: "claude"`, `target_name_display: "Claude"`, `target_agents_file: "CLAUDE.md"`
 
@@ -125,6 +127,7 @@ The Codex adapter maps:
 - `files/` → location specified by `dest` field (content copied as-is, no transformation)
 - `statuslines/` → unsupported (skipped with warning)
 - `settings/` → unsupported (skipped with warning only when the asset has a block for this target)
+- `approvals/` → unsupported (skipped with warning only when an entry applies to this target)
 - `hooks/` → entries under `hooks.<Event>` in `~/.codex/hooks.json` (a dedicated JSON file, so tai never rewrites `config.toml`)
 - `mcps/` → entries under `[mcp_servers]` in `~/.codex/config.toml`, gated behind a one-time consent prompt because writing that file loses comments and key order
 
@@ -137,6 +140,7 @@ The OpenCode adapter maps:
 - `files/` → location specified by `dest` field (content copied as-is, no transformation)
 - `statuslines/` → unsupported (skipped with warning)
 - `settings/` → unsupported (skipped with warning only when the asset has a block for this target)
+- `approvals/` → unsupported (skipped with warning only when an entry applies to this target)
 
 Both personas and delegates map to `agents/` - OpenCode unifies these into a single agent concept, distinguished by the `mode` field. Tools are omitted because OpenCode uses a structurally incompatible format (boolean map vs comma-separated string). Because both land in `agents/`, a persona and a delegate of the same name collide on one target path; the installer resolves this with "later wins" (the earlier asset is shadowed, logged as an override) so reinstall stays idempotent.
 
@@ -155,7 +159,8 @@ my-tai-config/
 │   ├── statuslines/    # Config assets (settings.json)
 │   ├── hooks/          # Config assets (commands run on target events)
 │   ├── mcps/           # Config assets (MCP servers)
-│   └── settings/       # Config assets (fields in a target's settings file)
+│   ├── settings/       # Config assets (fields in a target's settings file)
+│   └── approvals/      # Config assets (auto-approval policy, Markdown)
 ├── bundles/            # Bundle definitions (YAML)
 ├── patches/            # Local deltas, one dir per patched source
 └── profiles/           # Profile definitions (YAML)

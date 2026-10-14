@@ -38,8 +38,9 @@ Tai uses target-agnostic terminology. Here's how asset types map to current targ
 | `hook` | `settings.json` | `hooks.json` | unsupported | Command run on a target event |
 | `mcp` | `.mcp.json` / `~/.claude.json` | `config.toml` | `opencode.json` | MCP server |
 | `settings` | `settings.json` | unsupported | unsupported | Fields in the target's settings file |
+| `approval` | `settings.json` (`autoMode`) | unsupported | unsupported | Auto-approval policy |
 
-The last four are **config assets**: they merge as entries into the target's config files instead of being written as files. See "Config Assets" below.
+The last five are **config assets**: they merge as entries into the target's config files instead of being written as files. See "Config Assets" below.
 
 Target-specific notes:
 - **Codex**: Personas are mapped to skills since Codex has no persona concept (single-file personas wrap as `skills/<name>/SKILL.md`). Delegates are installed as custom agents (`agents/<name>.toml`, body as `developer_instructions`). A Claude `model` (`opus`, `claude-*`) and `tools` are dropped with a warning; put Codex fields (`model`, `model_reasoning_effort`, `features: {shell_tool: false}`) under `native.codex`, which also silences the matching warning. Directory delegates stay passive reference files under `delegates/`.
@@ -138,7 +139,8 @@ my-tai-config/
 │   ├── statuslines/      # Config asset: status bar
 │   ├── hooks/            # Config asset: commands run on target events
 │   ├── mcps/             # Config asset: MCP servers
-│   └── settings/         # Config asset: fields in a target's settings file
+│   ├── settings/         # Config asset: fields in a target's settings file
+│   └── approvals/        # Config asset: auto-approval policy (Markdown)
 ├── bundles/              # Bundle definitions (YAML)
 ├── patches/              # Local deltas, one dir per patched source
 └── profiles/             # Profile definitions (YAML)
@@ -295,8 +297,32 @@ Use a settings asset instead of a `post_install` script that edits
 inside an object separately (`env.FOO`, not all of `env`) and appends each array
 element, so values from you, other tools and other assets coexist, and uninstall
 takes out only tai's. Two settings assets setting the same field fail the
-install; `statusLine` and `hooks` are rejected (use those asset types). An asset
-with no block for a target is silently skipped there.
+install; `statusLine`, `hooks` and the `autoMode` arrays approval assets own
+are rejected (use those asset types). An asset with no block for a target is
+silently skipped there.
+
+### Approval policies
+
+```markdown
+<!-- assets/approvals/personal.md - reference as `type: approval` -->
+Notes before the first heading are not installed.
+
+## context: Push policy
+
+An ordinary push to the working repo's existing remote is fine.
+
+## allow claude: Directing agents in Muster
+
+Briefing the agents in my Muster panes is authorized.
+```
+
+Each `## <kind> [target...]: <title>` heading is one entry; kinds are
+`context`, `allow`, `deny`. On Claude they append to `autoMode.environment`,
+`autoMode.allow` and `autoMode.soft_deny` as `<title>: <body>`, user scope only
+(other scopes are an error, because the classifier ignores them). An array tai
+creates starts with `"$defaults"` so Claude keeps its built-in rules. Use this
+instead of a `post_install` script that rewrites `autoMode`. Codex and OpenCode
+are not supported yet.
 
 ## Configuration Files
 

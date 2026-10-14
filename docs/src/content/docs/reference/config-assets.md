@@ -364,7 +364,7 @@ tai owns each field at the smallest grain that leaves everything else alone, so 
 
 So two settings assets, or an asset and you, can set different `env` variables side by side, and permission lists from several assets add up. Uninstalling removes only tai's keys and elements, and drops an object such as `env` only once tai has emptied it. An array element you already have gets a second copy from tai, as hooks do.
 
-The keys other config asset types own are rejected: write `statusLine` as a statusline asset and `hooks` as hook assets.
+The keys other config asset types own are rejected: write `statusLine` as a statusline asset, `hooks` as hook assets, and `autoMode.environment`, `autoMode.allow` and `autoMode.soft_deny` as approval assets. The rest of `autoMode` stays settable here.
 
 ### Conflicts
 
@@ -377,6 +377,45 @@ The keys other config asset types own are rejected: write `statusLine` as a stat
 | Target | `user` | `project` | `local` |
 |--------|--------|-----------|---------|
 | Claude | `~/.claude/settings.json` | `.claude/settings.json` | `.claude/settings.local.json` |
+
+## Approval policies
+
+An approval asset is standing policy for the reviewer that approves agent actions without asking you - Claude Code's auto mode classifier. Approval assets are Markdown files in `assets/approvals/`, each holding any number of entries:
+
+```markdown
+# assets/approvals/personal.md
+
+Text before the first heading is notes for whoever edits the file, and is not installed.
+
+## context: Push policy
+
+An ordinary push to the working repo's existing remote is consistent
+with policy. Force pushes and new remotes still warrant scrutiny.
+
+## allow claude: Directing agents in Muster
+
+Briefing and directing the agents in my Muster panes is authorized.
+
+## deny: Production
+
+Never run commands against production hosts.
+```
+
+Each `## <kind> [target...]: <title>` heading starts an entry, and the prose under it is the entry's body. Write entries as plain statements, so they read the same to any target's reviewer. Naming targets after the kind limits the entry to them; an unknown kind or target name is an error.
+
+| Kind | Meaning | Claude array |
+|------|---------|--------------|
+| `context` | Background the reviewer should know | `autoMode.environment` |
+| `allow` | Actions to approve that a block rule would otherwise stop | `autoMode.allow` |
+| `deny` | Actions to stop | `autoMode.soft_deny` |
+
+Each entry installs as one array element, `<title>: <body>`, with each paragraph unwrapped onto one line - files are wrapped for reading, and the reviewer takes an entry as one string. tai owns its elements the way it owns hook entries: entries you or other tools put in the same arrays stay, uninstalling removes only tai's, and editing one of tai's makes the next install report a conflict.
+
+**`$defaults`.** A Claude auto mode array without the element `"$defaults"` replaces Claude's built-in rules instead of adding to them. So when tai creates one of these arrays, it starts it with `"$defaults"`. An array you already have is left as you wrote it, since leaving `$defaults` out is how you opt out of the defaults. tai never removes the seed: after uninstalling, an array tai created holds `["$defaults"]`, which means the same as no array.
+
+**User scope only.** Claude's classifier ignores `autoMode` in project and local settings, so approval assets install into `~/.claude/settings.json` only. At another scope the install fails rather than writing a policy Claude would never read; set `scope: user` on the asset's entry.
+
+Only Claude installs approval policies today. On Codex and OpenCode an approval asset is skipped with a warning when one of its entries applies to that target, and silently otherwise.
 
 ## Installation scope
 
@@ -442,4 +481,4 @@ Anything Codex cannot express - an environment key that differs from the variabl
 
 ## Planned config assets
 
-Every config asset type is now implemented. Status lines and settings remain Claude-only, and hooks remain unsupported on OpenCode, for the reasons given above. Codex settings would go in `config.toml`, behind the same consent prompt as Codex MCP servers.
+Every config asset type is now implemented. Status lines, settings and approval policies remain Claude-only, and hooks remain unsupported on OpenCode, for the reasons given above. Codex settings and the Codex approval policy (`auto_review.extra_policy`) would go in `config.toml`, behind the same consent prompt as Codex MCP servers.

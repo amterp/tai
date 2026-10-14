@@ -22,6 +22,7 @@ tai is a CLI tool for managing AI agent configurations. It provides a framework 
 | **MCP** | Model Context Protocol server | MCP server entry in config |
 | **Hook** | Event-triggered shell command | Hook entry in settings |
 | **Settings** | Fields in a target's settings file | `env`, `enabledPlugins` in settings.json |
+| **Approval** | Standing policy for an auto-approval reviewer | `autoMode` arrays in settings.json |
 
 Additional terms:
 - **Asset**: An atomic configuration unit—a single persona, delegate, skill, file, MCP, or hook.
@@ -39,7 +40,7 @@ Assets come in two shapes based on how they're installed:
 | Shape | Asset Types | How Defined | How Installed |
 |-------|-------------|-------------|---------------|
 | **File assets** | personas, delegates, skills, files | Files/directories in `assets/` | Copied to target paths |
-| **Config assets** | statuslines, mcps, hooks, settings | YAML in `assets/` | Merged into target JSON config files |
+| **Config assets** | statuslines, mcps, hooks, settings, approvals | YAML (approvals: Markdown) in `assets/` | Merged into target JSON config files |
 
 **File assets** are the traditional model: you define a file (or directory for personas, delegates, skills), and tai copies it to the appropriate location in the target's config directory. The `file` type copies content as-is without any transformation.
 
@@ -1170,7 +1171,8 @@ Objects are never owned whole, so two assets, or an asset and the user, can set
 sibling keys of one object. Array elements carry the asset name and their index
 as the edit ID, which keeps two assets' elements in one array apart. An element
 the user already has is appended again, as with hooks. Keys owned by another
-config asset type (`statusLine`, `hooks`) are rejected. The translation is
+config asset type (`statusLine`, `hooks`, and the three `autoMode` arrays
+approval assets own) are rejected. The translation is
 `configasset.FieldEdits`, which takes a base key path so a later asset writing
 settings under a key of its own can reuse it.
 
@@ -1183,6 +1185,54 @@ letting both write it would leave one manifest checksum permanently stale. A
 field moving from one asset to another in a single install is not a conflict:
 the new owner skips slots tai already wrote, and the old owner's removal skips
 slots another entry is writing.
+
+#### Approval Definition
+
+An approval asset is standing policy for the reviewer that approves agent
+actions without asking: Claude Code's auto mode classifier. It is a Markdown
+file in `assets/approvals/` holding any number of entries.
+
+```markdown
+# my-tai-config/assets/approvals/personal.md
+
+Notes before the first heading are not installed.
+
+## context: Push policy
+
+An ordinary push to the working repo's existing remote is consistent
+with policy.
+
+## allow claude: Directing agents in Muster
+
+Briefing and directing the agents in my Muster panes is authorized.
+```
+
+Each `## <kind> [target...]: <title>` heading starts an entry. The kinds are
+`context`, `allow` and `deny`; naming targets limits the entry to them, and an
+unknown kind or target is an error. Entries are tai vocabulary rather than
+`native`, because the prose is the same for every target and only where it is
+stored differs. The format is the one tai-personal's `render.rad` parsed, so a
+repo migrates by moving its policy file.
+
+On Claude, `context`, `allow` and `deny` entries go to `autoMode.environment`,
+`autoMode.allow` and `autoMode.soft_deny` in `~/.claude/settings.json`. Each
+entry is one `append_to_array` element, `<title>: <body>` with paragraphs
+unwrapped, built by `configasset.FieldEdits`. Other scopes are an error: the
+classifier ignores `autoMode` in project and local settings, and writing there
+would install a policy nobody reads.
+
+An array tai creates starts with `"$defaults"`, which Claude needs in order to
+keep its built-in rules; without it, a `soft_deny` holding only tai's entries
+would drop every default block rule. The `seed_array` merge mode does this: it
+creates the array holding the seed when none exists and otherwise does nothing.
+Seeds are not recorded in the manifest - an existing array the seed left alone
+would otherwise look like an entry that vanished - and are never removed, since
+`["$defaults"]` means what no array meant. An existing array without
+`$defaults` is left alone: omitting it is how a user replaces the defaults.
+
+Settings assets reject the three arrays, but not the rest of `autoMode`. Codex
+(`auto_review.extra_policy` in `config.toml`) and OpenCode are unsupported; an
+asset warns there only when one of its entries applies.
 
 ## CLI Interface
 
