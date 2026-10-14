@@ -187,7 +187,7 @@ A plain argv list is shorthand for one unnamed step, and was the only form befor
 post_install: [./scripts/after-install.sh]
 ```
 
-Every step sees the inherited user environment plus `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, `TAI_SOURCE_DIR`, and `TAI_VERSION` (always set, so `set -u` scripts are safe). `TAI_TARGET_DIR` is where the target's files were installed, such as `~/.claude`. `TAI_SOURCE_DIR` is the config repo's root for a profile's steps. Profile steps run in the directory tai was run from. Steps do not run on `--dry-run` or when the install fails.
+Every step sees the inherited user environment plus `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`, `TAI_SOURCE_DIR`, and `TAI_VERSION` (always set, so `set -u` scripts are safe). `TAI_TARGET_DIR` is where the target's files were installed, such as `~/.claude`. `TAI_SOURCE_DIR` is the config repo's root for a profile's steps - the same path a command source gets as `TAI_CONFIG_REPO`. Despite the similar name, it is unrelated to `TAI_SOURCE`, which a command source receives and which holds the source's name, not a path. Profile steps run in the directory tai was run from. Steps do not run on `--dry-run` or when the install fails.
 
 Bundles can declare [steps of their own](/tai/reference/bundle-format/#post_install). Those run first, and the profile's steps run last. Steps run in order, and each one runs whether or not earlier steps failed. A failing step does not undo the install - files and manifest are already in place. Tai prints each failure with a tail of its stderr, runs the remaining steps, lists the steps that failed, reports the install as succeeded, and exits nonzero.
 

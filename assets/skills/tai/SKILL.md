@@ -441,7 +441,10 @@ whichever repo imports the bundle, because the step runs in the root of the
 repo holding the bundle's `bundles/` dir - for an imported source, its content
 root. A bundle reached through several imports runs each step once; output
 names the bundle, e.g. `post_install step "render" from bundle "work:approval"`.
-`tai show profile` lists every step that will run.
+`tai show profile` lists every step that will run. A step from a patched source
+runs in the patched view, a copy rebuilt each time tai loads the source: no
+`.git`, no excluded files, and nothing the step writes there survives the next
+tai command, so write output under `TAI_TARGET_DIR`.
 
 To skip an imported bundle's step on one machine, add `skip_post_install` to
 the `bundles:` entry (see the example below). It lists plain step names, reaches
@@ -503,7 +506,8 @@ assets:
 # Optional: named steps run after a successful install - notifications,
 # follow-up scripts, or post-processing installed files. Env: TAI_TARGET,
 # TAI_TARGET_DIR, TAI_PROFILE, TAI_MANIFEST_DIR, TAI_SOURCE_DIR (config repo
-# root), TAI_VERSION. Run after any bundles' steps. Every step runs even if an
+# root, a path - not to be confused with a command source's TAI_SOURCE, a
+# source name), TAI_VERSION. Run after any bundles' steps. Every step runs even if an
 # earlier one failed. Failure does NOT undo the install; tai prints each
 # step's error, lists the failed steps, and exits nonzero.
 post_install:

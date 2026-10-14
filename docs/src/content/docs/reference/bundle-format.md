@@ -211,6 +211,7 @@ post_install:
 Steps take the same fields as a [profile's steps](/tai/reference/profile-format/#post_install): `name`, `command`, and optional `timeout`. A bundle must use the list of named steps; the plain argv shorthand is rejected.
 
 - **Working directory.** A bundle step runs in the root of the repo the bundle came from - the directory holding its `bundles/` dir - so `./scripts/render-approval.sh` names a script shipped beside the bundle, whichever repo imports it. For an imported bundle that is the source's root, or its patched view or fetched cache where those apply. The step also sees that path as `TAI_SOURCE_DIR`.
+- **Patched sources.** A step from a patched source runs in the patched view, so a patched script runs as patched. The view is a copy tai rebuilds each time it loads the source: it has no `.git` and none of the source's excluded files, and anything a step writes inside it is gone after the next tai command. Write output under `TAI_TARGET_DIR` or another path the step owns.
 - **Order.** Bundle steps run before the profile's own steps, in bundle resolution order: an included bundle's steps before those of the bundle including it.
 - **Once per install.** A bundle reached through two imports runs its steps once; a step is identified by its bundle plus its name. Output names the bundle each step came from, as in `post_install step "render" from bundle "work:approval"`.
 - **Timeouts.** A step uses its own `timeout`, then `30s`. A profile's `post_install_timeout` does not apply to bundle steps.

@@ -548,7 +548,10 @@ env plus `TAI_TARGET`, `TAI_TARGET_DIR`, `TAI_PROFILE`, `TAI_MANIFEST_DIR`,
 safe. `TAI_TARGET_DIR` is where the target's files were installed (e.g.
 `~/.claude`), so hooks can find what they need to post-process.
 `TAI_SOURCE_DIR` is the root of the repo that declared the step: the config
-repo for a profile's steps, the bundle's repo for a bundle's (below).
+repo for a profile's steps, the bundle's repo for a bundle's (below). It is a
+path, unlike `TAI_SOURCE`, which a command source receives and which holds the
+source's name; for a profile step it is the same path a command source gets as
+`TAI_CONFIG_REPO`.
 
 `post_install` takes one of two forms:
 
@@ -588,6 +591,11 @@ includes the bundle, so profiles don't each have to repeat them.
   command such as `./scripts/render.sh` therefore names a script shipped
   beside the bundle, whichever repo imports it. Profile steps run in tai's own
   working directory.
+- **Patched sources.** A step from a patched source runs in the patched view,
+  so a patched script runs as patched. The view is a copy tai rebuilds each
+  time it loads the source: it has no `.git` and none of the source's excluded
+  files, and anything a step writes inside it is gone after the next tai
+  command. Write output under `TAI_TARGET_DIR` or another path the step owns.
 - **Timeouts.** A bundle step uses its own `timeout`, then 30s. A profile's
   `post_install_timeout` does not apply, since the bundle's author cannot see
   the profiles that import it.
