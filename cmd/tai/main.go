@@ -918,6 +918,11 @@ func runReinstall(target string, flags installFlags) {
 // them into the final exit code.
 func doInstall(s *state.State, profileName string, flags installFlags) error {
 	dryRun, force, skipConflicts, varsStr, showDiff := flags.dryRun, flags.force, flags.skipConflicts, flags.vars, flags.showDiff
+	// The logger goes on before resolution: overrides, exclusions and skipped
+	// post_install steps are all reported while the profile resolves.
+	s.ProfileResolver.SetLogger(&outputLogger{out: out})
+	s.Installer.SetLogger(&outputLogger{out: out})
+
 	resolved, err := s.ResolveProfile(profileName)
 	if err != nil {
 		fatal("resolving profile: %v", err)
@@ -927,9 +932,6 @@ func doInstall(s *state.State, profileName string, flags installFlags) error {
 	if err != nil {
 		fatal("%v", err)
 	}
-
-	s.ProfileResolver.SetLogger(&outputLogger{out: out})
-	s.Installer.SetLogger(&outputLogger{out: out})
 
 	cliVars, err := parseVariables(varsStr)
 	if err != nil {
