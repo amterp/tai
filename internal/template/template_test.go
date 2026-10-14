@@ -679,7 +679,7 @@ func TestIncludeAssetCycleDetectionMixedRefs(t *testing.T) {
 	// both normalize to "local:personas/a.md".
 	resolver := &mockResolver{
 		assets: map[string][]byte{
-			"personas/a.md":      []byte(`{% include_asset "local:personas/b.md" %}`),
+			"personas/a.md":       []byte(`{% include_asset "local:personas/b.md" %}`),
 			"local:personas/b.md": []byte(`{% include_asset "personas/a.md" %}`),
 		},
 	}

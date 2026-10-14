@@ -69,7 +69,7 @@ sources:
     type: tai-repo
     path: ~/personal-tai-config
 `,
-			wantErr:        true,
+			wantErr:         true,
 			wantErrContains: "assets/",
 		},
 		{

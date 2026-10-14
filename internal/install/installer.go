@@ -2,8 +2,8 @@ package install
 
 import (
 	"fmt"
-	"maps"
 	"io/fs"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"

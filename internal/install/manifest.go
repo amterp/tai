@@ -19,13 +19,13 @@ import (
 
 // Manifest tracks what tai has installed to a target.
 type Manifest struct {
-	Version       int               `yaml:"version"`        // Schema version
-	Target        string            `yaml:"target"`
-	Profile       string            `yaml:"profile"`
-	ConfigRepo    string            `yaml:"config_repo"`
-	InstalledAt   time.Time         `yaml:"installed_at"`
-	Files         []ManifestEntry   `yaml:"files"`
-	ConfigEntries []ConfigEntry     `yaml:"config_entries,omitempty"` // Config assets (statusline, etc.)
+	Version       int             `yaml:"version"` // Schema version
+	Target        string          `yaml:"target"`
+	Profile       string          `yaml:"profile"`
+	ConfigRepo    string          `yaml:"config_repo"`
+	InstalledAt   time.Time       `yaml:"installed_at"`
+	Files         []ManifestEntry `yaml:"files"`
+	ConfigEntries []ConfigEntry   `yaml:"config_entries,omitempty"` // Config assets (statusline, etc.)
 }
 
 // ManifestEntry represents a single installed file.
