@@ -29,6 +29,10 @@ tai config set <path>
 
 The path is resolved to an absolute path and stored in `~/.config/tai/config.yaml`. Tilde (`~`) expansion is supported.
 
+tai loads the repo before saving it, and refuses one that does not load on this machine - for example, one whose sources point at directories that do not exist here. The active config is then left unchanged.
+
+`config set` never loads the current active repo, so it works even when that repo is broken. The same holds for `config show`, `status`, `uninstall` and `run`, which do not read the config repo at all.
+
 ```bash
 tai config set ~/my-tai-config
 # Active config set to: /Users/you/my-tai-config

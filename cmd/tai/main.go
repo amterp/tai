@@ -398,6 +398,23 @@ func loadState() *state.State {
 	return s
 }
 
+// loadGlobalState reads tai's global config without loading the config repo.
+// Commands that never read the repo use it, so a repo whose sources are
+// missing on this machine cannot lock them out - least of all 'config set',
+// the command that replaces it.
+func loadGlobalState() *state.State {
+	paths, err := state.DefaultPaths()
+	if err != nil {
+		fatal("%v", err)
+	}
+	s, err := state.New(paths)
+	if err != nil {
+		fatal("loading state: %v", err)
+	}
+	s.SetVersion(version)
+	return s
+}
+
 func requireActiveConfig(s *state.State) {
 	if err := s.RequireActiveConfig(); err != nil {
 		fatal("%v", err)
@@ -407,7 +424,7 @@ func requireActiveConfig(s *state.State) {
 // --- Config commands ---
 
 func runConfigSet(path string) {
-	s := loadState()
+	s := loadGlobalState()
 	if err := s.SetActiveConfig(path); err != nil {
 		fatal("setting active config: %v", err)
 	}
@@ -415,7 +432,7 @@ func runConfigSet(path string) {
 }
 
 func runConfigShow() {
-	s := loadState()
+	s := loadGlobalState()
 	out.KeyValueBlock([]output.KeyValuePair{
 		{Key: "Config directory", Value: s.Paths.ConfigDir},
 		{Key: "Cache directory", Value: s.Paths.CacheDir},
@@ -1105,7 +1122,7 @@ func (l *outputLogger) Printf(format string, args ...any) {
 }
 
 func runUninstall(target string) {
-	s := loadState()
+	s := loadGlobalState()
 
 	adapter, err := s.GetAdapter(target)
 	if err != nil {
@@ -1143,7 +1160,7 @@ func runUninstall(target string) {
 // --- Status command ---
 
 func runStatus(target string) {
-	s := loadState()
+	s := loadGlobalState()
 
 	targets := []string{target}
 	if target == "" {
@@ -1209,7 +1226,7 @@ func runLocate(assetPath string) {
 // --- Run command ---
 
 func runRun(target string, args []string) {
-	s := loadState()
+	s := loadGlobalState()
 
 	adapter, err := s.GetAdapter(target)
 	if err != nil {

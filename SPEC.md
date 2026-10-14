@@ -1079,6 +1079,12 @@ tai stores its global configuration in `~/.config/tai/` and caches remote source
 active_config: /Users/amterp/work-tai-config
 ```
 
+### The Active Config Repo
+
+`tai config set <path>` loads the repo at `<path>` - its `tai.yaml`, sources, bundles and profiles - and saves it as `active_config` only if that load succeeds. A repo that does not load on this machine, typically one whose sources point at paths that exist only on another machine, is refused and `config.yaml` is left as it was. Saving first would make it active and then fail every command that reads it.
+
+Commands that do not read the config repo do not load it: `config set`, `config show`, `status`, `uninstall` and `run`. An active repo that stops loading later, say because a source directory was deleted, therefore never locks tai out: `tai config set` can always replace it, and `tai uninstall` can still remove what it installed.
+
 ### Commands
 
 ```bash

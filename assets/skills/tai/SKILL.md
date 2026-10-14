@@ -53,6 +53,11 @@ tai config set <path>     # Set active config repo
 tai config show           # Show current config and paths
 ```
 
+`config set` loads the new repo first and refuses one that does not load (the
+active config stays as it was). It never loads the *current* repo, so it can
+always replace a broken one; `config show`, `status`, `uninstall` and `run` skip
+the repo too.
+
 ### Discovery
 
 ```bash

@@ -108,6 +108,92 @@ func TestStateSetActiveConfigInvalid(t *testing.T) {
 	}
 }
 
+// writeBrokenRepo writes a config repo whose only source points at a directory
+// that does not exist, the way a repo cloned from another machine often does.
+func writeBrokenRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	content := "version: 1\nsources:\n  - name: elsewhere\n    path: ./not-on-this-machine\n"
+	if err := os.WriteFile(filepath.Join(dir, "tai.yaml"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func testPaths(env *testutil.TestEnv) *Paths {
+	return &Paths{
+		ConfigDir:   env.ConfigDir,
+		CacheDir:    filepath.Join(env.ConfigDir, "cache"),
+		ManifestDir: filepath.Join(env.ConfigDir, "manifests"),
+		ConfigFile:  filepath.Join(env.ConfigDir, "config.yaml"),
+	}
+}
+
+func TestSetActiveConfigRecoversFromBrokenActiveRepo(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+	env.SetupMinimalConfig()
+	paths := testPaths(env)
+
+	broken := writeBrokenRepo(t)
+	if err := SaveGlobalConfig(paths, &GlobalConfig{ActiveConfig: broken}); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := New(paths)
+	if err != nil {
+		t.Fatalf("New must not load the active repo, but failed: %v", err)
+	}
+	if err := s.LoadConfiguredRepo(); err == nil {
+		t.Fatal("loading the broken active repo should fail")
+	}
+
+	s, err = New(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetActiveConfig(env.ConfigRepo); err != nil {
+		t.Fatalf("SetActiveConfig away from a broken repo failed: %v", err)
+	}
+	saved, err := LoadGlobalConfig(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.ActiveConfig != env.ConfigRepo {
+		t.Errorf("saved ActiveConfig = %q, want %q", saved.ActiveConfig, env.ConfigRepo)
+	}
+}
+
+func TestSetActiveConfigRefusesRepoThatDoesNotLoad(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+	env.SetupMinimalConfig()
+	paths := testPaths(env)
+
+	if err := SaveGlobalConfig(paths, &GlobalConfig{ActiveConfig: env.ConfigRepo}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	broken := writeBrokenRepo(t)
+	err = s.SetActiveConfig(broken)
+	if err == nil {
+		t.Fatal("SetActiveConfig to a repo that does not load should fail")
+	}
+	if !strings.Contains(err.Error(), env.ConfigRepo) {
+		t.Errorf("error should name the unchanged active config %q, got: %v", env.ConfigRepo, err)
+	}
+
+	saved, err := LoadGlobalConfig(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.ActiveConfig != env.ConfigRepo {
+		t.Errorf("config.yaml was rewritten to %q; it should still name %q", saved.ActiveConfig, env.ConfigRepo)
+	}
+}
+
 func TestStateRequireActiveConfig(t *testing.T) {
 	state := &State{
 		GlobalConfig: &GlobalConfig{},

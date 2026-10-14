@@ -123,50 +123,77 @@ func SaveGlobalConfig(paths *Paths, cfg *GlobalConfig) error {
 	return nil
 }
 
-// Load loads the full tai state.
+// Load reads tai's global config and loads the active config repo, if one is
+// set. Commands that only need the global config use New instead, so a repo
+// that no longer loads cannot lock them out.
 func Load() (*State, error) {
 	paths, err := DefaultPaths()
 	if err != nil {
 		return nil, err
 	}
+	s, err := New(paths)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.LoadConfiguredRepo(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
 
+// New reads tai's global config without loading any config repo.
+func New(paths *Paths) (*State, error) {
 	globalCfg, err := LoadGlobalConfig(paths)
 	if err != nil {
 		return nil, err
 	}
 
 	manifestStore := install.NewManifestStore(paths.ManifestDir)
-	state := &State{
+	return &State{
 		Paths:         paths,
 		GlobalConfig:  globalCfg,
 		ManifestStore: manifestStore,
-		Installer:     install.NewInstaller(manifestStore, "", nil), // Empty config repo path and no sources for now
-	}
+		Installer:     install.NewInstaller(manifestStore, "", nil),
+	}, nil
+}
 
-	// If we have an active config, load it
-	if globalCfg.ActiveConfig != "" {
-		if err := state.LoadConfigRepo(globalCfg.ActiveConfig); err != nil {
-			return nil, err
+// LoadConfiguredRepo loads the active config repo, or does nothing when none
+// is set.
+func (s *State) LoadConfiguredRepo() error {
+	active := s.GlobalConfig.ActiveConfig
+	if active == "" {
+		return nil
+	}
+	if err := s.LoadConfigRepo(active); err != nil {
+		return fmt.Errorf("active config repo %s failed to load: %w. Fix the repo, or switch to another with "+
+			"'tai config set <path>', which works even while this one is broken", active, err)
+	}
+	return nil
+}
+
+// absRepoPath expands ~ and makes a config repo path absolute. Every path a
+// repo is known by goes through here, since the source cache is keyed by the
+// repo's path string.
+func absRepoPath(path string) (string, error) {
+	absPath, err := pathutil.MakeAbsolute(path, "")
+	if err != nil {
+		return "", fmt.Errorf("resolving config path: %w", err)
+	}
+	// MakeAbsolute with an empty base leaves a relative path relative.
+	if !filepath.IsAbs(absPath) {
+		absPath, err = filepath.Abs(absPath)
+		if err != nil {
+			return "", fmt.Errorf("making path absolute: %w", err)
 		}
 	}
-
-	return state, nil
+	return absPath, nil
 }
 
 // LoadConfigRepo loads a config repository.
 func (s *State) LoadConfigRepo(path string) error {
-	// Expand ~ and make absolute
-	absPath, err := pathutil.MakeAbsolute(path, "")
+	absPath, err := absRepoPath(path)
 	if err != nil {
-		return fmt.Errorf("resolving config path: %w", err)
-	}
-	// MakeAbsolute with empty base won't make relative paths absolute,
-	// so we need to handle that case
-	if !filepath.IsAbs(absPath) {
-		absPath, err = filepath.Abs(absPath)
-		if err != nil {
-			return fmt.Errorf("making path absolute: %w", err)
-		}
+		return err
 	}
 
 	// Parse tai.yaml
@@ -350,33 +377,36 @@ func (s *State) patchLoader() *source.Loader {
 	return loader
 }
 
-// SetActiveConfig sets the active config repo path and saves it.
+// SetActiveConfig loads the config repo at path and, only if it loads, saves it
+// as the active config.
+//
+// Loading first is the point: saving first would leave a repo that does not
+// load on this machine active, failing every later command that reads it.
 func (s *State) SetActiveConfig(path string) error {
-	// Expand ~ and make absolute
-	absPath, err := pathutil.MakeAbsolute(path, "")
+	absPath, err := absRepoPath(path)
 	if err != nil {
-		return fmt.Errorf("resolving config path: %w", err)
-	}
-	if !filepath.IsAbs(absPath) {
-		absPath, err = filepath.Abs(absPath)
-		if err != nil {
-			return fmt.Errorf("making path absolute: %w", err)
-		}
+		return err
 	}
 
-	// Verify tai.yaml exists
 	taiYaml := filepath.Join(absPath, "tai.yaml")
 	if _, err := os.Stat(taiYaml); os.IsNotExist(err) {
 		return fmt.Errorf("not a valid config repo: %s (tai.yaml not found)", absPath)
 	}
 
-	s.GlobalConfig.ActiveConfig = absPath
-	if err := SaveGlobalConfig(s.Paths, s.GlobalConfig); err != nil {
-		return err
+	if err := s.LoadConfigRepo(absPath); err != nil {
+		return fmt.Errorf("not switching to %s, which failed to load (active config is still %s): %w",
+			absPath, describeActive(s.GlobalConfig.ActiveConfig), err)
 	}
 
-	// Load the config repo
-	return s.LoadConfigRepo(absPath)
+	s.GlobalConfig.ActiveConfig = absPath
+	return SaveGlobalConfig(s.Paths, s.GlobalConfig)
+}
+
+func describeActive(path string) string {
+	if path == "" {
+		return "unset"
+	}
+	return path
 }
 
 // RequireActiveConfig returns an error if no config is active.
