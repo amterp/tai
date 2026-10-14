@@ -1261,6 +1261,9 @@ func runUninstall(target string) {
 
 func runStatus(target string) {
 	s := loadGlobalState()
+	if o := repoOverride; o != nil {
+		out.Info(fmt.Sprintf("Ignoring the config repo override %s (from %s): status reports what is installed on this machine, which every config repo shares.", o.Path, o.Origin))
+	}
 
 	targets := []string{target}
 	if target == "" {
