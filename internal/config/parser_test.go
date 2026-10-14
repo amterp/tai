@@ -420,10 +420,11 @@ func TestParseBundle(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 
 	tests := []struct {
-		name    string
-		content string
-		wantErr bool
-		check   func(*testing.T, *Bundle)
+		name            string
+		content         string
+		wantErr         bool
+		wantErrContains string // Substring the error must carry, when set
+		check           func(*testing.T, *Bundle)
 	}{
 		{
 			name: "valid bundle with assets",
@@ -562,6 +563,51 @@ assets:
 			wantErr: true,
 		},
 		{
+			name: "bundle with post_install steps",
+			content: `name: approval
+assets:
+  - type: file
+    path: files/policy.yaml
+    dest: ""
+post_install:
+  - name: render
+    command: [./approval/render.rad]
+    timeout: 1m
+`,
+			check: func(t *testing.T, b *Bundle) {
+				if len(b.PostInstall) != 1 || b.PostInstall[0].Name != "render" {
+					t.Fatalf("post_install = %+v, want the render step", b.PostInstall)
+				}
+				if got := b.PostInstall[0].ResolvedTimeout(""); got != time.Minute {
+					t.Errorf("timeout = %v, want 1m", got)
+				}
+			},
+		},
+		{
+			name: "bundle post_install argv shorthand rejected",
+			content: `name: approval
+assets:
+  - type: persona
+    path: personas/test.md
+post_install: [./approval/render.rad]
+`,
+			wantErrContains: "must be a list of named steps",
+		},
+		{
+			name: "bundle post_install duplicate names rejected",
+			content: `name: approval
+assets:
+  - type: persona
+    path: personas/test.md
+post_install:
+  - name: render
+    command: [./a.sh]
+  - name: render
+    command: [./b.sh]
+`,
+			wantErrContains: "duplicate step name",
+		},
+		{
 			name: "old string-based asset format gives helpful error",
 			content: `name: legacy
 assets:
@@ -578,9 +624,12 @@ assets:
 			env.WriteFile("test-bundle.yaml", tt.content)
 
 			bundle, err := ParseBundle(path)
-			if tt.wantErr {
+			if tt.wantErr || tt.wantErrContains != "" {
 				if err == nil {
-					t.Error("expected error, got nil")
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("error = %v, want it to contain %q", err, tt.wantErrContains)
 				}
 				return
 			}
@@ -960,6 +1009,10 @@ assets:
 	if _, ok := bundles["extras"]; !ok {
 		t.Error("missing 'extras' bundle")
 	}
+	// Post-install steps run in the directory holding bundles/.
+	if got := bundles["core"].RootDir; got != env.ConfigRepo {
+		t.Errorf("RootDir = %q, want the config repo %q", got, env.ConfigRepo)
+	}
 }
 
 func TestLoadProfilesFromDir(t *testing.T) {
@@ -990,6 +1043,9 @@ bundles:
 	}
 	if _, ok := profiles["work"]; !ok {
 		t.Error("missing 'work' profile")
+	}
+	if got := profiles["work"].RootDir; got != env.ConfigRepo {
+		t.Errorf("RootDir = %q, want the config repo %q", got, env.ConfigRepo)
 	}
 }
 

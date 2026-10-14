@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -702,6 +703,7 @@ func runShowProfile(name string) {
 	for _, item := range items {
 		out.Raw("  " + item.Name)
 	}
+	showPostInstallSteps(resolved.PostInstall)
 }
 
 func runShowBundle(name string) {
@@ -727,6 +729,29 @@ func runShowBundle(name string) {
 	out.Blank()
 	for _, asset := range resolved.Assets {
 		out.Raw("  " + asset.Type + "/" + asset.Name + " (" + asset.SourceName + ")")
+	}
+
+	steps := make([]profile.PostInstallStep, len(resolved.PostInstall))
+	for i, step := range resolved.PostInstall {
+		steps[i] = profile.PostInstallStep{Name: step.Name, Argv: step.Command, Bundle: step.Bundle}
+	}
+	showPostInstallSteps(steps)
+}
+
+// showPostInstallSteps lists the commands an install would run afterwards. An
+// imported bundle can add one, so this is where a user sees it before it runs.
+func showPostInstallSteps(steps []profile.PostInstallStep) {
+	if len(steps) == 0 {
+		return
+	}
+	out.Blank()
+	out.Raw("Post-install steps:")
+	for _, step := range steps {
+		name := "post_install hook"
+		if step.Name != "" {
+			name = postInstallStepName(step)
+		}
+		out.Raw("  " + name + ": " + strings.Join(step.Argv, " "))
 	}
 }
 
@@ -1033,10 +1058,12 @@ func runPostInstall(
 	var failed []string
 	for _, step := range steps {
 		label := postInstallLabel(step)
-		err := cmdexec.Run(cmdexec.Spec{Argv: step.Argv, Timeout: step.Timeout, Env: env})
+		stepEnv := maps.Clone(env)
+		stepEnv["TAI_SOURCE_DIR"] = step.SourceDir
+		err := cmdexec.Run(cmdexec.Spec{Argv: step.Argv, Timeout: step.Timeout, Env: stepEnv, Dir: step.Dir})
 		if err != nil {
 			out.Error(fmt.Sprintf("%s failed%s: %v", label, failureSuffix, err))
-			failed = append(failed, fmt.Sprintf("%q", step.Name))
+			failed = append(failed, postInstallStepName(step))
 		}
 		changes, trackErr := tracker.AfterStep(err == nil)
 		reportStepChanges(label, err == nil, changes, trackErr)
@@ -1058,7 +1085,16 @@ func postInstallLabel(step profile.PostInstallStep) string {
 	if step.Name == "" {
 		return "post_install hook"
 	}
-	return fmt.Sprintf("post_install step %q", step.Name)
+	return "post_install step " + postInstallStepName(step)
+}
+
+// postInstallStepName quotes a step's name, adding the bundle that declared it
+// so a bundle step and a profile step sharing a name can be told apart.
+func postInstallStepName(step profile.PostInstallStep) string {
+	if step.Bundle == "" {
+		return fmt.Sprintf("%q", step.Name)
+	}
+	return fmt.Sprintf("%q from bundle %q", step.Name, step.Bundle)
 }
 
 // reportStepChanges tells the user which managed files a step changed and

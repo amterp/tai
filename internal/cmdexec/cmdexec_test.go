@@ -52,6 +52,31 @@ func TestRun(t *testing.T) {
 		}
 	})
 
+	t.Run("dir sets the working directory and resolves a relative command", func(t *testing.T) {
+		dir := t.TempDir()
+		script := filepath.Join(dir, "scripts", "where.sh")
+		if err := os.MkdirAll(filepath.Dir(script), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(script, []byte("#!/bin/sh\npwd -P > out\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := Run(Spec{Argv: []string{"./scripts/where.sh"}, Timeout: 10 * time.Second, Dir: dir}); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		got, err := os.ReadFile(filepath.Join(dir, "out"))
+		if err != nil {
+			t.Fatalf("script did not write into Dir: %v", err)
+		}
+		want, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.TrimSpace(string(got)) != want {
+			t.Errorf("working dir = %q, want %q", strings.TrimSpace(string(got)), want)
+		}
+	})
+
 	t.Run("env vars set and inherited TAI_ stripped", func(t *testing.T) {
 		t.Setenv("TAI_FOO", "stale")
 		out := filepath.Join(t.TempDir(), "probe")

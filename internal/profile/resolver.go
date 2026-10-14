@@ -38,19 +38,49 @@ type PostInstallStep struct {
 	Name    string // Empty for the single-argv shorthand
 	Argv    []string
 	Timeout time.Duration
+
+	// Bundle is the qualified name of the bundle that declared the step, or
+	// empty for the profile's own.
+	Bundle string
+
+	// Dir is the working directory to run in; empty runs in tai's own. A
+	// bundle step runs in its bundle's root, so a command can name a script
+	// that ships beside the bundle whichever repo imports it.
+	Dir string
+
+	// SourceDir is the root of the repo that declared the step, exposed to it
+	// as TAI_SOURCE_DIR.
+	SourceDir string
 }
 
-func resolvePostInstall(steps config.PostInstallSteps, fallbackTimeout string) []PostInstallStep {
-	if len(steps) == 0 {
+// resolvePostInstall orders a profile's steps: its bundles' steps first, in
+// resolution order, then its own. The profile is the most specific layer, and
+// its steps may build on what a bundle's step set up.
+//
+// A profile's post_install_timeout does not reach bundle steps: a bundle's
+// author cannot see the profiles that will import it.
+func resolvePostInstall(profile *config.Profile, bundleSteps []bundle.Step) []PostInstallStep {
+	if len(bundleSteps) == 0 && len(profile.PostInstall) == 0 {
 		return nil
 	}
-	resolved := make([]PostInstallStep, len(steps))
-	for i, step := range steps {
-		resolved[i] = PostInstallStep{
-			Name:    step.Name,
-			Argv:    step.Command,
-			Timeout: step.ResolvedTimeout(fallbackTimeout),
-		}
+	resolved := make([]PostInstallStep, 0, len(bundleSteps)+len(profile.PostInstall))
+	for _, step := range bundleSteps {
+		resolved = append(resolved, PostInstallStep{
+			Name:      step.Name,
+			Argv:      step.Command,
+			Timeout:   step.ResolvedTimeout(""),
+			Bundle:    step.Bundle,
+			Dir:       step.RootDir,
+			SourceDir: step.RootDir,
+		})
+	}
+	for _, step := range profile.PostInstall {
+		resolved = append(resolved, PostInstallStep{
+			Name:      step.Name,
+			Argv:      step.Command,
+			Timeout:   step.ResolvedTimeout(profile.PostInstallTimeout),
+			SourceDir: profile.RootDir,
+		})
 	}
 	return resolved
 }
@@ -158,7 +188,7 @@ func (r *Resolver) resolveProfile(profile *config.Profile) (*ResolvedProfile, er
 		Options:     profile.Options,
 		Vars:        profile.Vars,
 		Assets:      assets,
-		PostInstall: resolvePostInstall(profile.PostInstall, profile.PostInstallTimeout),
+		PostInstall: resolvePostInstall(profile, resolved.PostInstall),
 		Scope:       profile.ResolvedScope(),
 	}, nil
 }

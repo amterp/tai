@@ -261,6 +261,19 @@ type Bundle struct {
 	Description string        `yaml:"description"`
 	Bundles     []BundleEntry `yaml:"bundles"` // Included bundles
 	Assets      []AssetEntry  `yaml:"assets"`  // Structured asset entries
+
+	// PostInstall lists steps run after any install whose resolved set
+	// includes this bundle, so a bundle that does nothing until a command
+	// runs carries that command itself instead of every profile repeating
+	// it. Steps must be named; a bundle reached through several imports
+	// runs each step once.
+	PostInstall PostInstallSteps `yaml:"post_install"`
+
+	// RootDir is the directory holding the bundles/ dir this bundle was
+	// loaded from: the config repo root, or an imported source's content
+	// root. Its post_install steps run there. Empty for a bundle that was
+	// not loaded from disk.
+	RootDir string `yaml:"-"`
 }
 
 // Profile represents a bundle bound to a specific target.
@@ -284,6 +297,11 @@ type Profile struct {
 	// of its own, parsed via time.ParseDuration. Defaults to
 	// DefaultCommandTimeout when unset.
 	PostInstallTimeout string `yaml:"post_install_timeout"`
+
+	// RootDir is the config repo root, the directory holding the profiles/
+	// dir this profile was loaded from. Its post_install steps see it as
+	// TAI_SOURCE_DIR. Empty for a profile that was not loaded from disk.
+	RootDir string `yaml:"-"`
 
 	// Scope is the default installation scope for this profile's config
 	// assets. File assets ignore it - they always install to the target dir.

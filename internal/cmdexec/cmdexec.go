@@ -39,6 +39,9 @@ type Spec struct {
 	// `set -u` can reference them without surprise. The user's environment
 	// is inherited underneath; see BuildEnv.
 	Env map[string]string
+	// Dir is the working directory; empty runs in tai's own. A relative
+	// Argv[0] such as ./setup.sh is resolved against it.
+	Dir string
 }
 
 // Run executes the command and waits for it to finish. Errors distinguish
@@ -163,6 +166,7 @@ func execute(spec Spec, env []string, staging string) error {
 
 	cmd := exec.CommandContext(ctx, spec.Argv[0], spec.Argv[1:]...)
 	cmd.Env = env
+	cmd.Dir = spec.Dir
 	// Put the child in its own process group (POSIX) so that when the context
 	// is cancelled (e.g. on timeout), we can signal the whole group and clean
 	// up any grandchildren (e.g. `sh -c "curl ..."` where curl is the long

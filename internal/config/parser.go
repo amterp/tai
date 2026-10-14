@@ -248,6 +248,18 @@ func validateBundle(bundle *Bundle, path string) error {
 		}
 	}
 
+	// A bundle's steps are deduplicated by name across imports, so the
+	// unnamed argv shorthand has nothing to key on.
+	if bundle.PostInstall.IsShorthand() {
+		return fmt.Errorf("bundle %q: 'post_install' must be a list of named steps, e.g.:\n"+
+			"  post_install:\n"+
+			"    - name: setup\n"+
+			"      command: [%s]", bundle.Name, strings.Join(bundle.PostInstall[0].Command, ", "))
+	}
+	if err := validatePostInstallSteps(bundle.PostInstall, "post_install"); err != nil {
+		return fmt.Errorf("bundle %q: %w", bundle.Name, err)
+	}
+
 	return nil
 }
 
@@ -442,6 +454,10 @@ func LoadBundlesFromDir(dir string) (map[string]*Bundle, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading bundles directory: %w", err)
 	}
+	rootDir, err := filepath.Abs(filepath.Dir(dir))
+	if err != nil {
+		return nil, fmt.Errorf("resolving the directory holding %s: %w", dir, err)
+	}
 
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -457,6 +473,7 @@ func LoadBundlesFromDir(dir string) (map[string]*Bundle, error) {
 		if err != nil {
 			return nil, err
 		}
+		bundle.RootDir = rootDir
 
 		if existing, ok := bundles[bundle.Name]; ok {
 			return nil, fmt.Errorf("duplicate bundle name %q: defined in both %s and %s",
@@ -524,6 +541,10 @@ func LoadProfilesFromDir(dir string) (map[string]*Profile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading profiles directory: %w", err)
 	}
+	rootDir, err := filepath.Abs(filepath.Dir(dir))
+	if err != nil {
+		return nil, fmt.Errorf("resolving the directory holding %s: %w", dir, err)
+	}
 
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -539,6 +560,7 @@ func LoadProfilesFromDir(dir string) (map[string]*Profile, error) {
 		if err != nil {
 			return nil, err
 		}
+		profile.RootDir = rootDir
 
 		if existing, ok := profiles[profile.Name]; ok {
 			return nil, fmt.Errorf("duplicate profile name %q: defined in both %s and %s",

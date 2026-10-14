@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -2128,7 +2129,8 @@ type postInstallOutcome struct {
 }
 
 // runPostInstallSteps mirrors the CLI's post_install loop: run every step
-// whether or not earlier ones failed, and advance the baseline after each.
+// whether or not earlier ones failed, in its own working directory, and
+// advance the baseline after each.
 func runPostInstallSteps(
 	t *testing.T,
 	installer *install.Installer,
@@ -2148,7 +2150,9 @@ func runPostInstallSteps(
 	tracker := installer.TrackPostInstall(adap, result)
 	outcomes := make([]postInstallOutcome, len(resolved.PostInstall))
 	for i, step := range resolved.PostInstall {
-		err := cmdexec.Run(cmdexec.Spec{Argv: step.Argv, Timeout: step.Timeout, Env: env})
+		stepEnv := maps.Clone(env)
+		stepEnv["TAI_SOURCE_DIR"] = step.SourceDir
+		err := cmdexec.Run(cmdexec.Spec{Argv: step.Argv, Timeout: step.Timeout, Env: stepEnv, Dir: step.Dir})
 		changes, trackErr := tracker.AfterStep(err == nil)
 		if trackErr != nil {
 			t.Fatalf("baseline after step %q: %v", step.Name, trackErr)
@@ -2253,6 +2257,127 @@ post_install:
 	}
 	if len(conflicts.Conflicts) != 1 || conflicts.Conflicts[0].Path != "notes.md" {
 		t.Errorf("conflicts = %+v, want only notes.md", conflicts.Conflicts)
+	}
+}
+
+// TestE2EBundleDeclaredPostInstallStep covers a bundle carrying the step it
+// depends on: imported from another repo through two bundles that both include
+// it, it runs once, in that repo's root, after the bundles' files are written,
+// and before the profile's own step.
+func TestE2EBundleDeclaredPostInstallStep(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("post_install e2e requires POSIX sh")
+	}
+
+	env := testutil.NewTestEnv(t)
+	workRepo := filepath.Join(env.Root, "work-repo")
+	capture := filepath.Join(env.Root, "capture")
+	writeWorkFile := func(rel, content string, mode os.FileMode) {
+		t.Helper()
+		path := filepath.Join(workRepo, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The script lives beside the bundle and is named relative to its repo.
+	writeWorkFile("scripts/setup.sh", `#!/bin/sh
+printf '%s|%s\n' "$(pwd -P)" "$TAI_SOURCE_DIR" >> `+capture+`
+printf '@import ~/.memri/nudge.md\n' >> "$TAI_TARGET_DIR/CLAUDE.md"
+`, 0755)
+	writeWorkFile("files/CLAUDE.md", "# Rendered by tai\n", 0644)
+	writeWorkFile("bundles/memri.yaml", `name: memri
+assets:
+  - type: file
+    path: files/CLAUDE.md
+    dest: ""
+post_install:
+  - name: setup
+    command: [./scripts/setup.sh]
+`, 0644)
+	for _, name := range []string{"tools-a", "tools-b"} {
+		writeWorkFile("bundles/"+name+".yaml", "name: "+name+"\nbundles:\n  - memri\n", 0644)
+	}
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+  - name: work
+    path: ` + workRepo + `
+`)
+	env.SetupProfile("hooked", `name: hooked
+target: claude
+bundles:
+  - work:tools-a
+  - work:tools-b
+post_install:
+  - name: last
+    command: [sh, -c, 'printf "profile|%s\n" "$TAI_SOURCE_DIR" >> `+capture+`']
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, err := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources, err := loader.LoadAll(taiConfig.Sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundles, err := config.LoadBundlesFromDir(filepath.Join(env.ConfigRepo, "bundles"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profiles, err := config.LoadProfilesFromDir(filepath.Join(env.ConfigRepo, "profiles"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := profile.NewResolver(profiles, bundles, sources).Resolve("hooked")
+	if err != nil {
+		t.Fatalf("resolving profile: %v", err)
+	}
+
+	manifestDir := filepath.Join(env.ConfigDir, "manifests")
+	installer := install.NewInstaller(install.NewManifestStore(manifestDir), env.ConfigRepo, sources)
+	adap := claude.New(env.TargetDir)
+
+	result, err := installer.Install(adap, "hooked", resolved.Assets, install.InstallOptions{})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	outcomes := runPostInstallSteps(t, installer, adap, resolved, result, manifestDir)
+	if len(outcomes) != 2 {
+		t.Fatalf("ran %d steps, want the bundle's once plus the profile's", len(outcomes))
+	}
+	for i, o := range outcomes {
+		if o.err != nil {
+			t.Fatalf("step %d failed: %v", i, o.err)
+		}
+	}
+	if baselined := outcomes[0].changes.Baselined; len(baselined) != 1 || baselined[0] != "CLAUDE.md" {
+		t.Errorf("bundle step baselined = %v, want [CLAUDE.md]", baselined)
+	}
+
+	workRoot, err := filepath.EvalSymlinks(workRepo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	want := workRoot + "|" + workRepo + "\nprofile|" + env.ConfigRepo + "\n"
+	if string(got) != want {
+		t.Errorf("capture = %q, want %q", string(got), want)
+	}
+
+	// The bundle step's edit is baselined, so a reinstall does not conflict.
+	if _, err := installer.Install(adap, "hooked", resolved.Assets, install.InstallOptions{}); err != nil {
+		t.Errorf("second install: %v", err)
 	}
 }
 

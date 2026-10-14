@@ -48,6 +48,44 @@ func (o origin) qualify(name string) string {
 type ResolvedBundle struct {
 	Name   string
 	Assets []*config.Asset
+
+	// PostInstall holds the steps of this bundle and everything it includes,
+	// included bundles' first, each step once.
+	PostInstall []Step
+}
+
+// Step is a post_install step together with the bundle that declared it.
+type Step struct {
+	config.PostInstallStep
+
+	// Bundle is the declaring bundle's qualified name, as config writes it
+	// (`core`, `work:core`).
+	Bundle string
+
+	// RootDir is the declaring bundle's root - see config.Bundle.RootDir.
+	RootDir string
+}
+
+// stepList accumulates steps in order, keeping the first of any step whose
+// bundle and name were already seen. A bundle reached through two imports
+// must not run its steps twice.
+type stepList struct {
+	steps []Step
+	seen  map[string]bool
+}
+
+func (l *stepList) add(steps ...Step) {
+	if l.seen == nil {
+		l.seen = make(map[string]bool)
+	}
+	for _, step := range steps {
+		key := step.Bundle + "\x00" + step.Name
+		if l.seen[key] {
+			continue
+		}
+		l.seen[key] = true
+		l.steps = append(l.steps, step)
+	}
 }
 
 // Resolver handles bundle resolution.
@@ -162,6 +200,8 @@ func (r *Resolver) resolveBundle(name string, in origin, path []string) (*Resolv
 	assetMap := make(map[string]*config.Asset) // assetPath -> asset (later wins)
 	order := []string{}                        // Track insertion order
 
+	var steps stepList
+
 	// First, resolve included bundles. They resolve in this bundle's origin,
 	// so an imported bundle's own includes come from the repo that wrote them.
 	for _, included := range bundle.Bundles {
@@ -169,6 +209,7 @@ func (r *Resolver) resolveBundle(name string, in origin, path []string) (*Resolv
 		if err != nil {
 			return nil, fmt.Errorf("resolving included bundle %q: %w", included.Name, err)
 		}
+		steps.add(resolved.PostInstall...)
 
 		for _, asset := range resolved.Assets {
 			assetKey := assetDedupeKey(asset)
@@ -196,10 +237,15 @@ func (r *Resolver) resolveBundle(name string, in origin, path []string) (*Resolv
 		assetMap[assetKey] = asset
 	}
 
+	for _, step := range bundle.PostInstall {
+		steps.add(Step{PostInstallStep: step, Bundle: key, RootDir: bundle.RootDir})
+	}
+
 	// Build result in order
 	result := &ResolvedBundle{
-		Name:   key,
-		Assets: make([]*config.Asset, 0, len(order)),
+		Name:        key,
+		Assets:      make([]*config.Asset, 0, len(order)),
+		PostInstall: steps.steps,
 	}
 	for _, k := range order {
 		result.Assets = append(result.Assets, assetMap[k])
@@ -340,6 +386,7 @@ func (r *Resolver) ResolveMultiple(entries []config.BundleEntry) (*ResolvedBundl
 	bundleMap := make(map[string]string) // assetKey -> bundle name that provided it
 	order := []string{}
 	var overrides []Override
+	var steps stepList
 	names := make([]string, 0, len(entries))
 
 	for _, entry := range entries {
@@ -348,6 +395,7 @@ func (r *Resolver) ResolveMultiple(entries []config.BundleEntry) (*ResolvedBundl
 			return nil, nil, err
 		}
 		names = append(names, resolved.Name)
+		steps.add(resolved.PostInstall...)
 
 		for _, asset := range resolved.Assets {
 			assetKey := assetDedupeKey(asset)
@@ -369,8 +417,9 @@ func (r *Resolver) ResolveMultiple(entries []config.BundleEntry) (*ResolvedBundl
 	}
 
 	result := &ResolvedBundle{
-		Name:   strings.Join(names, "+"),
-		Assets: make([]*config.Asset, 0, len(order)),
+		Name:        strings.Join(names, "+"),
+		Assets:      make([]*config.Asset, 0, len(order)),
+		PostInstall: steps.steps,
 	}
 	for _, key := range order {
 		result.Assets = append(result.Assets, assetMap[key])

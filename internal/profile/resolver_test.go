@@ -381,3 +381,52 @@ func TestResolverPropagatesPostInstall(t *testing.T) {
 		t.Errorf("PostInstall = %v, want empty", plain.PostInstall)
 	}
 }
+
+// Bundle steps run before the profile's own, and the profile's timeout does
+// not reach them: a bundle's author cannot see it.
+func TestResolverOrdersBundleStepsBeforeProfileSteps(t *testing.T) {
+	_, sources, bundles := setupTestEnv(t)
+	bundles["approval"] = &config.Bundle{
+		Name:    "approval",
+		Assets:  []config.AssetEntry{{Type: "persona", Path: "personas/brainstormer.md"}},
+		RootDir: "/work-repo",
+		PostInstall: config.PostInstallSteps{
+			{Name: "render", Command: []string{"./approval/render.rad"}},
+		},
+	}
+
+	profiles := map[string]*config.Profile{
+		"mixed": {
+			Name:               "mixed",
+			Target:             "claude",
+			Bundles:            bundleRefs("core", "approval"),
+			RootDir:            "/config-repo",
+			PostInstallTimeout: "90s",
+			PostInstall: config.PostInstallSteps{
+				{Name: "render", Command: []string{"./profile-render.sh"}},
+			},
+		},
+	}
+
+	resolved, err := NewResolver(profiles, bundles, sources).Resolve("mixed")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if len(resolved.PostInstall) != 2 {
+		t.Fatalf("PostInstall = %+v, want the bundle's step then the profile's", resolved.PostInstall)
+	}
+
+	bundleStep, profileStep := resolved.PostInstall[0], resolved.PostInstall[1]
+	if bundleStep.Bundle != "approval" || bundleStep.Dir != "/work-repo" || bundleStep.SourceDir != "/work-repo" {
+		t.Errorf("bundle step = %+v, want it to run in its bundle's root", bundleStep)
+	}
+	if bundleStep.Timeout != config.DefaultCommandTimeout {
+		t.Errorf("bundle step timeout = %v, want the default, not the profile's 90s", bundleStep.Timeout)
+	}
+	if profileStep.Bundle != "" || profileStep.Dir != "" || profileStep.SourceDir != "/config-repo" {
+		t.Errorf("profile step = %+v, want no working dir and the config repo as source dir", profileStep)
+	}
+	if profileStep.Timeout != 90*time.Second {
+		t.Errorf("profile step timeout = %v, want 90s", profileStep.Timeout)
+	}
+}
