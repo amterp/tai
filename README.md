@@ -36,6 +36,7 @@ go install github.com/amterp/tai/cmd/tai@latest
 | **StatusLine**  | Status bar configuration                     | `statusLine` in settings   |
 | **Hook**        | Command run when something happens           | hook entry in settings     |
 | **MCP**         | Model Context Protocol server                | `mcpServers` entry         |
+| **Settings**    | Fields in the target's settings file         | `env` etc. in settings     |
 | **Asset**       | Any one of the above                         | -                          |
 | **Bundle**      | Named collection of assets                   | -                          |
 | **Profile**     | Bundle(s) bound to a target                  | -                          |
@@ -70,7 +71,8 @@ my-tai-config/
 │   ├── docs/             # Reference documentation
 │   ├── statuslines/      # Status bar configuration
 │   ├── hooks/            # Commands run on target events
-│   └── mcps/             # MCP servers
+│   ├── mcps/             # MCP servers
+│   └── settings/         # Fields in the target's settings file
 ├── bundles/              # Bundle definitions (YAML)
 ├── patches/              # Local deltas on sources you don't own
 └── profiles/             # Profile definitions (YAML)

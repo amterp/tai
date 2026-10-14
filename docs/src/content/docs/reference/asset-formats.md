@@ -12,7 +12,7 @@ Assets come in two shapes based on how they are installed:
 | Shape | Asset types | How defined | How installed |
 |-------|-------------|-------------|---------------|
 | **File assets** | persona, delegate, skill, file | Files or directories in `assets/` | Copied to target paths |
-| **Config assets** | statusline | YAML files in `assets/` | Merged into target JSON config files |
+| **Config assets** | statusline, hook, mcp, settings | YAML files in `assets/` | Merged into target JSON config files |
 
 ## Personas
 
@@ -204,3 +204,4 @@ StatusLines are singletons: only one can be active per profile. When multiple st
 | skill | Directory with Markdown | `SKILL.md` | yes | no | no |
 | file | Any | N/A | no | required | no |
 | statusline | YAML | N/A | no | no | yes |
+| settings | YAML | N/A | no | no | yes |

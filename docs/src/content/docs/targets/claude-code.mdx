@@ -20,6 +20,7 @@ The Claude adapter maps tai asset types to Claude Code's directory structure:
 | `skill` | `skills/` | `name`, `description`, `tools`, `model` |
 | `file` | Location specified by `dest` | None (copied as-is) |
 | `statusline` | Merged into `settings.json` | N/A (config asset) |
+| `settings` | Merged into `settings.json` | N/A (config asset) |
 
 For example, a persona at `assets/personas/senior-swe.md` becomes `~/.claude/output-styles/senior-swe.md`. A delegate at `assets/delegates/code-reviewer.md` becomes `~/.claude/agents/code-reviewer.md`.
 
@@ -81,6 +82,10 @@ For the `custom` level, the `command` field maps to Claude's `command` field, an
 When `show` is specified, all four boolean flags are set explicitly - elements listed in `show` become `true`, and elements not listed become `false`.
 
 You can also use native format to bypass transformation entirely - see [Config Assets](/tai/reference/config-assets/) for details.
+
+## Settings
+
+Settings assets write the fields under their `native.claude` block into `settings.json`, at the same per-scope paths as status lines. tai owns each value inside an object separately, so an `env` variable from tai sits beside your own. See [Config Assets](/tai/reference/config-assets/#settings).
 
 ## Hooks
 

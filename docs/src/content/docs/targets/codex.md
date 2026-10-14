@@ -20,6 +20,7 @@ The Codex adapter maps tai asset types to Codex's directory structure:
 | `skill` | `skills/` | `name`, `description` | First-class support |
 | `file` | Location specified by `dest` | None (copied as-is) | |
 | `statusline` | N/A | N/A | Unsupported (skipped with warning) |
+| `settings` | N/A | N/A | Unsupported (skipped with warning when the asset has a `native.codex` block, silently otherwise) |
 
 ## Partial support and warnings
 

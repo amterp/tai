@@ -333,6 +333,51 @@ Claude's `project` scope writes `.mcp.json`, meant to be committed and shared wi
 That file also holds your account identity, per-project trust decisions, and a good deal of session state. tai merges into the parsed document, touches only its own entries, and leaves numbers exactly as it found them - but it is worth knowing what else lives there. Use `project` scope if you would rather keep tai away from it.
 :::
 
+## Settings
+
+A settings asset sets fields in a target's own settings file, such as Claude's `env`, `enabledPlugins` or `defaultMode`. Settings assets are YAML files in `assets/settings/`; the filename with its extension stripped becomes the asset's name.
+
+```yaml
+# assets/settings/afk.yaml
+native:
+  claude:
+    env:
+      CLAUDE_AFK_TIMEOUT_MS: "600000"
+    enabledPlugins:
+      "foo@bar": true
+    defaultMode: auto
+    permissions:
+      allow: ["Bash(ls:*)"]
+```
+
+Settings mean something different on every target, so there is no tai vocabulary to translate: every field sits under `native.<target>` and is written as you wrote it. Any other top-level key is an error, since it is either a typo or a field missing its `native.<target>` nesting. Only Claude installs settings today. An asset with no block for a target installs nothing there, silently; an asset with a block for a target that does not support settings is skipped with a warning.
+
+### What tai owns
+
+tai owns each field at the smallest grain that leaves everything else alone, so it never takes over a whole object:
+
+| Field shape | tai owns | Example |
+|-------------|----------|---------|
+| Top-level value | That key | `defaultMode` |
+| Value inside an object, at any depth | That one key in its object | `env.CLAUDE_AFK_TIMEOUT_MS` |
+| Array | Each element, appended after what is already there | `permissions.allow` |
+
+So two settings assets, or an asset and you, can set different `env` variables side by side, and permission lists from several assets add up. Uninstalling removes only tai's keys and elements, and drops an object such as `env` only once tai has emptied it. An array element you already have gets a second copy from tai, as hooks do.
+
+The keys other config asset types own are rejected: write `statusLine` as a statusline asset and `hooks` as hook assets.
+
+### Conflicts
+
+- **A field you already set by hand** is a conflict on first install, the same as any unmanaged entry - including when an installed asset later gains that field.
+- **Two settings assets setting the same field** fail the install, naming both assets and the field. tai will not pick a winner by profile order, since an imported bundle can set a field without you knowing. Remove the field from one of them.
+- **Moving a field from one asset to another** in a single install is not a conflict: tai recognizes its own entry changing hands.
+
+### Where settings are installed
+
+| Target | `user` | `project` | `local` |
+|--------|--------|-----------|---------|
+| Claude | `~/.claude/settings.json` | `.claude/settings.json` | `.claude/settings.local.json` |
+
 ## Installation scope
 
 Scope comes from the profile's `scope` field, or from an individual asset's own `scope`, which overrides it. It defaults to `user`. See [Profile Format](/tai/reference/profile-format/#scope).
@@ -397,4 +442,4 @@ Anything Codex cannot express - an environment key that differs from the variabl
 
 ## Planned config assets
 
-Every config asset type is now implemented. Status lines remain Claude-only, and hooks remain unsupported on OpenCode, for the reasons given above.
+Every config asset type is now implemented. Status lines and settings remain Claude-only, and hooks remain unsupported on OpenCode, for the reasons given above. Codex settings would go in `config.toml`, behind the same consent prompt as Codex MCP servers.

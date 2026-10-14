@@ -21,6 +21,7 @@ tai is a CLI tool for managing AI agent configurations. It provides a framework 
 | **StatusLine** | Status bar configuration | statusLine entry in settings.json |
 | **MCP** | Model Context Protocol server | MCP server entry in config |
 | **Hook** | Event-triggered shell command | Hook entry in settings |
+| **Settings** | Fields in a target's settings file | `env`, `enabledPlugins` in settings.json |
 
 Additional terms:
 - **Asset**: An atomic configuration unit—a single persona, delegate, skill, file, MCP, or hook.
@@ -38,7 +39,7 @@ Assets come in two shapes based on how they're installed:
 | Shape | Asset Types | How Defined | How Installed |
 |-------|-------------|-------------|---------------|
 | **File assets** | personas, delegates, skills, files | Files/directories in `assets/` | Copied to target paths |
-| **Config assets** | statuslines, mcps, hooks | YAML in `assets/` | Merged into target JSON config files |
+| **Config assets** | statuslines, mcps, hooks, settings | YAML in `assets/` | Merged into target JSON config files |
 
 **File assets** are the traditional model: you define a file (or directory for personas, delegates, skills), and tai copies it to the appropriate location in the target's config directory. The `file` type copies content as-is without any transformation.
 
@@ -1129,6 +1130,59 @@ by hand fails silently - a 30-second timeout becomes 30 milliseconds.
   installing; run `/hooks` in Codex to review them.
 - **Codex hooks** go to a dedicated `hooks.json`, never `config.toml`, so tai
   never rewrites the file holding model settings and project trust decisions.
+
+#### Settings Definition
+
+A settings asset sets fields in a target's own settings file, such as Claude's
+`env`, `enabledPlugins` or `defaultMode`. It lives in `assets/settings/`, and
+its name is the filename without its extension.
+
+```yaml
+# my-tai-config/assets/settings/afk.yaml
+native:
+  claude:
+    env:
+      CLAUDE_AFK_TIMEOUT_MS: "600000"
+    enabledPlugins:
+      "foo@bar": true
+    defaultMode: auto
+    permissions:
+      allow: ["Bash(ls:*)"]
+```
+
+Every field is target-specific, so the only top-level key is `native`, keyed by
+target (design decision 14). Any other top-level key is a parse error: it is a
+typo or a field missing its `native.<target>` nesting, and ignoring it would
+install nothing while reporting success. Only Claude supports the type. An asset
+with no block for a target installs nothing there and does not warn; one with a
+block for a target that lacks the type is skipped with a warning.
+
+**Ownership.** Each field is installed as the smallest entry that can be owned
+without displacing anyone else's (design decision 9):
+
+| Field shape | Merge mode | Example |
+|-------------|------------|---------|
+| Top-level value | `replace_key` | `defaultMode` |
+| Value inside an object, any depth | `upsert_map_entry` on its parent | `env.FOO` |
+| Array | `append_to_array`, one edit per element | `permissions.allow` |
+
+Objects are never owned whole, so two assets, or an asset and the user, can set
+sibling keys of one object. Array elements carry the asset name and their index
+as the edit ID, which keeps two assets' elements in one array apart. An element
+the user already has is appended again, as with hooks. Keys owned by another
+config asset type (`statusLine`, `hooks`) are rejected. The translation is
+`configasset.FieldEdits`, which takes a base key path so a later asset writing
+settings under a key of its own can reuse it.
+
+**Conflicts.** A field the user already set is a conflict, including one an
+installed asset gains later: a managed entry is checked for collisions on every
+slot it did not write before, not only for drift. Two settings assets setting
+the same field fail the install before anything is written, because profile
+order is not a choice the user makes deliberately when a bundle is imported, and
+letting both write it would leave one manifest checksum permanently stale. A
+field moving from one asset to another in a single install is not a conflict:
+the new owner skips slots tai already wrote, and the old owner's removal skips
+slots another entry is writing.
 
 ## CLI Interface
 

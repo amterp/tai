@@ -20,6 +20,7 @@ The OpenCode adapter maps tai asset types to OpenCode's directory structure:
 | `skill` | `skills/` | `name`, `description` | Near-identical to tai's format |
 | `file` | Location specified by `dest` | None (copied as-is) | |
 | `statusline` | N/A | N/A | Unsupported (skipped with warning) |
+| `settings` | N/A | N/A | Unsupported (skipped with warning when the asset has a `native.opencode` block, silently otherwise) |
 
 ## Unified agent directory
 

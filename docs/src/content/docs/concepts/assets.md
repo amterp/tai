@@ -12,7 +12,7 @@ Assets come in two shapes based on how they are installed:
 | Shape | Asset types | How installed |
 |-------|-------------|---------------|
 | **File assets** | persona, delegate, skill, file | Copied to target paths |
-| **Config assets** | statusline, hook, mcp | Merged into the target's config files |
+| **Config assets** | statusline, hook, mcp, settings | Merged into the target's config files |
 
 ## File assets
 
