@@ -2411,10 +2411,9 @@ Items considered during design but explicitly deferred. These inform future deve
 **Why deferred:** Current `source:path` syntax handles most cases. "Later wins" with info logging is sufficient.
 **Future scope:** `--strict` mode that fails on conflicts; explicit aliasing in tai.yaml.
 
-### Hooks System
-**What:** Pre/post install scripts in config repo (`hooks/post-install.sh`).
-**Why deferred:** Security concern—arbitrary script execution from potentially remote sources. Requires careful sandboxing.
-**Future scope:** Opt-in hooks with explicit user consent; possibly restricted to local sources only.
+### Pre-Install Hooks
+**What:** Commands that run before an install writes anything. Post-install commands shipped as a profile's `post_install` steps (see Post-Install Hooks).
+**Why deferred:** No use case yet; everything asked for so far post-processes what an install wrote.
 
 ### Adapter as State Synchronizer
 **What:** Adapters sync to "desired state" rather than copying files—supporting future targets that use DBs, APIs, etc.
