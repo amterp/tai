@@ -1994,9 +1994,12 @@ post_install:
 		"TAI_MANIFEST_DIR": manifestDir,
 		"TAI_VERSION":      "test-version",
 	}
+	if len(resolved.PostInstall) != 1 {
+		t.Fatalf("PostInstall = %+v, want the argv as one step", resolved.PostInstall)
+	}
 	if err := cmdexec.Run(cmdexec.Spec{
-		Argv:    resolved.PostInstall,
-		Timeout: resolved.PostInstallTimeout,
+		Argv:    resolved.PostInstall[0].Argv,
+		Timeout: resolved.PostInstall[0].Timeout,
 		Env:     hookEnv,
 	}); err != nil {
 		t.Fatalf("post_install hook failed: %v", err)
@@ -2014,7 +2017,7 @@ post_install:
 	// A failing hook must not disturb the completed install.
 	failErr := cmdexec.Run(cmdexec.Spec{
 		Argv:    []string{"sh", "-c", "printf 'hook broke' >&2; exit 3"},
-		Timeout: resolved.PostInstallTimeout,
+		Timeout: resolved.PostInstall[0].Timeout,
 		Env:     hookEnv,
 	})
 	if failErr == nil {
@@ -2092,31 +2095,17 @@ post_install:
 	installer := install.NewInstaller(install.NewManifestStore(manifestDir), env.ConfigRepo, sources)
 	adap := claude.New(env.TargetDir)
 
-	// Mirrors doInstall: install, run the hook, then rebaseline on success.
 	installOnce := func(run int) {
 		t.Helper()
 		result, err := installer.Install(adap, "hooked", resolved.Assets, install.InstallOptions{})
 		if err != nil {
 			t.Fatalf("install run %d: %v", run, err)
 		}
-		if err := cmdexec.Run(cmdexec.Spec{
-			Argv:    resolved.PostInstall,
-			Timeout: resolved.PostInstallTimeout,
-			Env: map[string]string{
-				"TAI_TARGET":       resolved.Target,
-				"TAI_TARGET_DIR":   adap.TargetDir(),
-				"TAI_PROFILE":      resolved.Name,
-				"TAI_MANIFEST_DIR": manifestDir,
-				"TAI_VERSION":      "test-version",
-			},
-		}); err != nil {
-			t.Fatalf("post_install hook on run %d: %v", run, err)
+		outcomes := runPostInstallSteps(t, installer, adap, resolved, result, manifestDir)
+		if outcomes[0].err != nil {
+			t.Fatalf("post_install hook on run %d: %v", run, outcomes[0].err)
 		}
-		changed, err := installer.Rebaseline(adap, result)
-		if err != nil {
-			t.Fatalf("rebaseline on run %d: %v", run, err)
-		}
-		if run == 1 && (len(changed) != 1 || changed[0] != "CLAUDE.md") {
+		if changed := outcomes[0].changes.Baselined; run == 1 && (len(changed) != 1 || changed[0] != "CLAUDE.md") {
 			t.Fatalf("changed = %v, want [CLAUDE.md]", changed)
 		}
 	}
@@ -2130,6 +2119,140 @@ post_install:
 	want := "# Rendered by tai\n@import ~/.memri/nudge.md\n"
 	if got := env.ReadTargetFile("CLAUDE.md"); got != want {
 		t.Errorf("CLAUDE.md = %q, want %q", got, want)
+	}
+}
+
+type postInstallOutcome struct {
+	err     error
+	changes install.StepChanges
+}
+
+// runPostInstallSteps mirrors the CLI's post_install loop: run every step
+// whether or not earlier ones failed, and advance the baseline after each.
+func runPostInstallSteps(
+	t *testing.T,
+	installer *install.Installer,
+	adap adapter.Adapter,
+	resolved *profile.ResolvedProfile,
+	result *install.InstallResult,
+	manifestDir string,
+) []postInstallOutcome {
+	t.Helper()
+	env := map[string]string{
+		"TAI_TARGET":       resolved.Target,
+		"TAI_TARGET_DIR":   adap.TargetDir(),
+		"TAI_PROFILE":      resolved.Name,
+		"TAI_MANIFEST_DIR": manifestDir,
+		"TAI_VERSION":      "test-version",
+	}
+	tracker := installer.TrackPostInstall(adap, result)
+	outcomes := make([]postInstallOutcome, len(resolved.PostInstall))
+	for i, step := range resolved.PostInstall {
+		err := cmdexec.Run(cmdexec.Spec{Argv: step.Argv, Timeout: step.Timeout, Env: env})
+		changes, trackErr := tracker.AfterStep(err == nil)
+		if trackErr != nil {
+			t.Fatalf("baseline after step %q: %v", step.Name, trackErr)
+		}
+		outcomes[i] = postInstallOutcome{err: err, changes: changes}
+	}
+	return outcomes
+}
+
+// TestE2EPostInstallStepsRunPastAFailure is the case named steps exist for: a
+// step that fails after editing a managed file must neither stop later steps
+// nor keep their edits out of the baseline, while its own partial edit still
+// surfaces as a conflict.
+func TestE2EPostInstallStepsRunPastAFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("post_install e2e requires POSIX sh")
+	}
+
+	env := testutil.NewTestEnv(t)
+
+	env.SetupTaiConfig(`version: 1
+sources:
+  - name: local
+    path: ./assets
+`)
+	env.SetupAsset("files", "CLAUDE.md", "# Rendered by tai\n")
+	env.SetupAsset("files", "notes.md", "# Notes\n")
+	env.SetupBundle("core", `name: core
+assets:
+  - type: file
+    path: files/CLAUDE.md
+    dest: ""
+  - type: file
+    path: files/notes.md
+    dest: ""
+`)
+	env.SetupProfile("hooked", `name: hooked
+target: claude
+bundles:
+  - core
+post_install:
+  - name: notify
+    command: [sh, -c, "true"]
+  - name: render
+    command: [sh, -c, 'printf "half\n" >> "$TAI_TARGET_DIR/notes.md"; exit 1']
+  - name: memri
+    command: [sh, -c, 'printf "@import ~/.memri/nudge.md\n" >> "$TAI_TARGET_DIR/CLAUDE.md"']
+`)
+
+	loader := source.NewLoader(env.ConfigRepo)
+	taiConfig, err := config.ParseTaiConfig(filepath.Join(env.ConfigRepo, "tai.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources, err := loader.LoadAll(taiConfig.Sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundles, err := config.LoadBundlesFromDir(filepath.Join(env.ConfigRepo, "bundles"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profiles, err := config.LoadProfilesFromDir(filepath.Join(env.ConfigRepo, "profiles"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := profile.NewResolver(profiles, bundles, sources).Resolve("hooked")
+	if err != nil {
+		t.Fatalf("resolving profile: %v", err)
+	}
+
+	manifestDir := filepath.Join(env.ConfigDir, "manifests")
+	installer := install.NewInstaller(install.NewManifestStore(manifestDir), env.ConfigRepo, sources)
+	adap := claude.New(env.TargetDir)
+
+	result, err := installer.Install(adap, "hooked", resolved.Assets, install.InstallOptions{})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	outcomes := runPostInstallSteps(t, installer, adap, resolved, result, manifestDir)
+
+	if outcomes[0].err != nil || outcomes[2].err != nil {
+		t.Fatalf("notify and memri should succeed: %v, %v", outcomes[0].err, outcomes[2].err)
+	}
+	if outcomes[1].err == nil {
+		t.Fatal("render should fail")
+	}
+	if held := outcomes[1].changes.Held; len(held) != 1 || held[0] != "notes.md" {
+		t.Errorf("render held = %v, want [notes.md]", held)
+	}
+	if got := env.ReadTargetFile("CLAUDE.md"); got != "# Rendered by tai\n@import ~/.memri/nudge.md\n" {
+		t.Errorf("memri did not run after the failed step: CLAUDE.md = %q", got)
+	}
+	if baselined := outcomes[2].changes.Baselined; len(baselined) != 1 || baselined[0] != "CLAUDE.md" {
+		t.Errorf("memri baselined = %v, want [CLAUDE.md]", baselined)
+	}
+
+	_, err = installer.Install(adap, "hooked", resolved.Assets, install.InstallOptions{})
+	conflicts, ok := err.(*install.ConflictsError)
+	if !ok {
+		t.Fatalf("second install: want a conflict on notes.md, got %v", err)
+	}
+	if len(conflicts.Conflicts) != 1 || conflicts.Conflicts[0].Path != "notes.md" {
+		t.Errorf("conflicts = %+v, want only notes.md", conflicts.Conflicts)
 	}
 }
 

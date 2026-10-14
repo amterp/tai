@@ -598,10 +598,11 @@ func TestParseProfile(t *testing.T) {
 	env := testutil.NewTestEnv(t)
 
 	tests := []struct {
-		name    string
-		content string
-		wantErr bool
-		check   func(*testing.T, *Profile)
+		name            string
+		content         string
+		wantErr         bool
+		wantErrContains string // Substring the error must carry, when set
+		check           func(*testing.T, *Profile)
 	}{
 		{
 			name: "valid profile with bundles",
@@ -637,11 +638,14 @@ post_install:
 post_install_timeout: 1m
 `,
 			check: func(t *testing.T, p *Profile) {
-				if len(p.PostInstall) != 3 {
-					t.Errorf("len(post_install) = %d, want 3", len(p.PostInstall))
+				if !p.PostInstall.IsShorthand() {
+					t.Fatalf("post_install = %+v, want one unnamed step", p.PostInstall)
 				}
-				if got := p.ResolvedPostInstallTimeout(); got != time.Minute {
-					t.Errorf("ResolvedPostInstallTimeout() = %v, want 1m", got)
+				if got := p.PostInstall[0].Command; len(got) != 3 || got[2] != "./notify.sh" {
+					t.Errorf("command = %v, want the whole argv", got)
+				}
+				if got := p.PostInstall[0].ResolvedTimeout(p.PostInstallTimeout); got != time.Minute {
+					t.Errorf("ResolvedTimeout() = %v, want 1m", got)
 				}
 			},
 		},
@@ -654,10 +658,127 @@ bundles:
 post_install: [./notify.sh]
 `,
 			check: func(t *testing.T, p *Profile) {
-				if got := p.ResolvedPostInstallTimeout(); got != DefaultCommandTimeout {
-					t.Errorf("ResolvedPostInstallTimeout() = %v, want default %v", got, DefaultCommandTimeout)
+				if got := p.PostInstall[0].ResolvedTimeout(p.PostInstallTimeout); got != DefaultCommandTimeout {
+					t.Errorf("ResolvedTimeout() = %v, want default %v", got, DefaultCommandTimeout)
 				}
 			},
+		},
+		{
+			name: "post_install named steps",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install:
+  - name: memri
+    command: [memri, setup]
+  - name: render
+    command: [./render.rad]
+    timeout: 2m
+post_install_timeout: 1m
+`,
+			check: func(t *testing.T, p *Profile) {
+				if len(p.PostInstall) != 2 || p.PostInstall.IsShorthand() {
+					t.Fatalf("post_install = %+v, want two named steps", p.PostInstall)
+				}
+				memri, render := p.PostInstall[0], p.PostInstall[1]
+				if memri.Name != "memri" || len(memri.Command) != 2 {
+					t.Errorf("step 0 = %+v, want memri", memri)
+				}
+				if got := memri.ResolvedTimeout(p.PostInstallTimeout); got != time.Minute {
+					t.Errorf("memri timeout = %v, want the profile's 1m", got)
+				}
+				if got := render.ResolvedTimeout(p.PostInstallTimeout); got != 2*time.Minute {
+					t.Errorf("render timeout = %v, want its own 2m", got)
+				}
+			},
+		},
+		{
+			name: "post_install step without name rejected",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install:
+  - name: memri
+    command: [memri, setup]
+  - command: [./render.rad]
+`,
+			wantErrContains: "post_install[1]: missing 'name'",
+		},
+		{
+			name: "post_install duplicate step names rejected",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install:
+  - name: setup
+    command: [memri, setup]
+  - name: setup
+    command: [./render.rad]
+`,
+			wantErrContains: "duplicate step name",
+		},
+		{
+			name: "post_install step without command rejected",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install:
+  - name: setup
+`,
+			wantErrContains: "missing 'command'",
+		},
+		{
+			name: "post_install step with bad timeout rejected",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install:
+  - name: setup
+    command: [memri, setup]
+    timeout: soon
+`,
+			wantErrContains: `post_install step "setup": 'timeout'`,
+		},
+		{
+			name: "post_install step with unknown field rejected",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install:
+  - name: setup
+    command: [memri, setup]
+    timout: 2m
+`,
+			wantErrContains: `unknown post_install step field "timout"`,
+		},
+		{
+			name: "post_install mixing argv and steps rejected",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install:
+  - ./notify.sh
+  - name: setup
+    command: [memri, setup]
+`,
+			wantErrContains: "mixes argv strings with steps",
+		},
+		{
+			name: "post_install as a bare string rejected",
+			content: `name: work
+target: claude
+bundles:
+  - core
+post_install: ./notify.sh
+`,
+			wantErrContains: "'post_install' must be a list",
 		},
 		{
 			name: "post_install with empty argv element rejected",
@@ -754,9 +875,12 @@ target: claude
 			env.WriteFile("test-profile.yaml", tt.content)
 
 			profile, err := ParseProfile(path)
-			if tt.wantErr {
+			if tt.wantErr || tt.wantErrContains != "" {
 				if err == nil {
-					t.Error("expected error, got nil")
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("error = %v, want it to contain %q", err, tt.wantErrContains)
 				}
 				return
 			}

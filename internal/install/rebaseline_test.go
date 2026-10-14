@@ -5,10 +5,17 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
 )
 
-// appendToTargetFile simulates a post_install hook post-processing a managed
+// rebaselineAfterSuccess runs the tracker for a single step that succeeded.
+func rebaselineAfterSuccess(installer *Installer, adap adapter.Adapter, result *InstallResult) ([]string, error) {
+	changes, err := installer.TrackPostInstall(adap, result).AfterStep(true)
+	return changes.Baselined, err
+}
+
+// appendToTargetFile simulates a post_install step post-processing a managed
 // file - memri's real hook appends an @import line to CLAUDE.md.
 func appendToTargetFile(t *testing.T, path, extra string) {
 	t.Helper()
@@ -38,9 +45,9 @@ func TestRebaselineAcceptsHookEditsToManagedFile(t *testing.T) {
 	installed := filepath.Join(env.TargetDir, "output-styles", "test.md")
 	appendToTargetFile(t, installed, "\n@import ~/.memri/nudge.md\n")
 
-	changed, err := installer.Rebaseline(adapter, result)
+	changed, err := rebaselineAfterSuccess(installer, adapter, result)
 	if err != nil {
-		t.Fatalf("Rebaseline failed: %v", err)
+		t.Fatalf("rebaseline failed: %v", err)
 	}
 	if len(changed) != 1 || changed[0] != "output-styles/test.md" {
 		t.Fatalf("changed = %v, want [output-styles/test.md]", changed)
@@ -84,9 +91,9 @@ func TestRebaselineIgnoresUntouchedFiles(t *testing.T) {
 
 	appendToTargetFile(t, filepath.Join(env.TargetDir, "agents", "helper.md"), "\nextra\n")
 
-	changed, err := installer.Rebaseline(adapter, result)
+	changed, err := rebaselineAfterSuccess(installer, adapter, result)
 	if err != nil {
-		t.Fatalf("Rebaseline failed: %v", err)
+		t.Fatalf("rebaseline failed: %v", err)
 	}
 	if len(changed) != 1 || changed[0] != "agents/helper.md" {
 		t.Errorf("changed = %v, want only [agents/helper.md]", changed)
@@ -108,9 +115,9 @@ func TestRebaselineNoChangesLeavesManifestAlone(t *testing.T) {
 	}
 	before := result.Manifest.Files[0].Checksum
 
-	changed, err := installer.Rebaseline(adapter, result)
+	changed, err := rebaselineAfterSuccess(installer, adapter, result)
 	if err != nil {
-		t.Fatalf("Rebaseline failed: %v", err)
+		t.Fatalf("rebaseline failed: %v", err)
 	}
 	if len(changed) != 0 {
 		t.Errorf("changed = %v, want none for a hook that touched nothing", changed)
@@ -146,9 +153,9 @@ func TestRebaselineDirAsset(t *testing.T) {
 
 	appendToTargetFile(t, filepath.Join(env.TargetDir, "skills", "my-skill", "helper.sh"), "\necho patched\n")
 
-	changed, err := installer.Rebaseline(adapter, result)
+	changed, err := rebaselineAfterSuccess(installer, adapter, result)
 	if err != nil {
-		t.Fatalf("Rebaseline failed: %v", err)
+		t.Fatalf("rebaseline failed: %v", err)
 	}
 	if len(changed) != 1 || changed[0] != "skills/my-skill" {
 		t.Fatalf("changed = %v, want [skills/my-skill]", changed)
@@ -189,9 +196,9 @@ func TestRebaselinePreservesSkippedConflicts(t *testing.T) {
 		t.Fatalf("Skipped = %v, want the hand-edited file", skipped.Skipped)
 	}
 
-	changed, err := installer.Rebaseline(adapter, skipped)
+	changed, err := rebaselineAfterSuccess(installer, adapter, skipped)
 	if err != nil {
-		t.Fatalf("Rebaseline failed: %v", err)
+		t.Fatalf("rebaseline failed: %v", err)
 	}
 	if len(changed) != 0 {
 		t.Errorf("changed = %v, want none - a skipped conflict must not be baselined", changed)
@@ -232,7 +239,7 @@ func TestRebaselineToleratesFileRemovedByHook(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	changed, err := installer.Rebaseline(adapter, result)
+	changed, err := rebaselineAfterSuccess(installer, adapter, result)
 	if err != nil {
 		t.Fatalf("Rebaseline must not fail on a file the hook removed: %v", err)
 	}
@@ -252,4 +259,145 @@ func TestRebaselineToleratesFileRemovedByHook(t *testing.T) {
 		t.Error("file should have been reinstalled")
 	}
 	_ = next
+}
+
+// twoPersonas installs two managed files, so a test can have different steps
+// edit different files.
+func twoPersonas(t *testing.T) (*Installer, adapter.Adapter, []*config.Asset, *InstallResult, string, string) {
+	t.Helper()
+	env, installer, adap := setupInstallTest(t)
+
+	env.SetupAsset("personas", "a.md", "---\ntai-schema-version: 1\nname: A\n---\n\n# A")
+	env.SetupAsset("personas", "b.md", "---\ntai-schema-version: 1\nname: B\n---\n\n# B")
+	assets := []*config.Asset{
+		{Type: "persona", Name: "a.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "a.md")},
+		{Type: "persona", Name: "b.md", SourceName: "local",
+			SourcePath: filepath.Join(env.ConfigRepo, "assets", "personas", "b.md")},
+	}
+	result, err := installer.Install(adap, "test-profile", assets, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install failed: %v", err)
+	}
+	return installer, adap, assets, result,
+		filepath.Join(env.TargetDir, "output-styles", "a.md"),
+		filepath.Join(env.TargetDir, "output-styles", "b.md")
+}
+
+func checksumOf(t *testing.T, m *Manifest, path string) string {
+	t.Helper()
+	for _, f := range m.Files {
+		if f.Path == path {
+			return f.Checksum
+		}
+	}
+	t.Fatalf("manifest has no entry for %s", path)
+	return ""
+}
+
+// conflictPaths reinstalls and returns the paths reported as conflicts.
+func conflictPaths(t *testing.T, installer *Installer, adap adapter.Adapter, assets []*config.Asset) []string {
+	t.Helper()
+	_, err := installer.Install(adap, "test-profile", assets, InstallOptions{})
+	if err == nil {
+		return nil
+	}
+	conflicts, ok := err.(*ConflictsError)
+	if !ok {
+		t.Fatalf("want ConflictsError or nil, got %v", err)
+	}
+	var paths []string
+	for _, c := range conflicts.Conflicts {
+		paths = append(paths, c.Path)
+	}
+	return paths
+}
+
+func TestRebaselineHoldsFailedStepEdits(t *testing.T) {
+	installer, adap, assets, result, a, _ := twoPersonas(t)
+
+	tracker := installer.TrackPostInstall(adap, result)
+	appendToTargetFile(t, a, "\npartial edit\n")
+	changes, err := tracker.AfterStep(false)
+	if err != nil {
+		t.Fatalf("AfterStep failed: %v", err)
+	}
+	if len(changes.Baselined) != 0 || len(changes.Held) != 1 || changes.Held[0] != "output-styles/a.md" {
+		t.Fatalf("changes = %+v, want only a.md held", changes)
+	}
+
+	if got := conflictPaths(t, installer, adap, assets); len(got) != 1 || got[0] != "output-styles/a.md" {
+		t.Errorf("conflicts = %v, want [output-styles/a.md] - a failed step's edit must surface", got)
+	}
+}
+
+// The reason steps exist: one failing step must not stop a later, unrelated
+// step's edits from being baselined.
+func TestRebaselineSucceededStepAfterFailedOne(t *testing.T) {
+	installer, adap, assets, result, a, b := twoPersonas(t)
+
+	tracker := installer.TrackPostInstall(adap, result)
+	appendToTargetFile(t, a, "\npartial edit\n")
+	if _, err := tracker.AfterStep(false); err != nil {
+		t.Fatalf("AfterStep(false) failed: %v", err)
+	}
+	appendToTargetFile(t, b, "\n@import ~/.memri/nudge.md\n")
+	changes, err := tracker.AfterStep(true)
+	if err != nil {
+		t.Fatalf("AfterStep(true) failed: %v", err)
+	}
+	if len(changes.Held) != 0 || len(changes.Baselined) != 1 || changes.Baselined[0] != "output-styles/b.md" {
+		t.Fatalf("changes = %+v, want only b.md baselined", changes)
+	}
+
+	if got := conflictPaths(t, installer, adap, assets); len(got) != 1 || got[0] != "output-styles/a.md" {
+		t.Errorf("conflicts = %v, want only the failed step's [output-styles/a.md]", got)
+	}
+}
+
+// A later successful step re-touching a file a failed step left half-edited
+// must not baseline it: the file's content still includes the partial edit.
+func TestRebaselineKeepsFailedStepFileHeld(t *testing.T) {
+	installer, adap, assets, result, a, _ := twoPersonas(t)
+	recorded := checksumOf(t, result.Manifest, "output-styles/a.md")
+
+	tracker := installer.TrackPostInstall(adap, result)
+	appendToTargetFile(t, a, "\npartial edit\n")
+	if _, err := tracker.AfterStep(false); err != nil {
+		t.Fatalf("AfterStep(false) failed: %v", err)
+	}
+	appendToTargetFile(t, a, "\nformatted\n")
+	changes, err := tracker.AfterStep(true)
+	if err != nil {
+		t.Fatalf("AfterStep(true) failed: %v", err)
+	}
+	if len(changes.Baselined) != 0 || len(changes.Held) != 1 {
+		t.Fatalf("changes = %+v, want a.md held", changes)
+	}
+	if checksumOf(t, result.Manifest, "output-styles/a.md") != recorded {
+		t.Error("a.md's checksum changed; the failed step's partial edit was baselined")
+	}
+	if got := conflictPaths(t, installer, adap, assets); len(got) != 1 || got[0] != "output-styles/a.md" {
+		t.Errorf("conflicts = %v, want [output-styles/a.md]", got)
+	}
+}
+
+// Successive successful steps each baseline their own edit to the same file.
+func TestRebaselineSuccessiveStepsOnOneFile(t *testing.T) {
+	installer, adap, assets, result, a, _ := twoPersonas(t)
+
+	tracker := installer.TrackPostInstall(adap, result)
+	for step, line := range []string{"\nfirst\n", "\nsecond\n"} {
+		appendToTargetFile(t, a, line)
+		changes, err := tracker.AfterStep(true)
+		if err != nil {
+			t.Fatalf("AfterStep on step %d failed: %v", step, err)
+		}
+		if len(changes.Baselined) != 1 || changes.Baselined[0] != "output-styles/a.md" {
+			t.Fatalf("step %d changes = %+v, want a.md baselined", step, changes)
+		}
+	}
+	if got := conflictPaths(t, installer, adap, assets); len(got) != 0 {
+		t.Errorf("conflicts = %v, want none", got)
+	}
 }

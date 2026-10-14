@@ -274,14 +274,15 @@ type Profile struct {
 	Options     map[string]any    `yaml:"options"` // Adapter-specific options
 	Vars        map[string]string `yaml:"vars"`    // Template variables (overrides tai.yaml vars)
 
-	// PostInstall is an argv list run after this profile installs
-	// successfully. It runs for side effects (notifications, follow-up
+	// PostInstall lists commands run after this profile installs
+	// successfully. They run for side effects (notifications, follow-up
 	// tooling); a failure does not roll the install back, but is reported
 	// and makes tai exit nonzero.
-	PostInstall []string `yaml:"post_install"`
+	PostInstall PostInstallSteps `yaml:"post_install"`
 
-	// PostInstallTimeout bounds the hook, parsed via time.ParseDuration.
-	// Defaults to DefaultCommandTimeout when unset.
+	// PostInstallTimeout bounds each post_install step that sets no timeout
+	// of its own, parsed via time.ParseDuration. Defaults to
+	// DefaultCommandTimeout when unset.
 	PostInstallTimeout string `yaml:"post_install_timeout"`
 
 	// Scope is the default installation scope for this profile's config
@@ -326,12 +327,6 @@ func (p *Profile) ResolvedScope() string {
 		return DefaultScope
 	}
 	return p.Scope
-}
-
-// ResolvedPostInstallTimeout returns the parsed post-install hook timeout, or
-// DefaultCommandTimeout when unset.
-func (p *Profile) ResolvedPostInstallTimeout() time.Duration {
-	return resolveTimeout(p.PostInstallTimeout)
 }
 
 // Asset represents an atomic configuration unit.

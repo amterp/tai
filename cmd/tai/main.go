@@ -812,7 +812,7 @@ func runReinstall(target string, flags installFlags) {
 // doInstall performs profile resolution and installation against pre-loaded
 // state. Errors that abort the whole run (bad input, unresolvable profile)
 // are fatal and exit the process; failures already reported to the user that
-// should not stop other targets - conflicts, post_install hook failure -
+// should not stop other targets - conflicts, a failed post_install step -
 // are returned instead, so runReinstall can continue its loop and aggregate
 // them into the final exit code.
 func doInstall(s *state.State, profileName string, flags installFlags) error {
@@ -918,72 +918,110 @@ func doInstall(s *state.State, profileName string, flags installFlags) error {
 		out.Warning(w)
 	}
 
-	return runPostInstallHook(s, adap, resolved, result, dryRun)
+	return runPostInstall(s, adap, resolved, result, dryRun)
 }
 
-// runPostInstallHook runs the profile's post_install command, if any. It runs
-// only after a successful install; a failure is reported (the install itself
-// stands - files and manifest are already in place, and side effects can't be
-// rolled back) and returned so callers exit nonzero.
+// runPostInstall runs the profile's post_install steps, if any. They run only
+// after a successful install, each one whether or not earlier ones failed, so
+// one broken command cannot hold back the rest. A failure is reported (the
+// install itself stands - files and manifest are already in place, and side
+// effects can't be rolled back) and returned so callers exit nonzero.
 //
-// Hooks may post-process managed files, so on success the manifest baseline is
-// refreshed to match disk - see Installer.Rebaseline.
-func runPostInstallHook(
+// Steps may post-process managed files, so the manifest baseline is brought up
+// to date after each one - see install.PostInstallTracker.
+func runPostInstall(
 	s *state.State,
 	adap adapter.Adapter,
 	resolved *profile.ResolvedProfile,
 	result *install.InstallResult,
 	dryRun bool,
 ) error {
-	if len(resolved.PostInstall) == 0 {
+	steps := resolved.PostInstall
+	if len(steps) == 0 {
 		return nil
 	}
 	if dryRun {
-		out.Info("Would run post_install hook")
+		for _, step := range steps {
+			out.Info("Would run " + postInstallLabel(step))
+		}
 		return nil
 	}
 
-	err := cmdexec.Run(cmdexec.Spec{
-		Argv:    resolved.PostInstall,
-		Timeout: resolved.PostInstallTimeout,
-		Env: map[string]string{
-			"TAI_TARGET":       resolved.Target,
-			"TAI_TARGET_DIR":   adap.TargetDir(),
-			"TAI_PROFILE":      resolved.Name,
-			"TAI_MANIFEST_DIR": s.Paths.ManifestDir,
-			"TAI_VERSION":      s.Version,
-		},
-	})
-	if err != nil {
-		// Deliberately no rebaseline here: a hook that edited a managed file and
-		// then failed leaves a partial edit, and that conflict is worth surfacing.
-		out.Error(fmt.Sprintf("post_install hook failed (install succeeded): %v", err))
-		return err
+	env := map[string]string{
+		"TAI_TARGET":       resolved.Target,
+		"TAI_TARGET_DIR":   adap.TargetDir(),
+		"TAI_PROFILE":      resolved.Name,
+		"TAI_MANIFEST_DIR": s.Paths.ManifestDir,
+		"TAI_VERSION":      s.Version,
+	}
+	// With several steps the closing summary says the install succeeded, so
+	// the per-step line need not repeat it.
+	failureSuffix := ""
+	if len(steps) == 1 {
+		failureSuffix = " (install succeeded)"
 	}
 
-	reportHookRebaseline(s, adap, result)
-	return nil
+	tracker := s.Installer.TrackPostInstall(adap, result)
+	var failed []string
+	for _, step := range steps {
+		label := postInstallLabel(step)
+		err := cmdexec.Run(cmdexec.Spec{Argv: step.Argv, Timeout: step.Timeout, Env: env})
+		if err != nil {
+			out.Error(fmt.Sprintf("%s failed%s: %v", label, failureSuffix, err))
+			failed = append(failed, fmt.Sprintf("%q", step.Name))
+		}
+		changes, trackErr := tracker.AfterStep(err == nil)
+		reportStepChanges(label, err == nil, changes, trackErr)
+	}
+
+	if len(failed) == 0 {
+		return nil
+	}
+	if len(steps) > 1 {
+		out.Error(fmt.Sprintf("%d of %d post_install steps failed (install succeeded): %s",
+			len(failed), len(steps), strings.Join(failed, ", ")))
+	}
+	return fmt.Errorf("%d post_install step(s) failed", len(failed))
 }
 
-// reportHookRebaseline refreshes the manifest baseline after a successful hook
-// and tells the user which managed files the hook changed. Reporting is the
-// point: rebaselining means tai will no longer flag these edits, so this is the
-// one moment the user gets to see what the hook did.
-func reportHookRebaseline(s *state.State, adap adapter.Adapter, result *install.InstallResult) {
-	changed, err := s.Installer.Rebaseline(adap, result)
-	if err != nil {
-		out.Warning(fmt.Sprintf("could not update the manifest baseline after the post_install hook: %v. "+
-			"Files the hook modified will be reported as conflicts on the next install; "+
-			"rerun the install, or pass --force once to accept them.", err))
-		return
+// postInstallLabel names a step in output. The single-argv shorthand keeps the
+// wording it had before steps existed.
+func postInstallLabel(step profile.PostInstallStep) string {
+	if step.Name == "" {
+		return "post_install hook"
 	}
-	if len(changed) == 0 {
+	return fmt.Sprintf("post_install step %q", step.Name)
+}
+
+// reportStepChanges tells the user which managed files a step changed and
+// whether those edits were baselined. Reporting is the point: a baselined edit
+// is one tai will no longer flag, so this is the one moment the user gets to
+// see what the step did.
+func reportStepChanges(label string, succeeded bool, changes install.StepChanges, trackErr error) {
+	if len(changes.Baselined) > 0 {
+		out.Info(fmt.Sprintf("%s modified %d managed file(s) (manifest baseline updated):", label, len(changes.Baselined)))
+		for _, path := range changes.Baselined {
+			out.Raw("    ~ " + path)
+		}
+	}
+	if trackErr != nil {
+		out.Warning(fmt.Sprintf("could not update the manifest baseline after the %s: %v. "+
+			"Files it modified will be reported as conflicts on the next install; "+
+			"rerun the install, or pass --force once to accept them.", label, trackErr))
+	}
+	if len(changes.Held) == 0 {
 		return
 	}
 
-	out.Info(fmt.Sprintf("post_install hook modified %d managed file(s) (manifest baseline updated):", len(changed)))
-	for _, path := range changed {
-		out.Raw("    ~ " + path)
+	why := "before failing"
+	if succeeded {
+		why = "that a failed step had already modified"
+	}
+	out.Warning(fmt.Sprintf("%s modified %d managed file(s) %s. They keep their previous baseline, "+
+		"so the next install reports them as conflicts; once the failure is fixed, "+
+		"reinstall with --force to render them from source again:", label, len(changes.Held), why))
+	for _, path := range changes.Held {
+		out.Raw("    ! " + path)
 	}
 }
 

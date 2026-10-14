@@ -323,12 +323,21 @@ func TestResolverPropagatesPostInstall(t *testing.T) {
 	_, sources, bundles := setupTestEnv(t)
 
 	profiles := map[string]*config.Profile{
-		"hooked": {
-			Name:               "hooked",
+		"shorthand": {
+			Name:               "shorthand",
 			Target:             "claude",
 			Bundles:            bundleRefs("core"),
-			PostInstall:        []string{"sh", "-c", "./notify.sh"},
+			PostInstall:        config.PostInstallSteps{{Command: []string{"sh", "-c", "./notify.sh"}}},
 			PostInstallTimeout: "90s",
+		},
+		"steps": {
+			Name:    "steps",
+			Target:  "claude",
+			Bundles: bundleRefs("core"),
+			PostInstall: config.PostInstallSteps{
+				{Name: "memri", Command: []string{"memri", "setup"}},
+				{Name: "render", Command: []string{"./render.rad"}, Timeout: "2m"},
+			},
 		},
 		"plain": {
 			Name:    "plain",
@@ -339,15 +348,29 @@ func TestResolverPropagatesPostInstall(t *testing.T) {
 
 	resolver := NewResolver(profiles, bundles, sources)
 
-	hooked, err := resolver.Resolve("hooked")
+	shorthand, err := resolver.Resolve("shorthand")
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if len(hooked.PostInstall) != 3 || hooked.PostInstall[2] != "./notify.sh" {
-		t.Errorf("PostInstall = %v, want propagated argv", hooked.PostInstall)
+	if len(shorthand.PostInstall) != 1 {
+		t.Fatalf("PostInstall = %+v, want one step", shorthand.PostInstall)
 	}
-	if hooked.PostInstallTimeout != 90*time.Second {
-		t.Errorf("PostInstallTimeout = %v, want 90s", hooked.PostInstallTimeout)
+	if step := shorthand.PostInstall[0]; step.Name != "" || len(step.Argv) != 3 || step.Timeout != 90*time.Second {
+		t.Errorf("step = %+v, want unnamed argv with the profile's 90s", step)
+	}
+
+	steps, err := resolver.Resolve("steps")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if len(steps.PostInstall) != 2 {
+		t.Fatalf("PostInstall = %+v, want two steps", steps.PostInstall)
+	}
+	if step := steps.PostInstall[0]; step.Name != "memri" || step.Timeout != config.DefaultCommandTimeout {
+		t.Errorf("step 0 = %+v, want memri with the default timeout", step)
+	}
+	if step := steps.PostInstall[1]; step.Name != "render" || step.Timeout != 2*time.Minute {
+		t.Errorf("step 1 = %+v, want render with its own 2m", step)
 	}
 
 	plain, err := resolver.Resolve("plain")
@@ -356,8 +379,5 @@ func TestResolverPropagatesPostInstall(t *testing.T) {
 	}
 	if len(plain.PostInstall) != 0 {
 		t.Errorf("PostInstall = %v, want empty", plain.PostInstall)
-	}
-	if plain.PostInstallTimeout != config.DefaultCommandTimeout {
-		t.Errorf("PostInstallTimeout = %v, want default", plain.PostInstallTimeout)
 	}
 }

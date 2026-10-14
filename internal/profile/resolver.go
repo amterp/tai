@@ -23,14 +23,36 @@ func (noopLogger) Printf(string, ...any) {}
 
 // ResolvedProfile contains the fully resolved assets for a profile.
 type ResolvedProfile struct {
-	Name               string
-	Target             string
-	Options            map[string]any
-	Vars               map[string]string // Template variables from profile definition
-	Assets             []*config.Asset
-	PostInstall        []string // Hook run after a successful install
-	PostInstallTimeout time.Duration
-	Scope              string // Default installation scope for config assets
+	Name        string
+	Target      string
+	Options     map[string]any
+	Vars        map[string]string // Template variables from profile definition
+	Assets      []*config.Asset
+	PostInstall []PostInstallStep // Run in order after a successful install
+	Scope       string            // Default installation scope for config assets
+}
+
+// PostInstallStep is a post_install step ready to run, its timeout resolved
+// against whatever declared it.
+type PostInstallStep struct {
+	Name    string // Empty for the single-argv shorthand
+	Argv    []string
+	Timeout time.Duration
+}
+
+func resolvePostInstall(steps config.PostInstallSteps, fallbackTimeout string) []PostInstallStep {
+	if len(steps) == 0 {
+		return nil
+	}
+	resolved := make([]PostInstallStep, len(steps))
+	for i, step := range steps {
+		resolved[i] = PostInstallStep{
+			Name:    step.Name,
+			Argv:    step.Command,
+			Timeout: step.ResolvedTimeout(fallbackTimeout),
+		}
+	}
+	return resolved
 }
 
 // Resolver handles profile resolution.
@@ -131,14 +153,13 @@ func (r *Resolver) resolveProfile(profile *config.Profile) (*ResolvedProfile, er
 	}
 
 	return &ResolvedProfile{
-		Name:               profile.Name,
-		Target:             profile.Target,
-		Options:            profile.Options,
-		Vars:               profile.Vars,
-		Assets:             assets,
-		PostInstall:        profile.PostInstall,
-		PostInstallTimeout: profile.ResolvedPostInstallTimeout(),
-		Scope:              profile.ResolvedScope(),
+		Name:        profile.Name,
+		Target:      profile.Target,
+		Options:     profile.Options,
+		Vars:        profile.Vars,
+		Assets:      assets,
+		PostInstall: resolvePostInstall(profile.PostInstall, profile.PostInstallTimeout),
+		Scope:       profile.ResolvedScope(),
 	}, nil
 }
 

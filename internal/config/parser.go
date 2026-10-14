@@ -328,7 +328,7 @@ func validateProfile(profile *Profile, path string) error {
 	}
 
 	if len(profile.PostInstall) > 0 {
-		if err := validateCommandArgv(profile.PostInstall, "post_install"); err != nil {
+		if err := validatePostInstallSteps(profile.PostInstall, "post_install"); err != nil {
 			return fmt.Errorf("profile %q: %w", profile.Name, err)
 		}
 	}
