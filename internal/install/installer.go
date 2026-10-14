@@ -165,7 +165,12 @@ type installContext struct {
 	// owner just wrote. Only settings assets can share slots across entries;
 	// every other type's slots are keyed by its own name.
 	claimedSlots map[editSlot]string
-	managedSlots map[editSlot]bool
+	managedSlots map[editSlot]configasset.AppliedEdit
+
+	// recordedElements holds, per array, the checksums of every element the
+	// previous install wrote there - what locateElement needs to tell one of
+	// tai's elements deleted from one the user edited.
+	recordedElements map[string]map[string]bool
 
 	opts InstallOptions
 }
@@ -275,6 +280,21 @@ func (i *Installer) buildInstallContext(adap adapter.Adapter, existing *Manifest
 		}
 	}
 
+	managedSlots := make(map[editSlot]configasset.AppliedEdit)
+	recordedElements := make(map[string]map[string]bool)
+	for _, entry := range existingConfigEntries {
+		for _, a := range entry.Edits {
+			managedSlots[slotOf(a.File, a.KeyPath, a.Mode, a.ID)] = a
+			if a.Mode == configasset.AppendToArray {
+				key := arrayKey(a.File, a.KeyPath)
+				if recordedElements[key] == nil {
+					recordedElements[key] = make(map[string]bool)
+				}
+				recordedElements[key][a.Checksum] = true
+			}
+		}
+	}
+
 	mergedVars := template.MergeVariables(adap.ProvideVariables(), opts.Variables)
 
 	var engine *template.Engine
@@ -301,6 +321,8 @@ func (i *Installer) buildInstallContext(adap adapter.Adapter, existing *Manifest
 		existingConfigEntries: existingConfigEntries,
 		configFiles:           newConfigFileSet(),
 		consent:               make(map[string]bool),
+		managedSlots:          managedSlots,
+		recordedElements:      recordedElements,
 		opts:                  opts,
 	}
 }
@@ -867,16 +889,26 @@ func (i *Installer) checkConfigConflict(ctx *installContext, key string, rca res
 	}
 
 	// A slot tai already wrote is an update, not a conflict - whether this
-	// entry wrote it or another entry it is moving from. Checking only the new
-	// slots matters for a settings asset, which can gain a field the user has
-	// already set by hand.
+	// entry wrote it or another entry it is moving from - unless the user has
+	// edited it since. That has to be checked here, against whichever entry
+	// wrote it: when the field moved, or the asset was renamed, the old entry
+	// is no longer in the profile and its own drift check never runs. A slot
+	// tai never wrote collides with whatever is already there, which matters
+	// for a settings asset gaining a field the user set by hand.
 	for _, edit := range plan.Edits {
-		if ctx.managedSlots[slotOf(edit.File, edit.KeyPath, edit.Mode, edit.ID)] {
-			continue
-		}
 		doc, err := ctx.configFiles.load(edit.File)
 		if err != nil {
 			return nil // Unreadable config file; install will report it properly.
+		}
+		if prev, managed := ctx.managedSlots[slotOf(edit.File, edit.KeyPath, edit.Mode, edit.ID)]; managed {
+			current, exists := findEntry(doc, prev, ctx.recordedIn(prev))
+			if exists && !checksumMatches(current, prev.Checksum) {
+				return &ConflictDetail{
+					Path:   fmt.Sprintf("[%s] %s", rca.asset.Type, rca.asset.ConfigName()),
+					Reason: fmt.Sprintf("%s in %s modified since last install", pathString(prev.KeyPath), prev.File),
+				}
+			}
+			continue
 		}
 		if occupied, where := editCollides(doc, edit); occupied {
 			return &ConflictDetail{
@@ -901,7 +933,7 @@ func (i *Installer) configEntryDrifted(ctx *installContext, entry ConfigEntry) (
 		if err != nil {
 			return "", false // Unreadable; install will report it properly.
 		}
-		current, exists := findEntry(doc, applied)
+		current, exists := findEntry(doc, applied, ctx.recordedIn(applied))
 		if !exists {
 			continue
 		}
@@ -926,7 +958,7 @@ func (i *Installer) configEntryVanished(ctx *installContext, entry ConfigEntry) 
 		if err != nil {
 			return false // Unreadable; install will report it properly.
 		}
-		if _, exists := findEntry(doc, applied); !exists {
+		if _, exists := findEntry(doc, applied, ctx.recordedIn(applied)); !exists {
 			return true
 		}
 	}
@@ -963,8 +995,7 @@ func editCollides(doc map[string]any, edit configasset.Edit) (bool, string) {
 	return false, ""
 }
 
-// claimConfigSlots records which entry writes each config slot this install,
-// and which slots the previous install wrote.
+// claimConfigSlots records which entry writes each config slot this install.
 //
 // Two entries claiming one slot is an error rather than "later wins". It can
 // only happen between two settings assets setting the same field, where there
@@ -974,13 +1005,6 @@ func editCollides(doc map[string]any, edit configasset.Edit) (bool, string) {
 // so every later install would report a conflict nobody can resolve.
 func (i *Installer) claimConfigSlots(ctx *installContext, configByKey map[string]resolvedConfigAsset) error {
 	ctx.claimedSlots = make(map[editSlot]string)
-	ctx.managedSlots = make(map[editSlot]bool)
-
-	for _, entry := range ctx.existingConfigEntries {
-		for _, a := range entry.Edits {
-			ctx.managedSlots[slotOf(a.File, a.KeyPath, a.Mode, a.ID)] = true
-		}
-	}
 
 	for _, key := range sortedKeys(configByKey) {
 		rca := configByKey[key]
@@ -1131,7 +1155,7 @@ func (i *Installer) installConfigAsset(
 			return nil, err
 		}
 
-		record, updated, err := updateSupersededEdit(doc, superseded, edit, ctx.opts.Force)
+		record, updated, err := updateSupersededEdit(ctx, doc, superseded, edit)
 		if err != nil {
 			return nil, fmt.Errorf("merging %s/%s into %s: %w",
 				rca.asset.Type, rca.asset.ConfigName(), edit.File, err)
@@ -1229,16 +1253,26 @@ func supersededEdits(prev ConfigEntry, edits []configasset.Edit) map[editSlot]co
 // updateSupersededEdit rewrites an edit in the place its predecessor occupies,
 // reporting whether it did.
 func updateSupersededEdit(
+	ctx *installContext,
 	doc map[string]any,
 	superseded map[editSlot]configasset.AppliedEdit,
 	e configasset.Edit,
-	force bool,
 ) (configasset.AppliedEdit, bool, error) {
 	prev, ok := superseded[slotOf(e.File, e.KeyPath, e.Mode, e.ID)]
 	if !ok {
 		return configasset.AppliedEdit{}, false, nil
 	}
-	return updateEdit(doc, prev, e, force)
+	return updateEdit(doc, prev, e, ctx.opts.Force, ctx.recordedIn(prev))
+}
+
+// recordedIn returns the checksums of every element the previous install
+// wrote to the array an applied edit belongs to.
+func (ctx *installContext) recordedIn(a configasset.AppliedEdit) map[string]bool {
+	return ctx.recordedElements[arrayKey(a.File, a.KeyPath)]
+}
+
+func arrayKey(file string, keyPath []string) string {
+	return file + "\x00" + strings.Join(keyPath, "\x00")
 }
 
 // noConsentWarning explains a config write that did not go ahead: what was

@@ -548,12 +548,40 @@ func ParseMCPConfig(data []byte) (*MCPConfig, error) {
 // would install nothing while looking like success.
 func ParseSettingsConfig(data []byte) (*SettingsConfig, error) {
 	var cfg SettingsConfig
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&cfg); err != nil && err != io.EOF {
+	var doc yaml.Node
+	if err := yaml.NewDecoder(bytes.NewReader(data)).Decode(&doc); err != nil {
+		if err == io.EOF {
+			return &cfg, nil
+		}
+		return nil, fmt.Errorf("parsing settings config: %w", err)
+	}
+
+	if root := doc.Content[0]; root.Kind == yaml.MappingNode {
+		for i := 0; i < len(root.Content); i += 2 {
+			if key := root.Content[i].Value; key != "native" {
+				return nil, fmt.Errorf("parsing settings config: unknown field %q; fields belong under 'native.<target>'", key)
+			}
+		}
+	}
+
+	keepTimestampsAsText(&doc)
+	if err := doc.Decode(&cfg); err != nil {
 		return nil, fmt.Errorf("parsing settings config (fields belong under 'native.<target>'): %w", err)
 	}
 	return &cfg, nil
+}
+
+// keepTimestampsAsText retags every timestamp scalar as a string. YAML reads
+// an unquoted 2024-01-02 as a date, which JSON can only write back as
+// "2024-01-02T00:00:00Z" - not what the user wrote, and not what a target
+// expecting the original text would accept.
+func keepTimestampsAsText(node *yaml.Node) {
+	if node.Kind == yaml.ScalarNode && node.ShortTag() == "!!timestamp" {
+		node.Tag = "!!str"
+	}
+	for _, child := range node.Content {
+		keepTimestampsAsText(child)
+	}
 }
 
 // ParseApprovalPolicy parses an approval asset: Markdown where each
