@@ -844,7 +844,7 @@ include:
   # Copy a directory
   - from: scripts-repo
     path: helpers/
-    dest: scripts/
+    dest: scripts            # No trailing "/": contents land in scripts/
 
   # Include with field remapping (for SKILL.md from external sources)
   - from: external-repo
@@ -869,8 +869,10 @@ include:
 
 ### Destination Rules
 
-- `dest: dir/` (trailing slash) → preserves original filename
-- `dest: dir/file.md` (no trailing slash) → exact target path
+- `dest: dir/` (trailing slash) → preserves original filename. A directory
+  is nested too: `path: helpers/` + `dest: scripts/` → `scripts/helpers/`
+- `dest: dir/file.md` (no trailing slash) → exact target path. For a
+  directory, `dest: scripts` puts its contents at `scripts/`
 
 ### Command Includes
 

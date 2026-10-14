@@ -321,7 +321,7 @@ include:
   # Copy an entire directory
   - from: shared-scripts
     path: helpers/
-    dest: scripts/
+    dest: scripts
 ```
 
 The sources referenced by `from` must be defined in your config repo's `tai.yaml`:
@@ -342,6 +342,7 @@ This keeps skills portable. The same skill definition works on any machine - eac
 
 - `dest: dir/` (trailing slash) preserves the original filename: `path: SYNTAX.md` + `dest: references/` produces `references/SYNTAX.md`
 - `dest: dir/file.md` (no trailing slash) is an exact target path
+- For a directory, the trailing slash nests it: `path: helpers/` + `dest: scripts/` produces `scripts/helpers/`, while `dest: scripts` puts the directory's contents at `scripts/`
 
 ### Field mapping for external SKILL.md
 

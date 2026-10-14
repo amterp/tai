@@ -34,7 +34,7 @@ include:
   # Copy an entire directory
   - from: shared-scripts
     path: helpers/
-    dest: scripts/
+    dest: scripts
 
   # Pull an external SKILL.md with field remapping
   - from: external
@@ -93,8 +93,10 @@ When `path` points to a directory, the entire directory is copied recursively:
 include:
   - from: shared-scripts
     path: helpers/
-    dest: scripts/
+    dest: scripts
 ```
+
+This puts the contents of `helpers/` at `scripts/`. Writing `dest: scripts/` instead nests the directory, giving `scripts/helpers/` (see [Destination semantics](#destination-semantics)).
 
 ## URL-based includes
 
@@ -135,6 +137,8 @@ The `dest` field determines where the included file or directory is placed withi
 |-------------|----------|---------|
 | Trailing `/` (e.g., `references/`) | Preserve original filename or directory name | `path: SYNTAX.md` + `dest: references/` results in `references/SYNTAX.md` |
 | No trailing `/` (e.g., `docs/syntax.md`) | Use as exact target path | `path: SYNTAX.md` + `dest: docs/syntax.md` results in `docs/syntax.md` |
+| Directory, trailing `/` | Nest the directory inside `dest` | `path: helpers/` + `dest: scripts/` results in `scripts/helpers/` |
+| Directory, no trailing `/` | Place the directory's contents at `dest` | `path: helpers/` + `dest: scripts` results in `scripts/` |
 
 The trailing-slash convention lets you copy files into a directory without renaming them, while the exact-path form lets you rename on copy.
 

@@ -1781,7 +1781,7 @@ include:
   # Directory copy
   - from: shared-scripts
     path: helpers/               # Copy entire directory
-    dest: scripts/               # Into skill's scripts/ directory
+    dest: scripts                # Becomes the skill's scripts/ directory
 
   # From a command (escape hatch for authenticated/custom fetches).
   # tai runs the argv directly with no shell - wrap in ["sh","-c","..."] if
@@ -1827,8 +1827,8 @@ Precedence: if the source file already has the tai field name set, the explicit 
 
 ### Destination Semantics
 
-- **Trailing `/`**: Preserve original filename/dirname (e.g., `dest: references/` + `path: SYNTAX.md` → `references/SYNTAX.md`)
-- **No trailing `/`**: Use as exact target path (e.g., `dest: docs/syntax.md`)
+- **Trailing `/`**: Preserve original filename/dirname (e.g., `dest: references/` + `path: SYNTAX.md` → `references/SYNTAX.md`). For a directory this nests it: `path: helpers/` + `dest: scripts/` → `scripts/helpers/`
+- **No trailing `/`**: Use as exact target path (e.g., `dest: docs/syntax.md`). For a directory, its contents land at `dest`: `path: helpers/` + `dest: scripts` → `scripts/`
 
 ### Source Resolution
 

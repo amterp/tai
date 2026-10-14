@@ -188,6 +188,28 @@ func TestResolveSourceInclude(t *testing.T) {
 		}
 	})
 
+	t.Run("copy directory without trailing slash places its contents at dest", func(t *testing.T) {
+		targetDir := t.TempDir()
+
+		inc := config.Include{
+			From: "rad",
+			Path: "examples/",
+			Dest: "scripts",
+		}
+
+		err := resolver.resolveSourceInclude(inc, targetDir)
+		if err != nil {
+			t.Fatalf("resolveSourceInclude() error = %v", err)
+		}
+
+		if _, err := os.Stat(filepath.Join(targetDir, "scripts", "hello.rad")); err != nil {
+			t.Errorf("want scripts/hello.rad: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(targetDir, "scripts", "examples")); !os.IsNotExist(err) {
+			t.Errorf("scripts/examples exists, want the directory's contents directly under scripts/")
+		}
+	})
+
 	t.Run("unknown source returns error", func(t *testing.T) {
 		targetDir := t.TempDir()
 
