@@ -293,6 +293,7 @@ tai patch regenerate <name>   # Rewrite a patch from your workspace edits
 
 ```bash
 tai run <target> [args...]  # Run target (e.g., tai run claude or tai run codex)
+tai run claude --resume     # Everything after the target goes to it, flags included
 ```
 
 ## Installation Behavior

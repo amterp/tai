@@ -33,7 +33,7 @@ These commands refuse to run under an override, and the error says why:
 | `config set` | It changes the active config, which an override exists to leave alone. |
 | `patch bless`, `patch regenerate` | They write into the config repo. |
 
-`tai run` reads no config repo. It ignores `TAI_CONFIG` and rejects `--config`, which is far more likely an argument meant for the target that tai consumed.
+`tai run` reads no config repo. It ignores `TAI_CONFIG` and rejects a `--config` placed before the target, which has no effect there. A `--config` after the target is passed to the target, so `tai run codex --config model=o3` reaches codex.
 
 ## tai config
 
@@ -552,19 +552,27 @@ tai run <target> [args...]
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `target` | yes | Target to run (e.g., `claude`, `codex`) |
-| `args` | no | Arguments passed through to the target |
+| `args` | no | Arguments passed to the target as written, flags included |
 
 This is a convenience wrapper that invokes the target CLI directly. Since tai installs config to the target's standard directory, no special runtime setup is needed - this simply runs the target binary with any extra arguments forwarded.
+
+Everything after the target goes to the target unchanged, including flags tai also has, such as `--help` and `--config`. tai's own flags go before the target. A `--` right after the target is accepted and dropped; any later `--` is passed through.
 
 ```bash
 tai run claude
 # Equivalent to running: claude
 
+tai run claude --model sonnet --resume
+# Equivalent to running: claude --model sonnet --resume
+
 tai run claude --help
 # Equivalent to running: claude --help
 
-tai run codex
-# Equivalent to running: codex
+tai run claude -- --resume
+# Equivalent to running: claude --resume
+
+tai run --help
+# Shows tai's help for run
 ```
 
 If the target process exits with a non-zero code, tai preserves that exit code.

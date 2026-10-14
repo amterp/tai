@@ -1153,7 +1153,7 @@ The override is read-only, because install manifests live in `~/.config/tai/mani
 | Run against the override repo | `list *`, `show *`, `locate`, `patch list`, `patch diff`, `patch workspace`, `refresh`, `config show` (which reports the override) |
 | Unaffected | `status` (reads manifests, which are not per repo) |
 | Refuse, with the reason | `install`, `reinstall` (including `--dry-run`), `uninstall` (write manifests and target files); `config set` (writes the global config); `patch bless`, `patch regenerate` (write into the repo) |
-| Reject `--config`, ignore `TAI_CONFIG` | `run` (reads no repo, so `--config` there is most likely an argument meant for the target) |
+| Reject `--config` before the target, ignore `TAI_CONFIG` | `run` (reads no repo, so tai's `--config` has no effect; a `--config` after the target is passed to the target) |
 
 `refresh` and `patch workspace` are allowed although they write: they write only to the cache, which is keyed by the config repo's path, so the active repo's cached sources and workspaces are untouched.
 
@@ -1186,6 +1186,9 @@ tai status [target]             # Show what's currently installed
 # Running (convenience wrapper)
 tai run claude [args...]        # Run claude with tai config applied
 tai run opencode [args...]      # Run opencode with tai config applied
+                                # args go to the target as written, flags
+                                # included (--help, --config); a "--" right
+                                # after the target is optional and dropped
 
 # Command Source Management
 tai refresh                     # Fetch all command sources into the cache

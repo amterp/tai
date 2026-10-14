@@ -64,7 +64,8 @@ To inspect another config repo without switching, use the global
 read-only: `list`, `show`, `locate`, `patch list/diff/workspace` and `refresh`
 work; `install`, `reinstall`, `uninstall`, `config set`, `patch bless` and
 `patch regenerate` refuse, because install manifests are shared by every repo.
-`tai run` rejects `--config`. `config show` reports an override in effect.
+`tai run` rejects a `--config` before the target; one after the target is
+passed to the target. `config show` reports an override in effect.
 
 ```bash
 tai list profiles --config ~/other-tai-config
@@ -120,6 +121,7 @@ Patch names are unique per source; use `source:name` when ambiguous.
 
 ```bash
 tai run <target> [args...]  # Run target with tai config applied
+tai run claude --resume     # Everything after the target goes to it, flags included
 ```
 
 ## Config Repo Structure

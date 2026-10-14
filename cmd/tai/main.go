@@ -263,17 +263,25 @@ func main() {
 	// Run command
 	runCmd := ra.NewCmd("run")
 	runCmd.SetDescription("Run a target with tai config applied")
+	// Positional-only so that splitRunArgs can take the first non-flag
+	// token after "run" as the target.
 	runTarget, _ := ra.NewString("target").
+		SetPositionalOnly(true).
 		SetUsage("Target to run (e.g., claude, codex)").
 		Register(runCmd)
-	runArgs, _ := ra.NewStringSlice("args").
+	// Registered for the usage text only: splitRunArgs removes the target's
+	// arguments before Ra parses, so this is never set.
+	_, _ = ra.NewStringSlice("args").
+		SetPositionalOnly(true).
+		SetVariadic(true).
 		SetOptional(true).
-		SetUsage("Arguments to pass to the target").
+		SetUsage("Arguments passed to the target as written, flags included").
 		Register(runCmd)
 	runUsed, _ := root.RegisterCmd(runCmd)
 
 	// Parse
-	root.ParseOrExit(os.Args[1:])
+	taiArgs, targetArgs := splitRunArgs(os.Args[1:])
+	root.ParseOrExit(taiArgs)
 
 	// Initialize output after flag parsing
 	out = output.New(output.Options{
@@ -367,7 +375,7 @@ func main() {
 	case *locateUsed:
 		runLocate(*locateAsset)
 	case *runUsed:
-		runRun(*runTarget, *runArgs)
+		runRun(*runTarget, targetArgs)
 	default:
 		out.Raw(root.GenerateUsage(false))
 	}
@@ -1314,12 +1322,12 @@ func runLocate(assetPath string) {
 // --- Run command ---
 
 func runRun(target string, args []string) {
-	// run never reads a config repo, so --config here is almost certainly an
-	// argument meant for the target - codex has a --config of its own - that
-	// tai consumed. Running the target without it would drop it silently.
+	// A --config that reaches tai came before the target; one after it is
+	// in args. run reads no config repo, so tai's --config does nothing here,
+	// and was likely meant for the target (codex has a --config of its own).
 	// TAI_CONFIG stays ignored: exported for other commands, it is not a mistake.
 	if repoOverride != nil && repoOverride.Origin == "--config" {
-		fatal("--config is tai's own flag and was not passed to %s; 'tai run' reads no config repo, so it has no effect here", target)
+		fatal("--config before the target is tai's own flag, and 'tai run' reads no config repo, so it has no effect; to pass --config to %s, put it after the target: tai run %s --config ...", target, target)
 	}
 	s := loadGlobalState()
 
