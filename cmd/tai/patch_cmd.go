@@ -159,6 +159,7 @@ func runPatchDiff(name string) {
 }
 
 func runPatchBless(name string, all bool) {
+	refuseUnderOverride("patch bless", overrideWritesRepo)
 	s := loadState()
 	requireActiveConfig(s)
 
@@ -278,6 +279,7 @@ func runPatchWorkspace(sourceName string) {
 }
 
 func runPatchRegenerate(name string) {
+	refuseUnderOverride("patch regenerate", overrideWritesRepo)
 	s := loadState()
 	requireActiveConfig(s)
 

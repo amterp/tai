@@ -27,6 +27,10 @@ const version = "0.2.0"
 // out is the global output instance, initialized after flag parsing.
 var out output.Output
 
+// repoOverride is the config repo named by --config or TAI_CONFIG for this
+// invocation, or nil. Resolved after flag parsing.
+var repoOverride *state.RepoOverride
+
 func main() {
 	root := ra.NewCmd("tai")
 	root.SetDescription("Manage AI agent configurations across targets (v" + version + ")")
@@ -37,6 +41,11 @@ func main() {
 		SetDefault(false).
 		SetUsage("Disable colored output").
 		Register(root)
+	// Global so it can follow a subcommand; Ra copies globals onto each
+	// subcommand as it is registered, so this must precede every RegisterCmd.
+	configOverride, _ := ra.NewString("config").
+		SetUsage("Config repo to read for this command instead of the active one (read-only commands; also TAI_CONFIG)").
+		Register(root, ra.WithGlobal(true))
 
 	// Config subcommands
 	configCmd := ra.NewCmd("config")
@@ -272,6 +281,12 @@ func main() {
 		NoColor:   *noColor,
 	})
 
+	var err error
+	repoOverride, err = state.ResolveOverride(*configOverride, os.Getenv("TAI_CONFIG"))
+	if err != nil {
+		fatal("%v", err)
+	}
+
 	// Route to appropriate handler
 	switch {
 	case *configUsed:
@@ -390,7 +405,7 @@ func parseVariables(varsStr string) (template.Variables, error) {
 }
 
 func loadState() *state.State {
-	s, err := state.Load()
+	s, err := state.Load(repoOverride)
 	if err != nil {
 		fatal("loading state: %v", err)
 	}
@@ -407,12 +422,41 @@ func loadGlobalState() *state.State {
 	if err != nil {
 		fatal("%v", err)
 	}
-	s, err := state.New(paths)
+	s, err := state.New(paths, repoOverride)
 	if err != nil {
 		fatal("loading state: %v", err)
 	}
 	s.SetVersion(version)
 	return s
+}
+
+// Why a command refuses to run while a config repo override is in effect.
+const (
+	overrideWritesManifests    = "it writes install manifests and the target's files, and every config repo shares those manifests, so acting from a second repo would mix the two repos' records of what tai owns"
+	overrideWritesGlobalConfig = "it changes the active config, which an override exists to leave alone"
+	overrideWritesRepo         = "it writes into the config repo, and an override is read-only"
+)
+
+// refuseUnderOverride exits when a config repo override is in effect. Called
+// before any loading, so the refusal is what the user sees even when the
+// override repo itself is broken.
+func refuseUnderOverride(command, reason string) {
+	if repoOverride != nil {
+		fatal("%s", overrideRefusal(repoOverride, command, reason))
+	}
+}
+
+func overrideRefusal(o *state.RepoOverride, command, reason string) string {
+	drop := "drop --config"
+	if o.Origin == "TAI_CONFIG" {
+		drop = "unset TAI_CONFIG"
+	}
+	msg := fmt.Sprintf("'tai %s' cannot use the config repo override %s (from %s): %s. To run it against the active config, %s",
+		command, o.Path, o.Origin, reason, drop)
+	if command != "config set" {
+		msg += fmt.Sprintf("; to run it against %s, make that repo active with 'tai config set %s'", o.Path, o.Path)
+	}
+	return msg + "."
 }
 
 func requireActiveConfig(s *state.State) {
@@ -424,6 +468,7 @@ func requireActiveConfig(s *state.State) {
 // --- Config commands ---
 
 func runConfigSet(path string) {
+	refuseUnderOverride("config set", overrideWritesGlobalConfig)
 	s := loadGlobalState()
 	if err := s.SetActiveConfig(path); err != nil {
 		fatal("setting active config: %v", err)
@@ -433,11 +478,15 @@ func runConfigSet(path string) {
 
 func runConfigShow() {
 	s := loadGlobalState()
-	out.KeyValueBlock([]output.KeyValuePair{
+	pairs := []output.KeyValuePair{
 		{Key: "Config directory", Value: s.Paths.ConfigDir},
 		{Key: "Cache directory", Value: s.Paths.CacheDir},
 		{Key: "Active config", Value: valueOrNone(s.GlobalConfig.ActiveConfig)},
-	})
+	}
+	if o := s.Override; o != nil {
+		pairs = append(pairs, output.KeyValuePair{Key: "Config override", Value: o.Path + " (from " + o.Origin + ")"})
+	}
+	out.KeyValueBlock(pairs)
 }
 
 func valueOrNone(s string) string {
@@ -487,7 +536,7 @@ func runListBundles() {
 
 	// Bundles offered by other sources are importable as "source:name", so
 	// list them too - otherwise you have to already know a name to use it.
-	activeBundles := filepath.Clean(filepath.Join(s.GlobalConfig.ActiveConfig, source.BundlesDirName))
+	activeBundles := filepath.Clean(filepath.Join(s.ConfigRepo(), source.BundlesDirName))
 	for _, name := range sortedSourceNames(s.Sources) {
 		src := s.Sources[name]
 
@@ -696,6 +745,7 @@ type installFlags struct {
 }
 
 func runInstall(profileName string, flags installFlags) {
+	refuseUnderOverride("install", overrideWritesManifests)
 	s := loadState()
 	requireActiveConfig(s)
 	refreshSourcesForInstall(s, flags.dryRun)
@@ -770,6 +820,7 @@ func runRefresh(sourceName string) {
 }
 
 func runReinstall(target string, flags installFlags) {
+	refuseUnderOverride("reinstall", overrideWritesManifests)
 	dryRun := flags.dryRun
 	s := loadState()
 	requireActiveConfig(s)
@@ -1122,6 +1173,7 @@ func (l *outputLogger) Printf(format string, args ...any) {
 }
 
 func runUninstall(target string) {
+	refuseUnderOverride("uninstall", overrideWritesManifests)
 	s := loadGlobalState()
 
 	adapter, err := s.GetAdapter(target)
@@ -1226,6 +1278,13 @@ func runLocate(assetPath string) {
 // --- Run command ---
 
 func runRun(target string, args []string) {
+	// run never reads a config repo, so --config here is almost certainly an
+	// argument meant for the target - codex has a --config of its own - that
+	// tai consumed. Running the target without it would drop it silently.
+	// TAI_CONFIG stays ignored: exported for other commands, it is not a mistake.
+	if repoOverride != nil && repoOverride.Origin == "--config" {
+		fatal("--config is tai's own flag and was not passed to %s; 'tai run' reads no config repo, so it has no effect here", target)
+	}
 	s := loadGlobalState()
 
 	adapter, err := s.GetAdapter(target)

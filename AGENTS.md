@@ -163,6 +163,7 @@ my-tai-config/
 # Configuration
 tai config set <path>              # Set active config repo
 tai config show                    # Show current config/cache/paths
+tai --config <repo> <command>      # Read another repo for one command (or TAI_CONFIG); read-only
 
 # Discovery
 tai list sources|bundles|profiles|assets [--source X]

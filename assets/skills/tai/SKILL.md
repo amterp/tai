@@ -58,6 +58,19 @@ active config stays as it was). It never loads the *current* repo, so it can
 always replace a broken one; `config show`, `status`, `uninstall` and `run` skip
 the repo too.
 
+To inspect another config repo without switching, use the global
+`--config <repo>` flag or `TAI_CONFIG=<repo>` (flag wins). It never touches
+`~/.config/tai/config.yaml`, so prefer it over `config set` for probing. It is
+read-only: `list`, `show`, `locate`, `patch list/diff/workspace` and `refresh`
+work; `install`, `reinstall`, `uninstall`, `config set`, `patch bless` and
+`patch regenerate` refuse, because install manifests are shared by every repo.
+`tai run` rejects `--config`. `config show` reports an override in effect.
+
+```bash
+tai list profiles --config ~/other-tai-config
+TAI_CONFIG=~/other-tai-config tai show profile work
+```
+
 ### Discovery
 
 ```bash

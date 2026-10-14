@@ -10,6 +10,28 @@ This page documents every tai command, flag, and option. For conceptual overview
 | Flag | Description |
 |------|-------------|
 | `--no-color` | Disable colored output |
+| `--config <repo>` | Use this config repo for one command instead of the active one. Read-only commands only; see below. May follow the subcommand. |
+
+### Using another config repo for one command
+
+`--config <repo>`, or the `TAI_CONFIG` environment variable, points one command at a config repo other than the active one. `~/.config/tai/config.yaml` is not touched. The flag wins when both are set.
+
+```bash
+tai list profiles --config ~/work-tai-config
+TAI_CONFIG=~/work-tai-config tai show profile work
+```
+
+The override is read-only. These commands run against it: `list`, `show`, `locate`, `patch list`, `patch diff`, `patch workspace` and `refresh`. The last two write only to tai's cache, which is kept separately for each config repo. `status` works as usual, since it reads install manifests rather than a repo.
+
+These commands refuse to run under an override, and the error says why:
+
+| Command | Why it refuses |
+|---------|----------------|
+| `install`, `reinstall` (including `--dry-run`), `uninstall` | Install manifests live in `~/.config/tai/manifests` whichever repo is active, so installing from a second repo would mix two repos' records of what tai owns. Make the repo active with `tai config set` instead. |
+| `config set` | It changes the active config, which an override exists to leave alone. |
+| `patch bless`, `patch regenerate` | They write into the config repo. |
+
+`tai run` reads no config repo. It ignores `TAI_CONFIG` and rejects `--config`, which is far more likely an argument meant for the target that tai consumed.
 
 ## tai config
 
@@ -50,6 +72,7 @@ Shows:
 - **Config directory** - where tai stores its global config (`~/.config/tai/`)
 - **Cache directory** - where tai caches remote sources (`~/.cache/tai/`)
 - **Active config** - path to the active config repo, or `(none)` if unset
+- **Config override** - shown only when `--config` or `TAI_CONFIG` is in effect: the repo it names and which of the two it came from
 
 ```
 Config directory: /Users/you/.config/tai

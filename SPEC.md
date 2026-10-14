@@ -270,7 +270,7 @@ Field rules:
 Environment for the command: the user's env is inherited (so `PATH`, `HOME`,
 and credential env vars flow through; pre-existing `TAI_*` vars are stripped),
 plus `TAI_DEST_DIR` (staging dir), `TAI_SOURCE` (source name),
-`TAI_CONFIG_REPO` (absolute path of the active config repo), and
+`TAI_CONFIG_REPO` (absolute path of the config repo being loaded), and
 `TAI_VERSION`.
 
 Freshness model:
@@ -1085,12 +1085,28 @@ active_config: /Users/amterp/work-tai-config
 
 Commands that do not read the config repo do not load it: `config set`, `config show`, `status`, `uninstall` and `run`. An active repo that stops loading later, say because a source directory was deleted, therefore never locks tai out: `tai config set` can always replace it, and `tai uninstall` can still remove what it installed.
 
+### Overriding the Config Repo for One Command
+
+The global `--config <repo>` flag, or the `TAI_CONFIG` environment variable, names a config repo to use for one invocation in place of the active one. The flag wins when both are set. Neither touches `config.yaml`. Errors loading the override name the repo and where it came from (`from --config` or `from TAI_CONFIG`), since an exported variable is easy to forget.
+
+The override is read-only, because install manifests live in `~/.config/tai/manifests` whichever repo is active: installing from a second repo would mix two repos' records of what tai owns.
+
+| Under an override | Commands |
+|---|---|
+| Run against the override repo | `list *`, `show *`, `locate`, `patch list`, `patch diff`, `patch workspace`, `refresh`, `config show` (which reports the override) |
+| Unaffected | `status` (reads manifests, which are not per repo) |
+| Refuse, with the reason | `install`, `reinstall` (including `--dry-run`), `uninstall` (write manifests and target files); `config set` (writes the global config); `patch bless`, `patch regenerate` (write into the repo) |
+| Reject `--config`, ignore `TAI_CONFIG` | `run` (reads no repo, so `--config` there is most likely an argument meant for the target) |
+
+`refresh` and `patch workspace` are allowed although they write: they write only to the cache, which is keyed by the config repo's path, so the active repo's cached sources and workspaces are untouched.
+
 ### Commands
 
 ```bash
 # Configuration
 tai config set <path>           # Set active config repo
 tai config show                 # Show current config repo and settings
+tai --config <repo> <command>   # Read another repo for one command (or TAI_CONFIG=<repo>)
 
 # Discovery
 tai list sources                # List sources in active config

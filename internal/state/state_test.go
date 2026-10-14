@@ -139,7 +139,7 @@ func TestSetActiveConfigRecoversFromBrokenActiveRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s, err := New(paths)
+	s, err := New(paths, nil)
 	if err != nil {
 		t.Fatalf("New must not load the active repo, but failed: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestSetActiveConfigRecoversFromBrokenActiveRepo(t *testing.T) {
 		t.Fatal("loading the broken active repo should fail")
 	}
 
-	s, err = New(paths)
+	s, err = New(paths, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestSetActiveConfigRefusesRepoThatDoesNotLoad(t *testing.T) {
 	if err := SaveGlobalConfig(paths, &GlobalConfig{ActiveConfig: env.ConfigRepo}); err != nil {
 		t.Fatal(err)
 	}
-	s, err := New(paths)
+	s, err := New(paths, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,6 +194,88 @@ func TestSetActiveConfigRefusesRepoThatDoesNotLoad(t *testing.T) {
 	}
 }
 
+func TestResolveOverride(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name       string
+		flag, env  string
+		wantPath   string
+		wantOrigin string
+	}{
+		{"neither", "", "", "", ""},
+		{"flag only", "/repo/a", "", "/repo/a", "--config"},
+		{"env only", "", "/repo/b", "/repo/b", "TAI_CONFIG"},
+		{"flag wins over env", "/repo/a", "/repo/b", "/repo/a", "--config"},
+		{"relative made absolute", "repo", "", filepath.Join(cwd, "repo"), "--config"},
+		{"home expanded", "", "~/repo", filepath.Join(home, "repo"), "TAI_CONFIG"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ResolveOverride(tt.flag, tt.env)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.wantPath == "" {
+				if got != nil {
+					t.Fatalf("got %+v, want nil", got)
+				}
+				return
+			}
+			if got == nil || got.Path != tt.wantPath || got.Origin != tt.wantOrigin {
+				t.Errorf("got %+v, want {%s %s}", got, tt.wantPath, tt.wantOrigin)
+			}
+		})
+	}
+}
+
+func TestOverrideLoadsInPlaceOfActiveRepo(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+	paths := testPaths(env)
+
+	// The active repo is broken, so loading it instead of the override fails.
+	if err := SaveGlobalConfig(paths, &GlobalConfig{ActiveConfig: writeBrokenRepo(t)}); err != nil {
+		t.Fatal(err)
+	}
+	env.SetupMinimalConfig()
+
+	s, err := New(paths, &RepoOverride{Path: env.ConfigRepo, Origin: "--config"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.ConfigRepo() != env.ConfigRepo {
+		t.Errorf("ConfigRepo() = %q, want the override %q", s.ConfigRepo(), env.ConfigRepo)
+	}
+	if err := s.LoadConfiguredRepo(); err != nil {
+		t.Fatalf("loading the override repo failed: %v", err)
+	}
+	if _, ok := s.Profiles["default"]; !ok {
+		t.Errorf("override repo's profiles not loaded; got %v", s.Profiles)
+	}
+	if s.GlobalConfig.ActiveConfig == env.ConfigRepo {
+		t.Error("the override must not change the active config")
+	}
+}
+
+func TestOverrideWithoutTaiYamlNamesItsOrigin(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+	s, err := New(testPaths(env), &RepoOverride{Path: t.TempDir(), Origin: "TAI_CONFIG"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.LoadConfiguredRepo()
+	if err == nil || !strings.Contains(err.Error(), "from TAI_CONFIG") {
+		t.Errorf("error should name TAI_CONFIG as the origin, got: %v", err)
+	}
+}
+
 func TestStateRequireActiveConfig(t *testing.T) {
 	state := &State{
 		GlobalConfig: &GlobalConfig{},
@@ -204,6 +286,13 @@ func TestStateRequireActiveConfig(t *testing.T) {
 	if err == nil {
 		t.Error("expected error when no active config, got nil")
 	}
+
+	// An override counts as a config repo
+	state.Override = &RepoOverride{Path: "/other/path", Origin: "--config"}
+	if err := state.RequireActiveConfig(); err != nil {
+		t.Errorf("unexpected error with an override: %v", err)
+	}
+	state.Override = nil
 
 	// With active config
 	state.GlobalConfig.ActiveConfig = "/some/path"

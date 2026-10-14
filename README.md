@@ -228,6 +228,16 @@ tai config set <path>     # Set active config repo
 tai config show           # Show current config and paths
 ```
 
+To read a different config repo for one command, pass `--config <repo>` or set
+`TAI_CONFIG=<repo>`; the active config is left alone. This works for read-only
+commands such as `list`, `show` and `locate`. Commands that write install
+manifests, the global config, or the repo itself refuse, since manifests are
+shared across config repos.
+
+```bash
+tai list profiles --config ~/work-tai-config
+```
+
 ### Discovery
 
 ```bash

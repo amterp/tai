@@ -28,6 +28,32 @@ type GlobalConfig struct {
 	ActiveConfig string `yaml:"active_config"` // Path to active config repo
 }
 
+// RepoOverride names a config repo to use for one invocation in place of the
+// active one, without touching the global config.
+type RepoOverride struct {
+	Path   string // absolute
+	Origin string // where it came from, as the user wrote it: "--config" or "TAI_CONFIG"
+}
+
+// ResolveOverride picks the config repo override from the --config flag and
+// the TAI_CONFIG environment variable, the flag winning. It returns nil when
+// neither is set. Whether the path holds a config repo is checked when it is
+// loaded, so commands that never load one can still report it.
+func ResolveOverride(flag, env string) (*RepoOverride, error) {
+	path, origin := flag, "--config"
+	if path == "" {
+		path, origin = env, "TAI_CONFIG"
+	}
+	if path == "" {
+		return nil, nil
+	}
+	absPath, err := absRepoPath(path)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", origin, err)
+	}
+	return &RepoOverride{Path: absPath, Origin: origin}, nil
+}
+
 // Paths holds the various paths used by tai.
 type Paths struct {
 	ConfigDir   string // ~/.config/tai
@@ -56,6 +82,9 @@ func DefaultPaths() (*Paths, error) {
 type State struct {
 	Paths        *Paths
 	GlobalConfig *GlobalConfig
+
+	// Override, when set, replaces the active config repo for this invocation.
+	Override *RepoOverride
 
 	// Loaded from active config repo
 	TaiConfig *config.TaiConfig
@@ -123,15 +152,15 @@ func SaveGlobalConfig(paths *Paths, cfg *GlobalConfig) error {
 	return nil
 }
 
-// Load reads tai's global config and loads the active config repo, if one is
-// set. Commands that only need the global config use New instead, so a repo
-// that no longer loads cannot lock them out.
-func Load() (*State, error) {
+// Load reads tai's global config and loads the config repo this invocation
+// uses (see ConfigRepo), if there is one. Commands that only need the global
+// config use New instead, so a repo that no longer loads cannot lock them out.
+func Load(override *RepoOverride) (*State, error) {
 	paths, err := DefaultPaths()
 	if err != nil {
 		return nil, err
 	}
-	s, err := New(paths)
+	s, err := New(paths, override)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +171,7 @@ func Load() (*State, error) {
 }
 
 // New reads tai's global config without loading any config repo.
-func New(paths *Paths) (*State, error) {
+func New(paths *Paths, override *RepoOverride) (*State, error) {
 	globalCfg, err := LoadGlobalConfig(paths)
 	if err != nil {
 		return nil, err
@@ -152,14 +181,36 @@ func New(paths *Paths) (*State, error) {
 	return &State{
 		Paths:         paths,
 		GlobalConfig:  globalCfg,
+		Override:      override,
 		ManifestStore: manifestStore,
 		Installer:     install.NewInstaller(manifestStore, "", nil),
 	}, nil
 }
 
-// LoadConfiguredRepo loads the active config repo, or does nothing when none
-// is set.
+// ConfigRepo is the path of the config repo this invocation uses: the override
+// when one is set, otherwise the active config. Empty when there is neither.
+func (s *State) ConfigRepo() string {
+	if s.Override != nil {
+		return s.Override.Path
+	}
+	return s.GlobalConfig.ActiveConfig
+}
+
+// LoadConfiguredRepo loads the config repo this invocation uses, or does
+// nothing when there is none.
 func (s *State) LoadConfiguredRepo() error {
+	if o := s.Override; o != nil {
+		// Named with its origin, since a TAI_CONFIG exported long ago is easy
+		// to forget is there.
+		if _, err := os.Stat(filepath.Join(o.Path, "tai.yaml")); err != nil {
+			return fmt.Errorf("%s (from %s) is not a config repo: no tai.yaml found", o.Path, o.Origin)
+		}
+		if err := s.LoadConfigRepo(o.Path); err != nil {
+			return fmt.Errorf("config repo %s (from %s) failed to load: %w", o.Path, o.Origin, err)
+		}
+		return nil
+	}
+
 	active := s.GlobalConfig.ActiveConfig
 	if active == "" {
 		return nil
@@ -287,7 +338,7 @@ func (s *State) RefreshSources(name string, onRefresh func(name string)) error {
 		return err
 	}
 
-	loader := source.NewLoader(s.GlobalConfig.ActiveConfig)
+	loader := source.NewLoader(s.ConfigRepo())
 	loader.SetCacheDir(s.Paths.CacheDir)
 
 	refreshed := 0
@@ -317,7 +368,7 @@ func (s *State) RefreshSources(name string, onRefresh func(name string)) error {
 		return nil
 	}
 
-	return s.LoadConfigRepo(s.GlobalConfig.ActiveConfig)
+	return s.LoadConfigRepo(s.ConfigRepo())
 }
 
 // LoadPatches loads the patch set a source declares, or an empty set when it
@@ -326,7 +377,7 @@ func (s *State) LoadPatches(src *source.LoadedSource) (*patch.Set, error) {
 	if !src.HasPatches() {
 		return patch.NewSet(src.Name, nil), nil
 	}
-	dir := filepath.Join(s.GlobalConfig.ActiveConfig, filepath.FromSlash(src.Patches))
+	dir := filepath.Join(s.ConfigRepo(), filepath.FromSlash(src.Patches))
 	return patch.LoadDir(dir, src.Name)
 }
 
@@ -372,7 +423,7 @@ func (s *State) PatchWorkspacePath(sourceName string) (string, error) {
 }
 
 func (s *State) patchLoader() *source.Loader {
-	loader := source.NewLoader(s.GlobalConfig.ActiveConfig)
+	loader := source.NewLoader(s.ConfigRepo())
 	loader.SetCacheDir(s.Paths.CacheDir)
 	return loader
 }
@@ -409,9 +460,10 @@ func describeActive(path string) string {
 	return path
 }
 
-// RequireActiveConfig returns an error if no config is active.
+// RequireActiveConfig returns an error if this invocation has no config repo,
+// neither an active one nor an override.
 func (s *State) RequireActiveConfig() error {
-	if s.GlobalConfig.ActiveConfig == "" {
+	if s.ConfigRepo() == "" {
 		return fmt.Errorf("no active config repo. Use 'tai config set <path>' to set one")
 	}
 	return nil
