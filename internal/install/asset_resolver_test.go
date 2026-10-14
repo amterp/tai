@@ -152,6 +152,48 @@ func TestAssetContentResolverRejectsConfigAssets(t *testing.T) {
 	}
 }
 
+// A directory named after a config asset type is ordinary content when it sits
+// inside a file-shaped asset, so a file under files/settings/ or a skill's own
+// settings/ dir includes like any other file.
+func TestAssetContentResolverConfigTypeDirInsideFileShapedAsset(t *testing.T) {
+	srcDir, resolver := setupResolverTest(t)
+
+	for _, ref := range []string{
+		"files/settings/note.md",
+		"files/approvals/note.md",
+		"skills/wrapped/settings/x.md",
+		"skills/wrapped/hooks/x.md",
+	} {
+		full := filepath.Join(srcDir, filepath.FromSlash(ref))
+		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, full, "Nested body.\n")
+
+		content, err := resolver.ResolveAssetContent("local:" + ref)
+		if err != nil {
+			t.Errorf("ResolveAssetContent(%q) error = %v", ref, err)
+			continue
+		}
+		if string(content) != "Nested body.\n" {
+			t.Errorf("ResolveAssetContent(%q) = %q, want the file's content", ref, content)
+		}
+	}
+}
+
+func TestAssetContentResolverRejectsSettingsAsset(t *testing.T) {
+	srcDir, resolver := setupResolverTest(t)
+	if err := os.MkdirAll(filepath.Join(srcDir, "settings"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(srcDir, "settings", "env.yaml"), "native:\n  claude: {}\n")
+
+	_, err := resolver.ResolveAssetContent("local:settings/env.yaml")
+	if err == nil || !strings.Contains(err.Error(), "cannot include settings asset") {
+		t.Fatalf("error = %v, want one saying a settings asset cannot be included", err)
+	}
+}
+
 func TestAssetContentResolverDefaultSource(t *testing.T) {
 	_, resolver := setupResolverTest(t)
 

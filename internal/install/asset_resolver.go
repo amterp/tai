@@ -30,7 +30,8 @@ func NewAssetContentResolver(sources map[string]*source.LoadedSource) *AssetCont
 }
 
 // fileShapedAssetTypes are asset types whose content can be included inline.
-// Config asset types (statusline, mcp, hook) cannot be included.
+// Config asset types (statusline, hook, mcp, settings, approval) cannot be
+// included.
 var fileShapedAssetTypes = map[string]bool{
 	config.AssetTypePersona:  true,
 	config.AssetTypeDelegate: true,
@@ -101,18 +102,35 @@ func (r *AssetContentResolver) ResolveAssetContent(ref string) ([]byte, error) {
 	return parsed.Body, nil
 }
 
-// inferAssetType determines the singular asset type from the nearest ancestor
-// directory that names one (e.g. "assets/personas/foo.md" and "personas/foo.md"
-// both give "persona", and "assets/skills/jj/SKILL.md" gives "skill"). Reading
-// the first segment instead would tie the type to how deep the source root
-// sits, which is not something a reference should encode. Reading only the
-// immediate parent would exclude a skill, whose body sits a level below the
-// type dir because the skill itself is a directory.
+// inferAssetType determines the singular asset type from the directories
+// above the asset (e.g. "assets/personas/foo.md" and "personas/foo.md" both
+// give "persona", and "assets/skills/jj/SKILL.md" gives "skill"). Reading the
+// first segment instead would tie the type to how deep the source root sits,
+// and reading only the immediate parent would exclude a skill, whose body sits
+// a level below the type dir because the skill itself is a directory.
+//
+// The nearest ancestor naming a file-shaped type wins over a nearer one naming
+// a config type: a skill or files dir may hold a subdirectory called
+// "settings" or "hooks", and a file there is still that asset's content. A
+// config type is only reported when nothing file-shaped encloses the path, so
+// that including a config asset gets an error naming what it is.
+// dependency.resolveDepRef reads only the immediate parent, which is right
+// there: a dependency names an asset, and an asset always sits directly in its
+// type dir, whereas an include may name any file inside one.
 func inferAssetType(assetPath string) string {
+	nearest := ""
 	for dir := path.Dir(assetPath); dir != "." && dir != "/"; dir = path.Dir(dir) {
-		if base := path.Base(dir); config.IsAssetTypeDirName(base) {
-			return config.AssetTypeFromDirName(base)
+		base := path.Base(dir)
+		if !config.IsAssetTypeDirName(base) {
+			continue
+		}
+		assetType := config.AssetTypeFromDirName(base)
+		if fileShapedAssetTypes[assetType] {
+			return assetType
+		}
+		if nearest == "" {
+			nearest = assetType
 		}
 	}
-	return ""
+	return nearest
 }
