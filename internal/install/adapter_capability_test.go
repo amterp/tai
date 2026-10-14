@@ -17,6 +17,7 @@ var minimalConfigAsset = map[string]string{
 	config.AssetTypeStatusLine: "level: minimal\n",
 	config.AssetTypeHook:       "on: session_start\nrun: echo hi\n",
 	config.AssetTypeMCP:        "transport: stdio\ncommand: npx\n",
+	config.AssetTypeSettings:   "native: {claude: {env: {A: b}}}\n",
 }
 
 // An adapter declares which config asset types it supports, and separately

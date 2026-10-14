@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -416,6 +417,7 @@ const (
 	AssetTypeStatusLine = "statusline"
 	AssetTypeHook       = "hook"
 	AssetTypeMCP        = "mcp"
+	AssetTypeSettings   = "settings"
 )
 
 // MainFileName constants for directory assets.
@@ -431,7 +433,7 @@ const (
 // entries in target settings files (rather than as standalone files).
 func IsConfigAssetType(t string) bool {
 	switch t {
-	case AssetTypeStatusLine, AssetTypeHook, AssetTypeMCP:
+	case AssetTypeStatusLine, AssetTypeHook, AssetTypeMCP, AssetTypeSettings:
 		return true
 	default:
 		return false
@@ -442,7 +444,7 @@ func IsConfigAssetType(t string) bool {
 func ValidAssetTypes() []string {
 	return []string{
 		AssetTypePersona, AssetTypeDelegate, AssetTypeSkill, AssetTypeFile,
-		AssetTypeStatusLine, AssetTypeHook, AssetTypeMCP,
+		AssetTypeStatusLine, AssetTypeHook, AssetTypeMCP, AssetTypeSettings,
 	}
 }
 
@@ -473,6 +475,8 @@ func AssetTypeDirName(t string) string {
 		return "hooks"
 	case AssetTypeMCP:
 		return "mcps"
+	case AssetTypeSettings:
+		return "settings"
 	default:
 		return t
 	}
@@ -481,9 +485,12 @@ func AssetTypeDirName(t string) string {
 // IsAssetTypeDirName reports whether d names an asset type directory.
 // AssetTypeFromDirName passes an unrecognized name straight through, so a
 // caller that needs to distinguish "personas" from an arbitrary directory
-// asks here rather than testing the mapped value for emptiness.
+// asks here rather than testing the mapped value for emptiness - or for a
+// changed one, since "settings" names both the type and its directory.
 func IsAssetTypeDirName(d string) bool {
-	return AssetTypeFromDirName(d) != d
+	return slices.ContainsFunc(ValidAssetTypes(), func(t string) bool {
+		return AssetTypeDirName(t) == d
+	})
 }
 
 // AssetTypeFromDirName maps a directory name back to its singular asset type.
@@ -503,6 +510,8 @@ func AssetTypeFromDirName(d string) string {
 		return AssetTypeHook
 	case "mcps":
 		return AssetTypeMCP
+	case "settings":
+		return AssetTypeSettings
 	default:
 		return d
 	}
@@ -731,4 +740,15 @@ type MCPConfig struct {
 // IsEnabled reports whether the server should be installed at all.
 func (m *MCPConfig) IsEnabled() bool {
 	return m.Enabled == nil || *m.Enabled
+}
+
+// SettingsConfig represents a parsed settings asset: fields to merge into a
+// target's own settings file.
+//
+// Every field is target-specific, so the only key is Native, keyed by target
+// name. There is no shared vocabulary to translate: Claude's `env` and Codex's
+// `[shell_environment_policy]` do not mean the same thing, and an abstraction
+// over them would be escaped on first use.
+type SettingsConfig struct {
+	Native map[string]map[string]any `yaml:"native"`
 }

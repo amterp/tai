@@ -147,7 +147,7 @@ func (a *Adapter) Run(args []string) error {
 
 // SupportedConfigAssetTypes returns the config asset types Claude supports.
 func (a *Adapter) SupportedConfigAssetTypes() []string {
-	return []string{config.AssetTypeStatusLine, config.AssetTypeHook, config.AssetTypeMCP}
+	return []string{config.AssetTypeStatusLine, config.AssetTypeHook, config.AssetTypeMCP, config.AssetTypeSettings}
 }
 
 // TransformMCP renders an MCP server in Claude's shape.
@@ -221,7 +221,7 @@ func (a *Adapter) InstallWarnings(_ *config.Asset) []string {
 // absolute so nothing downstream has to guess the base.
 func (a *Adapter) ConfigFilePath(assetType, scope string) string {
 	switch assetType {
-	case config.AssetTypeStatusLine, config.AssetTypeHook:
+	case config.AssetTypeStatusLine, config.AssetTypeHook, config.AssetTypeSettings:
 		return a.settingsFilePath(scope)
 	case config.AssetTypeMCP:
 		return a.mcpFilePath(scope)

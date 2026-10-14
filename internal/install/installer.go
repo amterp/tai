@@ -157,6 +157,16 @@ type installContext struct {
 	// writing the same file asks about it once.
 	consent map[string]bool
 
+	// claimedSlots maps every config slot this install will write to the
+	// ConfigEntryKey writing it, and managedSlots holds every slot the previous
+	// install wrote. Together they let a field move from one asset to another
+	// in a single install: the new owner does not mistake tai's own entry for
+	// the user's, and the old owner's removal does not take out what the new
+	// owner just wrote. Only settings assets can share slots across entries;
+	// every other type's slots are keyed by its own name.
+	claimedSlots map[editSlot]string
+	managedSlots map[editSlot]bool
+
 	opts InstallOptions
 }
 
@@ -334,6 +344,9 @@ func (i *Installer) separateAssets(adap adapter.Adapter, assets []*config.Asset,
 
 		if config.IsConfigAssetType(asset.Type) {
 			if !supportedConfigTypes[asset.Type] {
+				if !namesTarget(asset, adap.Name()) {
+					continue
+				}
 				warning := fmt.Sprintf("Asset type '%s' is not supported by target '%s' - skipping %s",
 					asset.Type, adap.Name(), asset.Name)
 				result.Warnings = append(result.Warnings, warning)
@@ -346,6 +359,21 @@ func (i *Installer) separateAssets(adap adapter.Adapter, assets []*config.Asset,
 	}
 
 	return fileAssets, configAssets
+}
+
+// namesTarget reports whether a config asset is meant for target at all. Only
+// a settings asset can say no: its fields sit under `native.<target>`, so one
+// written for Claude says nothing to Codex, and warning that Codex cannot
+// install it would flag the normal case on every install.
+func namesTarget(asset *config.Asset, target string) bool {
+	if asset.Type != config.AssetTypeSettings {
+		return true
+	}
+	data, err := os.ReadFile(asset.SourcePath)
+	if err != nil {
+		return true
+	}
+	return configasset.NamesTarget(data, target)
 }
 
 // resolveAndDetectConflicts is Phase 1 of installation.
@@ -409,6 +437,10 @@ func (i *Installer) resolveAndDetectConflicts(
 				asset.Type, asset.Name, prev.asset.Type, prev.asset.Name)
 		}
 		configByKey[key] = resolvedConfigAsset{asset: asset, scope: ctx.scopeFor(asset)}
+	}
+
+	if err := i.claimConfigSlots(ctx, configByKey); err != nil {
+		return nil, nil, nil, nil, err
 	}
 
 	// Both checks read the config files before phase 2 mutates them, which is the
@@ -818,7 +850,9 @@ func (i *Installer) checkConfigConflict(ctx *installContext, key string, rca res
 				Reason: fmt.Sprintf("%s modified since last install", where),
 			}
 		}
-		return nil // Still tai's; an update, not a conflict.
+		if len(prev.Edits) == 0 {
+			return nil // Legacy entry: it owns its whole key, so nothing new can collide.
+		}
 	}
 
 	plan, err := i.planConfigAsset(ctx, rca)
@@ -828,7 +862,14 @@ func (i *Installer) checkConfigConflict(ctx *installContext, key string, rca res
 		return nil
 	}
 
+	// A slot tai already wrote is an update, not a conflict - whether this
+	// entry wrote it or another entry it is moving from. Checking only the new
+	// slots matters for a settings asset, which can gain a field the user has
+	// already set by hand.
 	for _, edit := range plan.Edits {
+		if ctx.managedSlots[slotOf(edit.File, edit.KeyPath, edit.Mode, edit.ID)] {
+			continue
+		}
 		doc, err := ctx.configFiles.load(edit.File)
 		if err != nil {
 			return nil // Unreadable config file; install will report it properly.
@@ -916,6 +957,49 @@ func editCollides(doc map[string]any, edit configasset.Edit) (bool, string) {
 	}
 
 	return false, ""
+}
+
+// claimConfigSlots records which entry writes each config slot this install,
+// and which slots the previous install wrote.
+//
+// Two entries claiming one slot is an error rather than "later wins". It can
+// only happen between two settings assets setting the same field, where there
+// is no profile order worth trusting to pick a value - a bundle imported from
+// another repo may set it without the user knowing - and where letting both
+// write it would leave the loser's manifest checksum permanently mismatched,
+// so every later install would report a conflict nobody can resolve.
+func (i *Installer) claimConfigSlots(ctx *installContext, configByKey map[string]resolvedConfigAsset) error {
+	ctx.claimedSlots = make(map[editSlot]string)
+	ctx.managedSlots = make(map[editSlot]bool)
+
+	for _, entry := range ctx.existingConfigEntries {
+		for _, a := range entry.Edits {
+			ctx.managedSlots[slotOf(a.File, a.KeyPath, a.Mode, a.ID)] = true
+		}
+	}
+
+	for _, key := range sortedKeys(configByKey) {
+		rca := configByKey[key]
+		plan, err := i.planConfigAsset(ctx, rca)
+		if err != nil {
+			continue // Reported with full context at install time.
+		}
+		for _, edit := range plan.Edits {
+			slot := slotOf(edit.File, edit.KeyPath, edit.Mode, edit.ID)
+			if owner, taken := ctx.claimedSlots[slot]; taken && owner != key {
+				where := pathString(edit.KeyPath)
+				if edit.ID != "" {
+					where += "." + edit.ID
+				}
+				return fmt.Errorf(
+					"%s and %s both set %s in %s, so the install cannot tell which value to keep. "+
+						"Nothing was installed. Remove the field from one of them, or exclude one asset from the profile",
+					owner, key, where, edit.File)
+			}
+			ctx.claimedSlots[slot] = key
+		}
+	}
+	return nil
 }
 
 // planConfigAsset reads, templates, and plans a config asset without writing
@@ -1195,6 +1279,10 @@ func (i *Installer) revertConfigEdits(ctx *installContext, entry ConfigEntry) er
 	}
 
 	for _, applied := range entry.Edits {
+		if owner, claimed := ctx.claimedSlots[slotOf(applied.File, applied.KeyPath, applied.Mode, applied.ID)]; claimed && owner != entry.Key() {
+			continue // Another entry is writing this slot now; leave it to that one.
+		}
+
 		doc, err := ctx.configFiles.load(applied.File)
 		if err != nil {
 			return err

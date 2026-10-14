@@ -1,7 +1,9 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	pathpkg "path"
 	"path/filepath"
@@ -532,6 +534,22 @@ func ParseMCPConfig(data []byte) (*MCPConfig, error) {
 	var cfg MCPConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing mcp config: %w", err)
+	}
+	return &cfg, nil
+}
+
+// ParseSettingsConfig parses settings asset YAML.
+//
+// Unknown top-level keys are an error rather than ignored: a settings asset has
+// no fields of its own, so one written beside `native` is either a typo or a
+// target field missing its `native.<target>` nesting, and dropping it silently
+// would install nothing while looking like success.
+func ParseSettingsConfig(data []byte) (*SettingsConfig, error) {
+	var cfg SettingsConfig
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&cfg); err != nil && err != io.EOF {
+		return nil, fmt.Errorf("parsing settings config (fields belong under 'native.<target>'): %w", err)
 	}
 	return &cfg, nil
 }
