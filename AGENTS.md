@@ -25,6 +25,10 @@ golangci-lint run ./...          # Runs errcheck, govet, staticcheck, unused, in
 ./dev -b                         # Build only
 ```
 
+Where `qm` is installed, `./dev` runs build and test modes through `qm run`, which may wait for room
+and prints where it stands. Exit 75 means the mode has not run yet: run it again to keep its place;
+`QM_DEV_WRAPPED=1 ./dev` runs plainly.
+
 ## Architecture
 
 ### Core Concepts
