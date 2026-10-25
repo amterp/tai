@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "make-code-review",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2cbwdYbcd",
       "body": "Stale: tai-personal's tai.yaml has reviewer_model (sonnet), driving every reviewer delegate and the code-review skill.",
-      "created_at_millis": 1791253699722,
-      "id": "c_2cbwdYbcd"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791253699722
     }
   ],
   "created_at_millis": 1774791260239,

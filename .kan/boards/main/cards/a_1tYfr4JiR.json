@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "post-install-hooks",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2cbwctYG4",
       "body": "Stale: fixed in 54fc69a (post_install hooks may modify installed files; the manifest baseline is re-taken after the hook).",
-      "created_at_millis": 1791253699310,
-      "id": "c_2cbwctYG4"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791253699310
     }
   ],
   "created_at_millis": 1784596553588,

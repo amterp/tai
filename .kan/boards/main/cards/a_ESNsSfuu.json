@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "how-does-persona-model-work",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_295fPfk7V",
       "body": "Answered as of af96f6f: `model` is not abstracted for personas. Delegates and skills render it from tai's own vocabulary; the Claude adapter's persona transform renders only `name` and `description`, so a persona that needs a model sets it under `native.claude`. Promoting `model` to persona vocabulary is a separate call - the test for promotion is how many targets share the concept.",
-      "created_at_millis": 1786891635233,
-      "id": "c_295fPfk7V"
+      "author": "Alexander Terp",
+      "created_at_millis": 1786891635233
     }
   ],
   "created_at_millis": 1769361936778,

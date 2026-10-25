@@ -1,20 +1,20 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "install-dry-run",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2cbwx3J4V",
       "body": "Also reported as GitHub issue #8 (closed in favor of this card). Still reproduces 2026-10-05: dry-run of tai-personal's default profile says 37 updated, the real install right after says 1 updated.",
-      "created_at_millis": 1791253711815,
-      "id": "c_2cbwx3J4V"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791253711815
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2cc6wfZH4",
       "body": "Fixed in d9596f0 (dry-run builds directory assets in a scratch dir), docs in 869cbad.",
-      "created_at_millis": 1791254095978,
-      "id": "c_2cc6wfZH4"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791254095978
     }
   ],
   "created_at_millis": 1786891387502,

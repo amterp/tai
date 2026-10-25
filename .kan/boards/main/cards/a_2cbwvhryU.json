@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "frontmatter-nested",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2ccU0TxXU",
       "body": "Fixed in 744edb6 (structured unknown fields kept typed; error on a tai field).",
-      "created_at_millis": 1791254982456,
-      "id": "c_2ccU0TxXU"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791254982456
     }
   ],
   "created_at_millis": 1791253710974,

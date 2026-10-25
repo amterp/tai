@@ -1,20 +1,20 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "support-settings",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2hIOkrKsb",
       "body": "GitHub issue #13 (2026-10-13) adds demand for this. The config repos behind that issue fill `enabledPlugins`, `env` and `defaultMode` in `settings.json` with a settings-fragment merge script plus a jq step for env vars, run from `post_install`. That puts real use behind arbitrary settings fields, not only `env`. The post_install escape hatch this card's \"script route\" describes exists now, and the issue is what it costs: scripts that own whole keys and overwrite hand edits. The approval-policy asset card from the same issue should share this card's machinery for writing owned entries into a target's settings. Moved to backlog-hi.",
-      "created_at_millis": 1791945931776,
-      "id": "c_2hIOkrKsb"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791945931776
     },
     {
-      "author": "Alexander Terp",
+      "id": "c_2hKsJFqQa",
       "body": "Claude slice landed (2026-10-13): a `settings` config asset whose fields sit under `native.claude` and install into settings.json at user, project and local scope, each value owned separately (objects recursed, array elements appended one by one). Codex and OpenCode are split out to card settings-assets-for.",
-      "created_at_millis": 1791951834411,
-      "id": "c_2hKsJFqQa"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791951834411
     }
   ],
   "created_at_millis": 1791253711777,

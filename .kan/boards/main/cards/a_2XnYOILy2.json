@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "remove-gemini-cli",
   "alias_explicit": false,
   "column": "done",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2ccReCvCA",
       "body": "Removed in 2f4bdb7 (tai); tai-personal profile dropped in its own commit. ~/.gemini uninstalled with the old binary first.",
-      "created_at_millis": 1791254891760,
-      "id": "c_2ccReCvCA"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791254891760
     }
   ],
   "created_at_millis": 1790542550271,

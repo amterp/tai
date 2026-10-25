@@ -1,14 +1,14 @@
 {
-  "_v": 3,
+  "_v": 4,
   "alias": "add-an-approval",
   "alias_explicit": false,
   "column": "backlog-hi",
   "comments": [
     {
-      "author": "Alexander Terp",
+      "id": "c_2hL9FahDf",
       "body": "Claude slice landed (2026-10-13): an `approval` config asset in `assets/approvals/\u003cname\u003e.md`, using render.rad's Markdown grammar (`## \u003ckind\u003e [target...]: \u003ctitle\u003e`). Entries install as owned elements of Claude's autoMode.environment / allow / soft_deny arrays at user scope; an array tai creates is seeded with \"$defaults\". Still open: the Codex half (auto_review.extra_policy in config.toml, codex features list validation and rollback), and migrating tai-personal's auto-approval bundle off render.rad (another repo; drop the Claude profile's post_install step there, keep the Codex one until the Codex slice lands).",
-      "created_at_millis": 1791952485620,
-      "id": "c_2hL9FahDf"
+      "author": "Alexander Terp",
+      "created_at_millis": 1791952485620
     }
   ],
   "created_at_millis": 1791945931671,
