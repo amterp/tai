@@ -7,31 +7,37 @@ default_column = "backlog-hi"
   name = "uncomitted"
   color = "#ec4899"
   limit = 0
+  category = "idea"
 
 [[columns]]
   name = "backlog-lo"
   color = "#9333ea"
   limit = 0
+  category = "open"
 
 [[columns]]
   name = "backlog-hi"
   color = "#6b7280"
   limit = 0
+  category = "open"
 
 [[columns]]
   name = "next"
   color = "#3b82f6"
   limit = 0
+  category = "open"
 
 [[columns]]
   name = "in-progress"
   color = "#f59e0b"
   limit = 0
+  category = "active"
 
 [[columns]]
   name = "done"
   color = "#10b981"
   limit = 0
+  category = "done"
 
 [custom_fields]
   [custom_fields.type]
