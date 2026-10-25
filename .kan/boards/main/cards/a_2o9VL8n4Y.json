@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "drop-skill-writing",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1792959078912,
+  "creator": "Alexander Terp",
+  "description": "Alex's chat note, 2026-07-20: \"remove skill creation guidance from tai skill\". The prompt-engineer skill now owns how to write a skill, but the tai skill still carries its own craft guidance: the \"# Creating Skills\" section (assets/skills/tai/SKILL.md:814), with core principles and description guidelines (about lines 860-935), and a description that says it is for creating new skills. Two skills giving craft advice drift apart. Keep the plumbing tai owns: where a skill's source lives, its structure, frontmatter fields, includes, and installing it. Point to prompt-engineer for the craft.",
+  "id": "a_2o9VL8n4Y",
+  "position": "aG",
+  "title": "Drop skill-writing craft guidance from the tai skill",
+  "type": "chore",
+  "updated_at_millis": 1792959078912,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792959078912}
+  ]
+}

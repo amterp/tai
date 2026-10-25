@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "codex-adapter-let",
+  "alias_explicit": false,
+  "column": "backlog-hi",
+  "created_at_millis": 1792959079016,
+  "creator": "Alexander Terp",
+  "description": "https://github.com/amterp/tai/issues/14 (open). Installing a Codex profile with read-only reviewer delegates prints \"Codex agents have no tool allowlist, so 'tools' was not installed\" once per delegate on every install. The only fix the warning offers, features: {shell_tool: false}, breaks a reviewer that needs its shell for git diff and rg. Codex expresses \"reads and runs commands, never edits\" with sandbox_mode = \"read-only\", but the adapter only checks features (internal/adapter/codex/codex.go:217), so native.codex.sandbox_mode does not silence the warning. Accept it as an answer when the delegate's tools exclude edits.",
+  "id": "a_2o9VLJDSs",
+  "position": "aH",
+  "title": "Codex adapter: let sandbox_mode answer the 'tools' warning for read-only delegates",
+  "type": "bug",
+  "updated_at_millis": 1792959079016,
+  "history": [
+    {"field":"column","value":"backlog-hi","at":1792959079016}
+  ]
+}

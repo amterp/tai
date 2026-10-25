@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "evaluate-go-snap-for",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1792959078964,
+  "creator": "Alexander Terp",
+  "description": "Alex's chat note, 2026-08-16: \"leverage radish/go-snap in tai?\". radish is already in use for the consent prompt (cmd/tai/consent.go:64, since fa102fe). go-snap, his snapshot-testing library, is not used anywhere in tai. Look at which tests compare large rendered output (install plans, generated config files) and would read better as snapshots.",
+  "id": "a_2o9VLEpyH",
+  "position": "a2",
+  "title": "Evaluate go-snap for tai's tests",
+  "type": "chore",
+  "updated_at_millis": 1792959078964,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792959078964}
+  ]
+}
