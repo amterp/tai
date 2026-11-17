@@ -214,7 +214,7 @@ This repo uses `kan` for task tracking (file-based kanban). Leave `.kan/` change
 ### Key Documents
 
 - **AGENTS.md** (this file) - Architecture and development guidance for AI agents
-- **README.md** - User-facing documentation, installation, and usage
+- **README.md** - The project's front page: what tai is, one worked example, install, and links. Reference material belongs in the docs site, not here
 - **SPEC.md** - Complete specification covering all features and design rationale
 - **docs/** - The user-facing docs site (Astro); pages under `docs/src/content/docs/`
 
@@ -228,11 +228,11 @@ When making changes, update the relevant documentation:
 
 | Change Type | Update |
 |-------------|--------|
-| New/changed CLI commands | SPEC.md (command reference), README.md (usage examples), tai skill, docs site (`reference/cli.md`) |
+| New/changed CLI commands | SPEC.md (command reference), tai skill, docs site (`reference/cli.md`) |
 | New concepts or terminology | SPEC.md (definitions), AGENTS.md (core concepts table), tai skill, docs site (`concepts/`) |
 | Architecture changes | AGENTS.md (package structure, design decisions), SPEC.md |
 | New adapters or targets | AGENTS.md (adapter interface section), SPEC.md, docs site (`targets/`, `concepts/targets.md`) |
-| User-facing behavior | README.md, SPEC.md, tai skill, docs site |
+| User-facing behavior | SPEC.md, tai skill, docs site; README.md only if its example or feature list goes stale |
 | Skill creation/includes | SPEC.md, tai skill, docs site (`reference/skill-includes.md`) |
 
 The docs site lives in `docs/src/content/docs/`. It repeats much of SPEC.md for users, so a
