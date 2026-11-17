@@ -1227,8 +1227,7 @@ Each `## <kind> [target...]: <title>` heading starts an entry. The kinds are
 `context`, `allow` and `deny`; naming targets limits the entry to them, and an
 unknown kind or target is an error. Entries are tai vocabulary rather than
 `native`, because the prose is the same for every target and only where it is
-stored differs. The format is the one tai-personal's `render.rad` parsed, so a
-repo migrates by moving its policy file.
+stored differs.
 
 Give each repo's policy file a distinct name, such as the repo's own name.
 Config entries are keyed on type and name, so two approval files with the same
@@ -1277,7 +1276,7 @@ tai stores its global configuration in `~/.config/tai/` and caches remote source
 
 ```yaml
 # ~/.config/tai/config.yaml
-active_config: /Users/amterp/work-tai-config
+active_config: /Users/you/work-tai-config
 ```
 
 ### The Active Config Repo
@@ -1392,7 +1391,7 @@ tai status claude
 # Find where an asset lives
 tai locate personas/senior-swe.md
 # Output:
-#   /Users/amterp/my-tai-config/assets/personas/senior-swe.md
+#   /Users/you/my-tai-config/assets/personas/senior-swe.md
 
 # Run claude with tai config
 tai run claude
@@ -1559,27 +1558,27 @@ The OpenCode adapter:
 # ~/.config/tai/manifests/claude.yaml
 target: claude
 profile: work
-config_repo: /Users/amterp/work-tai-config
+config_repo: /Users/you/work-tai-config
 installed_at: 2024-01-21T14:30:00Z
 
 # File assets: tracked by path
 files:
   - path: output-styles/senior-swe.md
     source: local
-    source_path: /Users/amterp/my-tai-config/assets/personas/senior-swe.md
+    source_path: /Users/you/my-tai-config/assets/personas/senior-swe.md
     checksum: sha256:abc123...
 
   - path: output-styles/company-style.md
     source: work-shared
-    source_path: /Users/amterp/work/ai-common/personas/company-style.md
+    source_path: /Users/you/work/ai-common/personas/company-style.md
     checksum: sha256:def456...
 
   # Files using {{existing}} templating track their backup
   - path: CLAUDE.md
     source: local
-    source_path: /Users/amterp/my-tai-config/assets/files/CLAUDE.md
+    source_path: /Users/you/my-tai-config/assets/files/CLAUDE.md
     checksum: sha256:789ghi...
-    backup_path: /Users/amterp/.claude/CLAUDE.md.tai-backup
+    backup_path: /Users/you/.claude/CLAUDE.md.tai-backup
     is_templated: true
 
 # Config assets: tracked by type, name, scope, and the edits that installed them
@@ -1587,12 +1586,12 @@ config_entries:
   - type: statusline
     name: detailed
     source: local
-    source_path: /Users/amterp/my-tai-config/assets/statuslines/detailed.yaml
+    source_path: /Users/you/my-tai-config/assets/statuslines/detailed.yaml
     settings_file: ~/.claude/settings.json
     scope: user
     checksum: sha256:status123...
     edits:
-      - file: /Users/amterp/.claude/settings.json
+      - file: /Users/you/.claude/settings.json
         key_path: [statusLine]
         mode: replace_key
         checksum: sha256:abc...
@@ -1600,12 +1599,12 @@ config_entries:
   - type: hook
     name: format-on-save
     source: local
-    source_path: /Users/amterp/my-tai-config/assets/hooks/format-on-save.yaml
-    settings_file: /Users/amterp/.claude/settings.json
+    source_path: /Users/you/my-tai-config/assets/hooks/format-on-save.yaml
+    settings_file: /Users/you/.claude/settings.json
     scope: user
     checksum: sha256:hook456...
     edits:
-      - file: /Users/amterp/.claude/settings.json
+      - file: /Users/you/.claude/settings.json
         key_path: [hooks, PostToolUse]
         mode: append_to_array
         checksum: sha256:def...
@@ -2520,10 +2519,10 @@ claude
 ```bash
 # Find the asset
 tai locate personas/senior-swe.md
-# /Users/amterp/my-tai-config/assets/personas/senior-swe.md
+# /Users/you/my-tai-config/assets/personas/senior-swe.md
 
 # Edit it
-vim /Users/amterp/my-tai-config/assets/personas/senior-swe.md
+vim /Users/you/my-tai-config/assets/personas/senior-swe.md
 
 # Re-install to apply changes
 tai install personal
