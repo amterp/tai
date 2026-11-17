@@ -6,7 +6,7 @@
   "comments": [
     {
       "id": "c_2cclLvrIt",
-      "body": "Implemented in 2ed7e94 (native_frontmatter: \u003ctarget\u003e on a source; fits decision 14 since fields reach only the named target).",
+      "body": "Implemented in decb92b (native_frontmatter: \u003ctarget\u003e on a source; fits decision 14 since fields reach only the named target).",
       "author": "Alexander Terp",
       "created_at_millis": 1791255649233
     }

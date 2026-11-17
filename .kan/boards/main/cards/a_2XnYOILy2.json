@@ -6,7 +6,7 @@
   "comments": [
     {
       "id": "c_2ccReCvCA",
-      "body": "Removed in 2f4bdb7 (tai); tai-personal profile dropped in its own commit. ~/.gemini uninstalled with the old binary first.",
+      "body": "Removed in bf32ca7 (tai); tai-personal profile dropped in its own commit. ~/.gemini uninstalled with the old binary first.",
       "author": "Alexander Terp",
       "created_at_millis": 1791254891760
     }

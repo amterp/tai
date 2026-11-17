@@ -6,7 +6,7 @@
   "comments": [
     {
       "id": "c_2ccK6p6bN",
-      "body": "Implemented in fd73df0 (dest: ./ merges command output into the skill root), review fixes in f1293a0.",
+      "body": "Implemented in d0cfb38 (dest: ./ merges command output into the skill root), review fixes in 0d4c17c.",
       "author": "Alexander Terp",
       "created_at_millis": 1791254601992
     }

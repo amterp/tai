@@ -6,7 +6,7 @@
   "comments": [
     {
       "id": "c_295fPbiYC",
-      "body": "Duplicate of install-a-deleted (a_294B075vw), fixed in c1c9cb4. Install now stats the target directory as well as reading the manifest, so a managed file that was deleted and written back reports as `restored` rather than `unchanged`.",
+      "body": "Duplicate of install-a-deleted (a_294B075vw), fixed in d1dd057. Install now stats the target directory as well as reading the manifest, so a managed file that was deleted and written back reports as `restored` rather than `unchanged`.",
       "author": "Alexander Terp",
       "created_at_millis": 1786891635195
     }

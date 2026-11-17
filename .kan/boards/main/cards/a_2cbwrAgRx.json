@@ -6,7 +6,7 @@
   "comments": [
     {
       "id": "c_2ccDi8hTn",
-      "body": "Fixed in 0d1bd2c (template: false on a source), docs follow-up 5f6ff54.",
+      "body": "Fixed in 5f1ee0b (template: false on a source), docs follow-up e5786c7.",
       "author": "Alexander Terp",
       "created_at_millis": 1791254356049
     }

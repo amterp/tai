@@ -11,7 +11,7 @@
   "comments": [
     {
       "id": "c_2cbwdKYbi",
-      "body": "Stale: the manifest tracks config entries since 5df11d9 (own config entries, not config keys).",
+      "body": "Stale: the manifest tracks config entries since e1dd00f (own config entries, not config keys).",
       "author": "Alexander Terp",
       "created_at_millis": 1791253699585
     }

@@ -11,7 +11,7 @@
   "comments": [
     {
       "id": "c_2cbwd0pSd",
-      "body": "Stale: shipped as the mcp config asset in ce5cb35, Codex support in fa102fe.",
+      "body": "Stale: shipped as the mcp config asset in 709c8b0, Codex support in 0edfe13.",
       "author": "Alexander Terp",
       "created_at_millis": 1791253699381
     }

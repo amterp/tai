@@ -6,7 +6,7 @@
   "comments": [
     {
       "id": "c_2cbwctYG4",
-      "body": "Stale: fixed in 54fc69a (post_install hooks may modify installed files; the manifest baseline is re-taken after the hook).",
+      "body": "Stale: fixed in f5ac764 (post_install hooks may modify installed files; the manifest baseline is re-taken after the hook).",
       "author": "Alexander Terp",
       "created_at_millis": 1791253699310
     }

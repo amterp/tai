@@ -11,7 +11,7 @@
   "comments": [
     {
       "id": "c_2cbwdl6z1",
-      "body": "Stale: post_install hooks exist (documented in 4ee5e7a, may modify managed files since 54fc69a).",
+      "body": "Stale: post_install hooks exist (documented in 80783db, may modify managed files since f5ac764).",
       "author": "Alexander Terp",
       "created_at_millis": 1791253699859
     }

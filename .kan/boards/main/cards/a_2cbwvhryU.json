@@ -6,7 +6,7 @@
   "comments": [
     {
       "id": "c_2ccU0TxXU",
-      "body": "Fixed in 744edb6 (structured unknown fields kept typed; error on a tai field).",
+      "body": "Fixed in 4f74cb4 (structured unknown fields kept typed; error on a tai field).",
       "author": "Alexander Terp",
       "created_at_millis": 1791254982456
     }
