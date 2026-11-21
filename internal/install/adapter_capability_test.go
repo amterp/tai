@@ -1,8 +1,8 @@
 package install
 
 import (
+	"fmt"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/amterp/tai/internal/adapter"
@@ -14,10 +14,10 @@ import (
 // minimalConfigAsset is a valid, installable asset of each config type, so the
 // invariant below exercises a real Plan rather than a validation failure.
 var minimalConfigAsset = map[string]string{
-	config.AssetTypeStatusLine: "level: minimal\n",
+	config.AssetTypeStatusLine: "level: custom\ncommand: echo hi\n",
 	config.AssetTypeHook:       "on: session_start\nrun: echo hi\n",
 	config.AssetTypeMCP:        "transport: stdio\ncommand: npx\n",
-	config.AssetTypeSettings:   "native: {claude: {env: {A: b}}}\n",
+	config.AssetTypeSettings:   "native: {%s: {demo: true}}\n",
 	config.AssetTypeApproval:   "## allow: Probe\nAllowed.\n",
 }
 
@@ -49,7 +49,10 @@ func TestAdaptersImplementWhatTheyClaimToSupport(t *testing.T) {
 					t.Fatalf("no minimal asset defined for config type %q - add one", assetType)
 				}
 
-				_, err := handler.Plan(configasset.Request{
+				if assetType == config.AssetTypeSettings {
+					content = fmt.Sprintf(content, name)
+				}
+				plan, err := handler.Plan(configasset.Request{
 					Adapter: adap,
 					Asset: &config.Asset{
 						Type:       assetType,
@@ -60,10 +63,34 @@ func TestAdaptersImplementWhatTheyClaimToSupport(t *testing.T) {
 					Scope:   config.DefaultScope,
 					Name:    "probe",
 				})
-				if err != nil && strings.Contains(err.Error(), "does not support") {
-					t.Errorf("declares %q in SupportedConfigAssetTypes but does not implement its translator: %v",
-						assetType, err)
+				if err != nil {
+					t.Errorf("cannot plan supported asset type %q: %v", assetType, err)
+				} else if len(plan.Edits) == 0 {
+					t.Errorf("supported asset type %q produced no edits", assetType)
 				}
+			}
+		})
+	}
+}
+
+func TestAdaptersMapLooseFiles(t *testing.T) {
+	for _, name := range adapter.DefaultRegistry.List() {
+		t.Run(name, func(t *testing.T) {
+			adap, err := adapter.DefaultRegistry.Get(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			vars := adap.ProvideVariables()
+			if vars["target_name"] != name {
+				t.Errorf("target_name = %q, want %q", vars["target_name"], name)
+			}
+			instructions := vars["target_agents_file"]
+			if instructions == "" {
+				t.Fatalf("missing instructions filename: %v", vars)
+			}
+			asset := &config.Asset{Type: config.AssetTypeFile, Name: "instructions.md", Dest: instructions}
+			if path := adap.MapAssetPath(asset); path != instructions {
+				t.Errorf("instructions install to %q, want %q", path, instructions)
 			}
 		})
 	}

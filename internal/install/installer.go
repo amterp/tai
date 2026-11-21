@@ -1482,6 +1482,16 @@ func (i *Installer) resolveAsset(
 	}
 
 	if asset.IsDir {
+		if src, dst := config.MainFileName(asset.Type), adap.MainFileName(asset.Type); dst != "" && dst != src {
+			_, err := os.Lstat(filepath.Join(asset.SourcePath, dst))
+			if err == nil {
+				return nil, fmt.Errorf("%s conflicts with the installed name of %s", dst, src)
+			}
+			if !os.IsNotExist(err) {
+				return nil, err
+			}
+		}
+
 		// Directory asset - compute directory checksum
 		checksum, err := ComputeDirChecksum(asset.SourcePath)
 		if err != nil {
@@ -1656,7 +1666,8 @@ func (i *Installer) installDirAsset(resolved *config.ResolvedAsset, fullTargetPa
 	// For other directory types (persona, delegate):
 	// 1. Copy directory contents, excluding the main file
 	// 2. Copy and transform the main file from source
-	if err := copyDirExcluding(resolved.SourcePath, fullTargetPath, mainFileName); err != nil {
+	sourceMainFileName := config.MainFileName(resolved.Type)
+	if err := copyDirExcluding(resolved.SourcePath, fullTargetPath, sourceMainFileName); err != nil {
 		return err
 	}
 
@@ -1670,12 +1681,12 @@ func (i *Installer) installDirAsset(resolved *config.ResolvedAsset, fullTargetPa
 	}()
 
 	// Template-process non-main files in the copied directory
-	if err := templateProcessDirFiles(fullTargetPath, engine, func(rel string) bool { return rel == mainFileName }); err != nil {
+	if err := templateProcessDirFiles(fullTargetPath, engine, nil); err != nil {
 		return err
 	}
 
 	// Transform the main file (read from source, write to target)
-	if err := i.transformMainFileFromSource(resolved, fullTargetPath, adap, mainFileName, engine); err != nil {
+	if err := i.transformMainFileFromSource(resolved, fullTargetPath, adap, sourceMainFileName, mainFileName, engine); err != nil {
 		return err
 	}
 
@@ -1766,25 +1777,25 @@ func (i *Installer) installSkillDirAsset(resolved *config.ResolvedAsset, fullTar
 // transformMainFileFromSource reads a main file from the source directory,
 // transforms it, and writes to the target directory.
 // Used for persona and delegate directory assets.
-func (i *Installer) transformMainFileFromSource(resolved *config.ResolvedAsset, dirTargetPath string, adap adapter.Adapter, mainFileName string, engine *template.Engine) error {
-	srcMainFile := filepath.Join(resolved.SourcePath, mainFileName)
-	dstMainFile := filepath.Join(dirTargetPath, mainFileName)
+func (i *Installer) transformMainFileFromSource(resolved *config.ResolvedAsset, dirTargetPath string, adap adapter.Adapter, sourceName, targetName string, engine *template.Engine) error {
+	srcMainFile := filepath.Join(resolved.SourcePath, sourceName)
+	dstMainFile := filepath.Join(dirTargetPath, targetName)
 
 	srcInfo, err := os.Stat(srcMainFile)
 	if os.IsNotExist(err) {
-		return fmt.Errorf("main file %s not found in %s directory %q", mainFileName, resolved.Type, resolved.Name)
+		return fmt.Errorf("main file %s not found in %s directory %q", sourceName, resolved.Type, resolved.Name)
 	}
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", mainFileName, err)
+		return fmt.Errorf("reading %s: %w", sourceName, err)
 	}
 	mode := srcInfo.Mode().Perm()
 
 	content, err := os.ReadFile(srcMainFile)
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", mainFileName, err)
+		return fmt.Errorf("reading %s: %w", sourceName, err)
 	}
 
-	transformed, err := i.transformMainFileContent(resolved, content, mainFileName, nil, adap, engine, resolved.SourceName)
+	transformed, err := i.transformMainFileContent(resolved, content, sourceName, nil, adap, engine, resolved.SourceName)
 	if err != nil {
 		return err
 	}
@@ -2041,7 +2052,7 @@ func validateDirTemplates(dirPath string, engine *template.Engine) error {
 
 // templateProcessDirFiles walks a directory and applies template processing to
 // any files containing template syntax. Skips directories and any file whose
-// path relative to dirPath skip accepts.
+// path relative to dirPath skip accepts, if provided.
 func templateProcessDirFiles(dirPath string, engine *template.Engine, skip func(rel string) bool) error {
 	if engine == nil {
 		return nil
@@ -2059,7 +2070,7 @@ func templateProcessDirFiles(dirPath string, engine *template.Engine, skip func(
 		if err != nil {
 			return err
 		}
-		if skip(relPath) {
+		if skip != nil && skip(relPath) {
 			return nil
 		}
 

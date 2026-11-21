@@ -211,6 +211,10 @@ func (a *Adapter) HookTimeoutUnit() configasset.TimeoutUnit {
 	return configasset.TimeoutSeconds
 }
 
+func (a *Adapter) HookEdit(scope string, hook configasset.TranslatedHook) (configasset.Edit, error) {
+	return configasset.GroupedHookEdit(a, scope, hook)
+}
+
 // InstallWarnings returns Claude-specific advisory install warnings.
 func (a *Adapter) InstallWarnings(_ *config.Asset) []string {
 	return nil

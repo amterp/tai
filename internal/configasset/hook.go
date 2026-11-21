@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/amterp/tai/internal/adapter"
 	"github.com/amterp/tai/internal/config"
 )
 
@@ -25,10 +26,6 @@ const (
 )
 
 // HookTranslator is implemented by adapters that support hooks.
-//
-// Claude and Codex both structure hooks the same way - an event holding
-// matcher groups, each holding command handlers - so the handler builds that
-// shape itself and asks the adapter only for the vocabulary that differs.
 type HookTranslator interface {
 	// HookEventName maps a canonical tai event to this target's name for it.
 	// ok is false when the target has no equivalent, which skips the hook with
@@ -41,9 +38,21 @@ type HookTranslator interface {
 
 	// HookTimeoutUnit reports the unit this target expects timeouts in.
 	HookTimeoutUnit() TimeoutUnit
+
+	// HookEdit places a translated hook in the target's config. It returns
+	// an error if the scope or matcher is unsupported.
+	HookEdit(scope string, hook TranslatedHook) (Edit, error)
 }
 
-// hookHandler installs hooks as entries appended to a target's event arrays.
+// TranslatedHook contains the target's event, matcher, and command before
+// the adapter places them in its config file.
+type TranslatedHook struct {
+	Name    string
+	Event   string
+	Matcher string
+	Handler map[string]any
+}
+
 type hookHandler struct{}
 
 func (h *hookHandler) Type() string { return config.AssetTypeHook }
@@ -84,35 +93,47 @@ func (h *hookHandler) Plan(req Request) (*Plan, error) {
 		return nil, fmt.Errorf("hook %s: %w", req.Name, err)
 	}
 
-	handler, err := hookHandlerObject(cfg, translator, req.Adapter.Name())
-	if err != nil {
-		return nil, fmt.Errorf("hook %s: %w", req.Name, err)
-	}
-
-	group := map[string]any{"hooks": []any{handler}}
-	if matcher != "" {
-		group["matcher"] = matcher
-	}
-
-	file := req.Adapter.ConfigFilePath(config.AssetTypeHook, req.Scope)
-	if file == "" {
-		return nil, UnsupportedScopeError(req.Adapter, config.AssetTypeHook, req.Scope, "hooks")
-	}
-
-	key := req.Adapter.SettingsKey(config.AssetTypeHook)
-	if key == "" {
-		return nil, fmt.Errorf("target %q has no settings key for hooks", req.Adapter.Name())
-	}
-
-	plan.Edits = append(plan.Edits, Edit{
-		File:    file,
-		KeyPath: []string{key, event},
-		Mode:    AppendToArray,
-		ID:      req.Name,
-		Value:   group,
+	edit, err := translator.HookEdit(req.Scope, TranslatedHook{
+		Name:    req.Name,
+		Event:   event,
+		Matcher: matcher,
+		Handler: hookHandlerObject(cfg, translator, req.Adapter.Name()),
 	})
+	if err != nil {
+		return nil, err
+	}
 
+	plan.Edits = append(plan.Edits, edit)
 	return plan, nil
+}
+
+// GroupedHookEdit appends a matcher group to an event under a settings key.
+func GroupedHookEdit(adap adapter.Adapter, scope string, hook TranslatedHook) (Edit, error) {
+	file := adap.ConfigFilePath(config.AssetTypeHook, scope)
+	if file == "" {
+		return Edit{}, UnsupportedScopeError(adap, config.AssetTypeHook, scope, "hooks")
+	}
+
+	key := adap.SettingsKey(config.AssetTypeHook)
+	if key == "" {
+		return Edit{}, fmt.Errorf("target %q has no settings key for hooks", adap.Name())
+	}
+
+	return Edit{
+		File:    file,
+		KeyPath: []string{key, hook.Event},
+		Mode:    AppendToArray,
+		ID:      hook.Name,
+		Value:   hook.MatcherGroup(),
+	}, nil
+}
+
+func (hook TranslatedHook) MatcherGroup() map[string]any {
+	group := map[string]any{"hooks": []any{hook.Handler}}
+	if hook.Matcher != "" {
+		group["matcher"] = hook.Matcher
+	}
+	return group
 }
 
 // hookMatcher builds the target's matcher string.
@@ -147,7 +168,7 @@ func hookMatcher(cfg *config.HookConfig, t HookTranslator, target string) (strin
 
 // hookHandlerObject builds the command handler, applying the target's timeout
 // unit and merging any native overrides over the top.
-func hookHandlerObject(cfg *config.HookConfig, t HookTranslator, target string) (map[string]any, error) {
+func hookHandlerObject(cfg *config.HookConfig, t HookTranslator, target string) map[string]any {
 	handler := map[string]any{
 		"type":    "command",
 		"command": cfg.Run,
@@ -172,7 +193,7 @@ func hookHandlerObject(cfg *config.HookConfig, t HookTranslator, target string) 
 		handler[key] = value
 	}
 
-	return handler, nil
+	return handler
 }
 
 // ValidateHookConfig checks a hook definition.

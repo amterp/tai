@@ -525,6 +525,10 @@ func (a *Adapter) HookTimeoutUnit() configasset.TimeoutUnit {
 	return configasset.TimeoutSeconds
 }
 
+func (a *Adapter) HookEdit(scope string, hook configasset.TranslatedHook) (configasset.Edit, error) {
+	return configasset.GroupedHookEdit(a, scope, hook)
+}
+
 // SettingsKey returns the JSON key name for a config asset type.
 func (a *Adapter) SettingsKey(assetType string) string {
 	switch assetType {
