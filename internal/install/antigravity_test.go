@@ -21,7 +21,8 @@ func TestAntigravityHookOwnership(t *testing.T) {
 	installer := NewInstaller(NewManifestStore(filepath.Join(env.ConfigDir, "manifests")), env.ConfigRepo, nil)
 
 	const foreign = `"memri":{"SessionStart":[{"command":"memri hook"}]}`
-	env.WriteTargetFile("config/hooks.json", "{"+foreign+"}")
+	const initial = "{" + foreign + `,"before-call":{}}`
+	env.WriteTargetFile("config/hooks.json", initial)
 	hookPath := filepath.Join(env.TargetDir, "config", "hooks.json")
 
 	env.SetupAsset("hooks", "on-edit.yaml", "on: pre_tool_use\ntools: [edit]\nrun: inspect-edit\ntimeout: 5s\n")
@@ -42,7 +43,7 @@ native:
 		return result
 	}
 	install(InstallOptions{DryRun: true})
-	assertAntigravityJSON(t, hookPath, "{"+foreign+"}")
+	assertAntigravityJSON(t, hookPath, initial)
 
 	install(InstallOptions{})
 	const direct = `"before-call":{"PreInvocation":[{"type":"command","command":"before-call-antigravity"}]}`
@@ -67,17 +68,73 @@ run: after-write
 	const externalEdit = `"on-edit":{"PostToolUse":[{"matcher":"^write_file$","hooks":[{"command":"mine"}]}]}`
 	env.WriteTargetFile("config/hooks.json", "{"+foreign+","+direct+","+externalEdit+"}")
 	if _, err := installer.Install(adap, "p", assets, InstallOptions{}); err == nil || !strings.Contains(err.Error(), "modified since last install") {
-		t.Fatalf("want conflict on an externally edited group, got %v", err)
+		t.Fatalf("want conflict on an externally edited hook, got %v", err)
 	}
 	if _, err := installer.Uninstall(adap); err != nil {
 		t.Fatal(err)
 	}
 	assertAntigravityJSON(t, hookPath, "{"+foreign+","+externalEdit+"}")
+}
 
-	if _, err := installer.Install(adap, "p", assets, InstallOptions{}); err == nil || !strings.Contains(err.Error(), "unmanaged on-edit") {
-		t.Fatalf("want conflict on an unmanaged group with the same name, got %v", err)
+func TestAntigravitySharedHookGroup(t *testing.T) {
+	env := testutil.NewTestEnv(t)
+	adap := antigravity.New(env.TargetDir)
+	installer := NewInstaller(NewManifestStore(filepath.Join(env.ConfigDir, "manifests")), env.ConfigRepo, nil)
+	const path = "config/hooks.json"
+	hookPath := filepath.Join(env.TargetDir, path)
+
+	const matcher = `^(write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content|sed_file|notebook_edit)$`
+	const group = "timeout: 3s\nnative: {antigravity: {group: fencil}}\n"
+	env.SetupAsset("hooks", "fencil-start.yaml", "on: session_start\nrun: fencil hook session-start --harness antigravity\n"+group)
+	env.SetupAsset("hooks", "fencil-edit.yaml", "on: post_tool_use\nrun: fencil hook post-edit --harness antigravity\n"+
+		"match: {antigravity: '"+matcher+"'}\n"+group)
+	env.SetupAsset("hooks", "fencil-deliver.yaml", "on: pre_invocation\nrun: fencil hook deliver-edits --harness antigravity\n"+group)
+	assets := []*config.Asset{hookAsset(env, "fencil-start.yaml"), hookAsset(env, "fencil-edit.yaml"), hookAsset(env, "fencil-deliver.yaml")}
+	install := func(assets []*config.Asset) *InstallResult {
+		t.Helper()
+		result, err := installer.Install(adap, "p", assets, InstallOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
 	}
-	assertAntigravityJSON(t, hookPath, "{"+foreign+","+externalEdit+"}")
+
+	// Fencil's extras/hooks/antigravity.json, split into events for the removal checks.
+	const sessionStart = `"SessionStart":[{"type":"command","command":"fencil hook session-start --harness antigravity","timeout":3}]`
+	const postToolUse = `"PostToolUse":[{"matcher":"` + matcher + `","hooks":[` +
+		`{"type":"command","command":"fencil hook post-edit --harness antigravity","timeout":3}]}]`
+	const delivery = `{"type":"command","command":"fencil hook deliver-edits --harness antigravity","timeout":3}`
+	install(assets)
+	assertAntigravityJSON(t, hookPath, `{"fencil":{`+sessionStart+`,`+postToolUse+`,"PreInvocation":[`+delivery+`]}}`)
+	before, err := os.Stat(hookPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := install(assets); len(result.Unchanged) != len(assets) {
+		t.Fatalf("expected all hooks to be unchanged, got %+v", result)
+	}
+	after, err := os.Stat(hookPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(before, after) {
+		t.Fatal("unchanged reinstall replaced hooks.json")
+	}
+
+	const otherHandler = `{"type":"command","command":"audit-input"}`
+	const otherEvent = `"Stop":[{"type":"command","command":"audit-exit"}]`
+	const otherGroup = `"other":{"SessionStart":[{"type":"command","command":"other-tool"}]}`
+	env.WriteTargetFile(path, `{"fencil":{`+sessionStart+`,`+postToolUse+`,"PreInvocation":[`+delivery+`,`+otherHandler+`],`+otherEvent+`},`+otherGroup+`}`)
+
+	if result := install(assets[:2]); !slices.Equal(result.Removed, []string{"[hook] fencil-deliver"}) {
+		t.Fatalf("expected only fencil-deliver to be removed, got %+v", result)
+	}
+	const foreignEvents = `"PreInvocation":[` + otherHandler + `],` + otherEvent
+	assertAntigravityJSON(t, hookPath, `{"fencil":{`+sessionStart+`,`+postToolUse+`,`+foreignEvents+`},`+otherGroup+`}`)
+	if _, err := installer.Uninstall(adap); err != nil {
+		t.Fatal(err)
+	}
+	assertAntigravityJSON(t, hookPath, `{"fencil":{`+foreignEvents+`},`+otherGroup+`}`)
 }
 
 func TestAntigravityInstallsGlobalFilesAndProjectConfig(t *testing.T) {

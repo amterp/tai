@@ -166,8 +166,8 @@ The Antigravity adapter maps:
   delegate's `DELEGATE.md` source installs as `agent.md`.
 - Loose files to `dest` under `~/.gemini/`, where `AGENTS.md` is the global instructions file.
 - Hooks and MCP servers to `~/.gemini/config/hooks.json` and `~/.gemini/config/mcp_config.json`, or
-  the equivalent files under the working directory's `.agents/` at project scope. Hook assets own
-  named top-level groups. MCP assets own entries under `mcpServers`.
+  the equivalent files under the working directory's `.agents/` at project scope. Hook assets append
+  to event arrays in named groups. MCP assets own entries under `mcpServers`.
 - Status line and settings assets to `~/.gemini/antigravity-cli/settings.json` at user scope.
 - Persona and approval assets to the installer's unsupported asset warnings.
 

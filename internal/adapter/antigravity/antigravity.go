@@ -4,6 +4,7 @@ package antigravity
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -204,6 +205,17 @@ func (a *Adapter) HookEdit(scope string, hook configasset.TranslatedHook) (confi
 		return configasset.Edit{}, configasset.UnsupportedScopeError(a, config.AssetTypeHook, scope, "hooks")
 	}
 
+	group := hook.Name
+	if value, exists := hook.Handler["group"]; exists {
+		var ok bool
+		group, ok = value.(string)
+		if !ok || strings.TrimSpace(group) == "" {
+			return configasset.Edit{}, fmt.Errorf("hook %s: native.antigravity.group must be a nonblank string", hook.Name)
+		}
+		hook.Handler = maps.Clone(hook.Handler)
+		delete(hook.Handler, "group")
+	}
+
 	var entry any = hook.Handler
 	switch hook.Event {
 	case preToolUse, postToolUse:
@@ -218,9 +230,10 @@ func (a *Adapter) HookEdit(scope string, hook configasset.TranslatedHook) (confi
 	}
 	return configasset.Edit{
 		File:    file,
-		KeyPath: []string{hook.Name},
-		Mode:    configasset.ReplaceKey,
-		Value:   map[string]any{hook.Event: []any{entry}},
+		KeyPath: []string{group, hook.Event},
+		Mode:    configasset.AppendToArray,
+		ID:      hook.Name,
+		Value:   entry,
 	}, nil
 }
 

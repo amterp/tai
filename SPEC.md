@@ -1157,9 +1157,12 @@ Antigravity take seconds.
   installing; run `/hooks` in Codex to review them.
 - **Codex hooks** go to a dedicated `hooks.json`, never `config.toml`, so tai
   never rewrites the file holding model settings and project trust decisions.
-- **Antigravity** uses one named group per asset at the root of `~/.gemini/config/hooks.json`
-  or `.agents/hooks.json` at project scope. Tool events use regex matcher groups, and the other
-  events hold command handlers directly. A command runs from the directory containing
+- **Antigravity** writes hooks to named groups at the root of `~/.gemini/config/hooks.json` or
+  `.agents/hooks.json` at project scope. The group name defaults to the asset's filename without its
+  extension. Set `native.antigravity.group` to a nonblank string to share a group across assets. tai
+  consumes `group` when placing the hook and appends one entry to the event's array. Removing that
+  entry also removes the event and group if they become empty. Tool events use regex matcher groups,
+  and the other events hold command handlers directly. A command runs from the directory containing
   `hooks.json`. Its `PreToolUse` response must contain a decision. Missing stdout or `{}` denies
   the call.
 

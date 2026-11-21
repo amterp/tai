@@ -237,10 +237,13 @@ expects.
 there. **Codex** will not run a hook until it is trusted, and every change
 re-arms that: run `/hooks` in Codex after installing.
 
-**Antigravity** puts each hook asset in its own top-level group in `hooks.json`. Match tools only
-on `pre_tool_use` and `post_tool_use`. A hook runs from the directory containing `hooks.json`. Read
-the workspace from the payload's `cwd`. A `PreToolUse` command must print a decision. Missing stdout
-or `{}` denies the tool call. Return `{"decision":"allow"}` to defer to normal permission checks.
+**Antigravity** appends each hook to an event array inside a top-level group in `hooks.json`. The
+group defaults to the asset's filename without its extension. Set `native.antigravity.group` on
+each asset to share a group. Removing a hook also removes the event and group if they become empty.
+Match tools only on `pre_tool_use` and `post_tool_use`. A hook runs from the directory containing
+`hooks.json`. Read the workspace from the payload's `cwd`. A `PreToolUse` command must print a
+decision. Missing stdout or `{}` denies the tool call. Return `{"decision":"allow"}` to defer to
+normal permission checks.
 
 ### MCP servers
 

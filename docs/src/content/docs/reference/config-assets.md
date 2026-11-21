@@ -247,9 +247,10 @@ and Antigravity take seconds.
 | Codex | `~/.codex/hooks.json` | `.codex/hooks.json` | - |
 | Antigravity | `~/.gemini/config/hooks.json` | `.agents/hooks.json` | - |
 
-In Antigravity, each asset becomes a top-level group named after its file. The command runs from
-the directory containing `hooks.json`. A `PreToolUse` command must print a decision. Missing
-stdout or `{}` denies the call. See the [Antigravity target page](/tai/targets/antigravity/#hooks).
+In Antigravity, each asset adds a hook to a top-level group named after its file. Set
+`native.antigravity.group` on each asset to share a group. The command runs from the directory
+containing `hooks.json`. A `PreToolUse` command must print a decision. Missing stdout or `{}` denies
+the call. [Antigravity hooks](/tai/targets/antigravity/#hooks)
 
 In Claude and Codex, entries land under the `hooks` key:
 

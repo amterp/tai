@@ -40,9 +40,21 @@ Project paths are relative to the directory where you run `tai install`. Antigra
 
 ### Hooks
 
-The hook asset's filename without its extension becomes a top-level group in `hooks.json`. tai
-merges that group alongside groups from other tools. An unmanaged group with the same name is
-an install conflict.
+By default, tai uses the hook asset's filename without its extension as the top-level group name in
+`hooks.json`. Set `native.antigravity.group` to a nonblank string to give several assets the same
+group name.
+
+```yaml
+on: session_start
+run: my-tool start
+native:
+  antigravity:
+    group: my-tool
+```
+
+tai appends each hook to its event's array in the group. Removing an asset removes its hook and
+preserves other hooks in the group. When that removal leaves an event or group empty, tai removes
+the empty event or group, even if it was created by hand.
 
 Match tools with `tools` or `match.antigravity` on `pre_tool_use` and `post_tool_use`. Each
 command runs from the directory containing `hooks.json`. Read the workspace from the hook
