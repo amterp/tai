@@ -1,0 +1,16 @@
+{
+  "_v": 4,
+  "id": "a_33uXxOlJe",
+  "alias": "appendtoarray-stale",
+  "alias_explicit": false,
+  "title": "AppendToArray: stale indices after a removal, and identical foreign entries",
+  "description": "Two defects in the installer's shared AppendToArray rules, found by a code review of the Antigravity shared-hook-group change (a_33scgnmFm). Both predate it and affect Claude and Codex hook installs too.\n\n1. After an earlier asset's entry is removed from an array, the indices recorded for later entries are stale. A later install can then update the wrong element when one new command equals another asset's old command.\n2. A hook identical to one a person or another tool already has installs a second copy. If one copy is later deleted by hand, uninstall can take the surviving foreign copy for tai's and remove it.\n\nNot fixed in the Antigravity work, to keep that change to the adapter. Raised by an agent, not asked for by the owner.",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1795287644071,
+  "updated_at_millis": 1795287644071,
+  "column": "backlog-lo",
+  "position": "a3",
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1795287644071}
+  ]
+}
