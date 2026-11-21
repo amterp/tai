@@ -7,7 +7,15 @@
   "description": "Alex asked on 2026-11-21 for Google's Antigravity CLI (agy) to be supported in every tool that supports Claude Code and Codex, with everything that differs by harness behind one interface, so the next harness is one more implementation. Program plan, including the five checks every project meets: ~/src/antigravity-project/plan.md. What agy offers: ~/src/tai-personal/docs/antigravity.md.\n\nHere: a fourth adapter beside claude, codex and opencode, installing skills, agents, instructions, hooks, the status line and MCP servers to agy's documented paths. tai-personal's antigravity profile and bundles follow in that repo.",
   "creator": "Alexander Terp",
   "created_at_millis": 1795283059420,
-  "updated_at_millis": 1795283059420,
+  "updated_at_millis": 1795285505159,
+  "comments": [
+    {
+      "id": "c_33teJXvEy",
+      "body": "Landed on main, unpushed: 'Let adapters choose hook edits and installed main filenames' and 'Add Antigravity as a tai install target'. ./dev -v green on main. Cross-family review (Claude Opus medium): 2 P2 on the refactor, both addressed. Project-scoped file assets were cut to a_33srtcKR1. Still open before this card closes: the tai-personal antigravity profile and bundles, a rebuilt tai on this machine, and the live end-to-end check.",
+      "author": "Alexander Terp",
+      "created_at_millis": 1795285505159
+    }
+  ],
   "column": "in-progress",
   "position": "a0",
   "history": [

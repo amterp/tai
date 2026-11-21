@@ -1,0 +1,16 @@
+{
+  "_v": 4,
+  "id": "a_33srtcKR1",
+  "alias": "project-scoped-file",
+  "alias_explicit": false,
+  "title": "Project-scoped file assets (skills, delegates, instruction files)",
+  "description": "tai installs file assets at user scope for every target; only config assets (hooks, MCP) have a project scope. Antigravity reads project skills and agents from `.agents/skills/` and `.agents/agents/`, and the other harnesses have equivalents, so a profile cannot yet install a skill into one workspace.\n\nRaised while adding the Antigravity target (a_33scgnmFm): the worker's plan needed a scoped file layout on the adapter and an absolute root per manifest entry, which changes the manifest format for all targets, so it was cut from that work. Not asked for by the owner; an agent's idea.\n\nNeeds a design before building: the manifest change, conflict detection and uninstall across workspaces, and tai's one-active-profile-per-target rule.",
+  "creator": "Alexander Terp",
+  "created_at_millis": 1795283643964,
+  "updated_at_millis": 1795283643964,
+  "column": "uncomitted",
+  "position": "a2",
+  "history": [
+    {"field":"column","value":"uncomitted","at":1795283643964}
+  ]
+}
