@@ -3,14 +3,14 @@ name: tai
 description: >
   Manage AI agent configurations with the tai CLI. Use this skill when asked to:
   manage tai config repos, sources, bundles, or profiles; install or uninstall
-  configurations to targets like Claude Code, Codex, or OpenCode; create, edit, or
-  organize personas, delegates, skills, or files; or create new skills for
-  tai-managed configurations.
+  configurations to Antigravity, Claude Code, Codex, or OpenCode; create, edit,
+  or organize personas, delegates, skills, or files; or create tai-managed skills.
 ---
 
 # Tai Configuration Management
 
-Tai organizes AI agent configurations (personas, delegates, skills, files) into composable, version-controlled assets that install to targets like Claude Code, Codex, and OpenCode.
+Tai composes version-controlled assets and installs them to Antigravity, Claude Code, Codex, and
+OpenCode.
 
 ## Core Concepts
 
@@ -20,7 +20,7 @@ Tai organizes AI agent configurations (personas, delegates, skills, files) into 
 | **Bundle** | Named collection of assets (a "shopping list") |
 | **Profile** | Bundle(s) bound to a specific target |
 | **Source** | Location providing assets (local dir or tai repo) |
-| **Target** | AI tool to install to (Claude Code, Codex, OpenCode) |
+| **Target** | AI tool to install to (Antigravity, Claude Code, Codex, OpenCode) |
 
 **Data flow:** Sources → Assets → Bundles → Profiles → Target
 
@@ -28,23 +28,27 @@ Tai organizes AI agent configurations (personas, delegates, skills, files) into 
 
 Tai uses target-agnostic terminology. Here's how asset types map to current targets:
 
-| Tai Type | Claude | Codex | OpenCode | Purpose |
-|----------|--------|-------|----------|---------|
-| `persona` | `output-styles/` | `skills/` (mapped) | `agents/` | Behavioral styles and roles |
-| `delegate` | `agents/` | `agents/<name>.toml` | `agents/` | Specialized helper agents |
-| `skill` | `skills/` | `skills/` | `skills/` | Procedural capabilities |
-| `file` | (per `dest`) | (per `dest`) | (per `dest`) | Loose files copied as-is |
-| `statusline` | `settings.json` | unsupported | unsupported | Status bar configuration |
-| `hook` | `settings.json` | `hooks.json` | unsupported | Command run on a target event |
-| `mcp` | `.mcp.json` / `~/.claude.json` | `config.toml` | `opencode.json` | MCP server |
-| `settings` | `settings.json` | unsupported | unsupported | Fields in the target's settings file |
-| `approval` | `settings.json` (`autoMode`) | unsupported | unsupported | Auto-approval policy |
+| Tai Type | Claude | Codex | OpenCode | Antigravity | Purpose |
+|----------|--------|-------|----------|-------------|---------|
+| `persona` | `output-styles/` | `skills/` (mapped) | `agents/` | unsupported | Behavioral styles and roles |
+| `delegate` | `agents/` | `agents/<name>.toml` | `agents/` | `config/agents/` (Markdown) | Specialized helper agents |
+| `skill` | `skills/` | `skills/` | `skills/` | `config/skills/` | Procedural capabilities |
+| `file` | (per `dest`) | (per `dest`) | (per `dest`) | (per `dest`) | Loose files copied as-is |
+| `statusline` | `settings.json` | unsupported | unsupported | `antigravity-cli/settings.json` | Status bar configuration |
+| `hook` | `settings.json` | `hooks.json` | unsupported | `config/hooks.json` | Command run on a target event |
+| `mcp` | `.mcp.json` / `~/.claude.json` | `config.toml` | `opencode.json` | `config/mcp_config.json` | MCP server |
+| `settings` | `settings.json` | unsupported | unsupported | `antigravity-cli/settings.json` | Fields in the target's settings file |
+| `approval` | `settings.json` (`autoMode`) | unsupported | unsupported | unsupported | Auto-approval policy |
 
 The last five are **config assets**: they merge as entries into the target's config files instead of being written as files. See "Config Assets" below.
 
 Target-specific notes:
 - **Codex**: Personas are mapped to skills since Codex has no persona concept (single-file personas wrap as `skills/<name>/SKILL.md`). Delegates are installed as custom agents (`agents/<name>.toml`, body as `developer_instructions`). A Claude `model` (`opus`, `claude-*`) and `tools` are dropped with a warning; put Codex fields (`model`, `model_reasoning_effort`, `features: {shell_tool: false}`) under `native.codex`, which also silences the matching warning. Directory delegates stay passive reference files under `delegates/`.
 - **OpenCode**: Both personas and delegates map to `agents/`, distinguished by `mode: subagent` on delegates.
+- **Antigravity**: Use `target: antigravity`. File assets install under `~/.gemini/`, including
+  `AGENTS.md` for instructions. A directory delegate's `DELEGATE.md` installs as `agent.md`. Put
+  Antigravity tool restrictions in `native.antigravity.tools` as a YAML list. The accepted
+  delegate models are `inherit`, `flash`, and `pro`. `tai run antigravity` launches `agy`.
 
 ## CLI Commands
 
@@ -173,7 +177,8 @@ assets:
 ```
 
 `user` is the target's home config, `project` and `local` resolve against the
-working directory. Not every target has all three - Codex has no `local` scope.
+working directory. Antigravity hooks and MCP support `project`, using config files in `.agents/`.
+Antigravity settings and status line use `user` scope. Antigravity and Codex have no `local` scope.
 
 ### Statuslines
 
@@ -185,6 +190,8 @@ One per profile; a second overrides the first. A `level` field means tai format
 level: detailed        # minimal | standard | detailed | hidden | custom
 show: [cost, model]
 ```
+
+Antigravity accepts `level: custom` with a command or a native JSON object.
 
 ### Hooks
 
@@ -205,7 +212,7 @@ in which events they have and what they call them:
 
 `session_start`, `session_end`, `user_prompt_submit`, `stop`, `pre_tool_use`,
 `post_tool_use`, `permission_request`, `subagent_start`, `subagent_stop`,
-`pre_compact`, `post_compact`, `notification`
+`pre_compact`, `post_compact`, `notification`, `pre_invocation`, `post_invocation`
 
 A target lacking an event skips that hook with a warning. Codex has no
 notification or session-end event.
@@ -229,6 +236,11 @@ expects.
 **OpenCode has no hooks** (only a JS plugin API), so hook assets are skipped
 there. **Codex** will not run a hook until it is trusted, and every change
 re-arms that: run `/hooks` in Codex after installing.
+
+**Antigravity** puts each hook asset in its own top-level group in `hooks.json`. Match tools only
+on `pre_tool_use` and `post_tool_use`. A hook runs from the directory containing `hooks.json`. Read
+the workspace from the payload's `cwd`. A `PreToolUse` command must print a decision. Missing stdout
+or `{}` denies the tool call. Return `{"decision":"allow"}` to defer to normal permission checks.
 
 ### MCP servers
 
@@ -278,6 +290,9 @@ out of that file. `scope: local` is the private counterpart to `project`: it
 also lands in `~/.claude.json`, under that project's own entry, since Claude
 reads no `.claude.json` from the project directory.
 
+Antigravity uses `mcpServers` with `serverUrl` for remote servers. tai warns and leaves `${VAR}`
+references literal because Antigravity documents interpolation only for plugins.
+
 ### Settings
 
 ```yaml
@@ -293,7 +308,7 @@ native:
 ```
 
 Use a settings asset instead of a `post_install` script that edits
-`settings.json`. Fields are written verbatim, Claude only. tai owns each value
+`settings.json`. Claude and Antigravity support this asset type. tai owns each value
 inside an object separately (`env.FOO`, not all of `env`) and appends each array
 element, so values from you, other tools and other assets coexist, and uninstall
 takes out only tai's. Two settings assets setting the same field fail the
@@ -613,11 +628,11 @@ Combine with conditionals for target-specific composition:
 
 Adapters provide target-specific variables with the `target_` prefix:
 
-| Variable | Claude | Codex | OpenCode |
-|----------|--------|-------|----------|
-| `target_name` | `claude` | `codex` | `opencode` |
-| `target_name_display` | `Claude` | `Codex` | `OpenCode` |
-| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` |
+| Variable | Claude | Codex | OpenCode | Antigravity |
+|----------|--------|-------|----------| ------------- |
+| `target_name` | `claude` | `codex` | `opencode` | `antigravity` |
+| `target_name_display` | `Claude` | `Codex` | `OpenCode` | `Antigravity` |
+| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` |
 
 Use these for target-aware file destinations:
 

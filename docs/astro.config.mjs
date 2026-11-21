@@ -73,6 +73,7 @@ export default defineConfig({
             { label: 'Claude Code', slug: 'targets/claude-code' },
             { label: 'Codex', slug: 'targets/codex' },
             { label: 'OpenCode', slug: 'targets/opencode' },
+            { label: 'Antigravity', slug: 'targets/antigravity' },
           ],
         },
       ],

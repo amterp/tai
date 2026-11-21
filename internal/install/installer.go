@@ -1482,7 +1482,9 @@ func (i *Installer) resolveAsset(
 	}
 
 	if asset.IsDir {
-		if src, dst := config.MainFileName(asset.Type), adap.MainFileName(asset.Type); dst != "" && dst != src {
+		src := config.MainFileName(asset.Type)
+		dst := adap.MainFileName(asset.Type)
+		if asset.Type != config.AssetTypeSkill && dst != "" && dst != src {
 			_, err := os.Lstat(filepath.Join(asset.SourcePath, dst))
 			if err == nil {
 				return nil, fmt.Errorf("%s conflicts with the installed name of %s", dst, src)

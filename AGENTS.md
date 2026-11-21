@@ -4,7 +4,9 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Project Overview
 
-**tai** is a CLI tool for managing AI agent configurations across different targets (Claude Code, Codex, OpenCode). It organizes, composes, and installs target-agnostic assets (personas, delegates, skills, docs, MCPs, hooks) from multiple sources while maintaining version control and portability.
+**tai** manages AI agent configurations for Antigravity, Claude Code, Codex, and OpenCode. It
+composes target-agnostic assets from multiple sources and installs them using each target's
+native formats.
 
 ## Commands
 
@@ -35,7 +37,7 @@ and prints where it stands. Exit 75 means the mode has not run yet: run it again
 
 | tai term | What it is | Example target equivalent |
 |----------|-----------|---------------------------|
-| **Target** | AI tool to install to | Claude Code, Codex, OpenCode |
+| **Target** | AI tool to install to | Antigravity, Claude Code, Codex, OpenCode |
 | **Persona** | Behavioral style/role | output-style |
 | **Delegate** | Specialized helper | agents (sub-agents) |
 | **Skill** | Procedural capability | skills |
@@ -75,7 +77,7 @@ Sources → Assets → Bundles → Profiles → Install Pipeline → Target Conf
 - **internal/profile/** - Composes bundles into profiles, handles asset deduplication
 - **internal/install/** - Installation logic with manifest tracking, conflict detection, backup/restore. `configfile.go` holds the config-file merge engine: batched read/modify/write, plus `applyEdit`/`removeEdit`
 - **internal/configasset/** - Config asset types (statusline, hook, mcp, settings, approval): a `Handler` per type that parses and validates its YAML and returns declarative `Edit`s. Knows nothing about manifests or files
-- **internal/adapter/** - Target-specific implementations (Claude, Codex, and OpenCode)
+- **internal/adapter/** - Target interface, registry, and implementations
 - **internal/frontmatter/** - YAML frontmatter parsing/rendering (target-agnostic)
 - **internal/template/** - Jinja2-style template processing (pongo2): variables, conditionals, `{% include_asset %}`
 
@@ -106,11 +108,16 @@ Adapters translate tai concepts to target-specific formats. Key methods:
 - `TransformContent()` - Renders target-specific frontmatter from parsed tai metadata
 - `ProvideVariables()` - Returns target-specific template variables (e.g., `target_name`, `target_agents_file`)
 - `MapAssetPath()` - Maps tai asset paths to target paths, interpreting `dest` for file assets
+- `MainFileName()` gives the installed main filename for a directory asset. Skill includes use
+  `SKILL.md`. Other directory assets have a source filename defined in `internal/config`.
 - `UnsupportedFileAssetTypes()` - Declares file asset types to skip entirely during install (vs `InstallWarnings` which warns but still installs)
 - `ConfigFilePath(assetType, scope)` - Which config file a config asset type installs into at a given scope; empty means unsupported
 - `SupportedConfigAssetTypes()` - Config asset types this target supports; others are skipped with a warning
 
-Per-type translation lives behind *optional* interfaces in `internal/configasset` (e.g. `StatusLineTranslator`), which an adapter implements only for the types it supports. Keeping them off `adapter.Adapter` means the base interface does not grow a method every time a config asset type is added, and targets without the feature carry no dead stubs.
+Per-type translation lives behind optional interfaces in `internal/configasset`. Adapters
+implement the translators for the config asset types they support. `HookTranslator` also chooses
+the edit that places a hook in the target's file. The installer uses the same edit and checksum
+rules for all targets.
 
 Every adapter merges an asset's `native.<target>` frontmatter over whatever it rendered, so the per-type lists below are what tai produces before that.
 
@@ -152,6 +159,20 @@ The OpenCode adapter maps:
 Both personas and delegates map to `agents/` - OpenCode unifies these into a single agent concept, distinguished by the `mode` field. Tools are omitted because OpenCode uses a structurally incompatible format (boolean map vs comma-separated string). Because both land in `agents/`, a persona and a delegate of the same name collide on one target path; the installer resolves this with "later wins" (the earlier asset is shadowed, logged as an override) so reinstall stays idempotent.
 
 OpenCode `ProvideVariables()` returns: `target_name: "opencode"`, `target_name_display: "OpenCode"`, `target_agents_file: "AGENTS.md"`
+
+The Antigravity adapter maps:
+
+- Skills and delegates to `~/.gemini/config/skills/` and `~/.gemini/config/agents/`. A directory
+  delegate's `DELEGATE.md` source installs as `agent.md`.
+- Loose files to `dest` under `~/.gemini/`, where `AGENTS.md` is the global instructions file.
+- Hooks and MCP servers to `~/.gemini/config/hooks.json` and `~/.gemini/config/mcp_config.json`, or
+  the equivalent files under the working directory's `.agents/` at project scope. Hook assets own
+  named top-level groups. MCP assets own entries under `mcpServers`.
+- Status line and settings assets to `~/.gemini/antigravity-cli/settings.json` at user scope.
+- Persona and approval assets to the installer's unsupported asset warnings.
+
+The adapter runs `agy` and provides `antigravity`, `Antigravity`, and `AGENTS.md` as its target
+template values.
 
 ## User Config Repo Structure
 

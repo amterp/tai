@@ -69,8 +69,9 @@ type Adapter interface {
 	// Returns empty string if the asset type doesn't map to a settings key.
 	SettingsKey(assetType string) string
 
-	// MainFileName returns the main file name for a directory asset type.
-	// For example, Claude returns "SKILL.md" for skills, "PERSONA.md" for personas.
+	// MainFileName returns the installed main file name for a directory asset.
+	// Skill includes require "SKILL.md" as both the source and installed name.
+	// config.MainFileName defines the source name for other directory assets.
 	// Returns empty string for types that don't support directory mode.
 	MainFileName(assetType string) string
 
@@ -135,7 +136,7 @@ var DefaultRegistry = NewRegistry()
 // imported the codex package would be told no. Which targets exist is a fixed
 // fact about tai, so it is written down as one. TestRegistryMatchesTargetNames
 // in internal/state keeps the two in step.
-var targetNames = []string{"claude", "codex", "opencode"}
+var targetNames = []string{"antigravity", "claude", "codex", "opencode"}
 
 // removedTargets maps a target tai used to support to what a config still
 // naming it should do. Without it, such a config gets the same "unknown

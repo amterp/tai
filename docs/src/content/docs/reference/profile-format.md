@@ -159,6 +159,9 @@ assets:
 
 Scope affects only config assets. File assets (personas, delegates, skills, files) always install to the target directory.
 
+Antigravity supports project scope for hooks and MCP servers. Its status line and settings use
+user scope.
+
 See [Config Assets](/tai/reference/config-assets/) for how each scope maps to a file per target.
 
 ## post_install

@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/amterp/tai/internal/adapter"
+	_ "github.com/amterp/tai/internal/adapter/antigravity"
 	_ "github.com/amterp/tai/internal/adapter/claude"   // Register Claude adapter
 	_ "github.com/amterp/tai/internal/adapter/codex"    // Register Codex adapter
 	_ "github.com/amterp/tai/internal/adapter/opencode" // Register OpenCode adapter

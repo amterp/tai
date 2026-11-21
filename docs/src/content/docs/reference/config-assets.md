@@ -141,6 +141,11 @@ Installed result in `~/.claude/settings.json`:
 
 The Codex adapter does not support statusline assets. StatusLine assets targeting Codex are skipped with a warning.
 
+### Antigravity adapter
+
+Use `level: custom` with a command, or a native JSON object. tai sets `statusLine` in
+`~/.gemini/antigravity-cli/settings.json` at user scope.
+
 ## Hooks
 
 A hook runs a command when something happens in the target. Hook assets are YAML files in `assets/hooks/`; the filename with its extension stripped becomes the hook's name.
@@ -177,20 +182,22 @@ run: ~/scripts/check-dangerous-commands.sh
 
 tai names events itself rather than adopting one target's vocabulary, because targets differ in which events they have and are free to name them differently.
 
-| tai event | When it fires | Claude | Codex |
-|-----------|---------------|--------|-------|
-| `session_start` | A session begins | SessionStart | SessionStart |
-| `session_end` | A session ends | SessionEnd | - |
-| `user_prompt_submit` | A prompt is submitted | UserPromptSubmit | UserPromptSubmit |
-| `stop` | The agent finishes responding | Stop | Stop |
-| `pre_tool_use` | Before a tool runs | PreToolUse | PreToolUse |
-| `post_tool_use` | After a tool runs | PostToolUse | PostToolUse |
-| `permission_request` | A permission is requested | PermissionRequest | PermissionRequest |
-| `subagent_start` | A subagent starts | SubagentStart | SubagentStart |
-| `subagent_stop` | A subagent finishes | SubagentStop | SubagentStop |
-| `pre_compact` | Before context is compacted | PreCompact | PreCompact |
-| `post_compact` | After context is compacted | PostCompact | PostCompact |
-| `notification` | The target sends a notification | Notification | - |
+| tai event | When it fires | Claude | Codex | Antigravity |
+|-----------|---------------|--------|-------| ------------- |
+| `session_start` | A session begins | SessionStart | SessionStart | SessionStart |
+| `session_end` | A session ends | SessionEnd | - | - |
+| `user_prompt_submit` | A prompt is submitted | UserPromptSubmit | UserPromptSubmit | - |
+| `stop` | The agent finishes responding | Stop | Stop | Stop |
+| `pre_invocation` | Before each model call | - | - | PreInvocation |
+| `post_invocation` | After each model call | - | - | PostInvocation |
+| `pre_tool_use` | Before a tool runs | PreToolUse | PreToolUse | PreToolUse |
+| `post_tool_use` | After a tool runs | PostToolUse | PostToolUse | PostToolUse |
+| `permission_request` | A permission is requested | PermissionRequest | PermissionRequest | - |
+| `subagent_start` | A subagent starts | SubagentStart | SubagentStart | - |
+| `subagent_stop` | A subagent finishes | SubagentStop | SubagentStop | - |
+| `pre_compact` | Before context is compacted | PreCompact | PreCompact | - |
+| `post_compact` | After context is compacted | PostCompact | PostCompact | - |
+| `notification` | The target sends a notification | Notification | - | - |
 
 A `-` means the target has no equivalent, and a hook using that event is skipped there with a warning. That way one hook asset can be shared by a profile installing to several targets.
 
@@ -198,12 +205,12 @@ A `-` means the target has no equivalent, and a hook using that event is skipped
 
 `tools` narrows a tool event using tai's canonical names, translated per target:
 
-| tai | Claude | Codex |
-|-----|--------|-------|
-| `read` | Read | - |
-| `write` | Write | - |
-| `edit` | Edit | apply_patch |
-| `shell` | Bash | Bash |
+| tai | Claude | Codex | Antigravity |
+|-----|--------|-------| ------------- |
+| `read` | Read | - | `read_file\|view_file` |
+| `write` | Write | - | `write_file\|write_to_file` |
+| `edit` | Edit | apply_patch | `edit_file\|replace_file_content\|multi_replace_file_content` |
+| `shell` | Bash | Bash | `run_command` |
 
 A tool a target has no name for is an error, not a silent drop - dropping it would widen the matcher to *every* tool, so a hook meant to guard edits would start firing on reads. Use `match` instead.
 
@@ -223,7 +230,8 @@ native:
 
 ### Timeouts
 
-Write `timeout` as a duration. tai converts it to the unit each target expects. Claude and Codex both take seconds, but the unit is the adapter's to declare because targets differ, and a mismatch fails silently by hand, turning a 30-second timeout into a 30-millisecond one.
+Write `timeout` as a duration. tai converts it to the unit the target expects. Claude Code, Codex,
+and Antigravity take seconds.
 
 ### Target notes
 
@@ -237,8 +245,13 @@ Write `timeout` as a duration. tai converts it to the unit each target expects. 
 |--------|--------|-----------|---------|
 | Claude | `~/.claude/settings.json` | `.claude/settings.json` | `.claude/settings.local.json` |
 | Codex | `~/.codex/hooks.json` | `.codex/hooks.json` | - |
+| Antigravity | `~/.gemini/config/hooks.json` | `.agents/hooks.json` | - |
 
-Entries land under the `hooks` key, alongside any hooks you or other tools have written:
+In Antigravity, each asset becomes a top-level group named after its file. The command runs from
+the directory containing `hooks.json`. A `PreToolUse` command must print a decision. Missing
+stdout or `{}` denies the call. See the [Antigravity target page](/tai/targets/antigravity/#hooks).
+
+In Claude and Codex, entries land under the `hooks` key:
 
 ```json
 {
@@ -304,7 +317,8 @@ Only `stdio` and `http` are offered, because they are the two every target suppo
 
 Write environment references as `${VAR}`. tai rewrites them into whatever syntax the target uses - OpenCode, for instance, wants `{env:VAR}`.
 
-tai does not read the variable itself, so the secret stays in your environment rather than being baked into an installed file.
+tai never reads the variable's value. Antigravity's standalone MCP format has no documented
+interpolation. For that target, tai warns and writes the references literally.
 
 ### Per-target shapes
 
@@ -318,7 +332,7 @@ The MCP protocol is shared, but the config shapes are not:
 | `transport` | `type: stdio\|http` | `type: local\|remote`, required |
 | `cwd` | not supported | `cwd` |
 
-tai writes each target's own shape; you write the tai one.
+Antigravity stores each server under `mcpServers` and writes `serverUrl` for remote servers.
 
 ### Where MCP servers are installed
 
@@ -326,6 +340,7 @@ tai writes each target's own shape; you write the tai one.
 |--------|--------|-----------|---------|
 | Claude | `~/.claude.json` | `.mcp.json` | `~/.claude.json`, under `projects.<project path>` |
 | OpenCode | `~/.config/opencode/opencode.json` | `opencode.json` | `opencode.json` |
+| Antigravity | `~/.gemini/config/mcp_config.json` | `.agents/mcp_config.json` | - |
 
 :::note
 Claude's `project` scope writes `.mcp.json`, meant to be committed and shared with the repo. `local` scope is the private counterpart, so Claude keeps it under the project's own entry in `~/.claude.json` rather than in a file in the repo.
@@ -350,7 +365,9 @@ native:
       allow: ["Bash(ls:*)"]
 ```
 
-Settings mean something different on every target, so there is no tai vocabulary to translate: every field sits under `native.<target>` and is written as you wrote it. Any other top-level key is an error, since it is either a typo or a field missing its `native.<target>` nesting. Only Claude installs settings today. An asset with no block for a target installs nothing there, silently; an asset with a block for a target that does not support settings is skipped with a warning.
+Put settings under `native.<target>`. tai accepts only the `native` key at the top level.
+Claude Code and Antigravity support settings assets. An asset applies only to the targets it
+names. tai skips the asset with a warning if a named target lacks support.
 
 ### What tai owns
 
@@ -377,6 +394,7 @@ The keys other config asset types own are rejected: write `statusLine` as a stat
 | Target | `user` | `project` | `local` |
 |--------|--------|-----------|---------|
 | Claude | `~/.claude/settings.json` | `.claude/settings.json` | `.claude/settings.local.json` |
+| Antigravity | `~/.gemini/antigravity-cli/settings.json` | - | - |
 
 ## Approval policies
 
@@ -419,7 +437,8 @@ A file with no recognized headings - `# allow:` with one `#`, or `##allow:` with
 
 **User scope only.** Claude's classifier ignores `autoMode` in project and local settings, so approval assets install into `~/.claude/settings.json` only. At another scope the install fails rather than writing a policy Claude would never read; set `scope: user` on the asset's entry.
 
-Only Claude installs approval policies today. On Codex and OpenCode an approval asset is skipped with a warning when one of its entries applies to that target, and silently otherwise.
+Claude Code supports approval policies. On other targets tai skips approval assets and warns
+when an entry applies to that target.
 
 ## Installation scope
 

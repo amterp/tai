@@ -9,6 +9,7 @@ Targets are the AI tools tai installs configuration to. Each target has an adapt
 
 | Target | Adapter name | Config directory | Status |
 |--------|-------------|------------------|--------|
+| Antigravity | `antigravity` | `~/.gemini/` | Supported |
 | Claude Code | `claude` | `~/.claude/` | Fully supported |
 | Codex | `codex` | `~/.codex/` (or `$CODEX_HOME`) | Supported with caveats |
 | OpenCode | `opencode` | `~/.config/opencode/` (or `$XDG_CONFIG_HOME/opencode`) | Fully supported |
@@ -25,13 +26,13 @@ When you install a [profile](/tai/concepts/profiles/), the target adapter handle
 
 Each adapter maps tai's asset types to the target's directory structure:
 
-| Tai type | Claude Code | Codex | OpenCode |
-|----------|------------|-------|----------|
-| `persona` | `output-styles/` | `skills/` (mapped to skills) | `agents/` |
-| `delegate` | `agents/` | `agents/` (custom agent TOML) | `agents/` |
-| `skill` | `skills/` | `skills/` | `skills/` |
-| `file` | Location from `dest` | Location from `dest` | Location from `dest` |
-| `statusline` | `settings.json` (merged) | Not supported (skipped) | Not supported (skipped) |
+| Tai type | Claude Code | Codex | OpenCode | Antigravity |
+|----------|------------|-------|----------| ------------- |
+| `persona` | `output-styles/` | `skills/` (mapped to skills) | `agents/` | Unsupported |
+| `delegate` | `agents/` | `agents/` (custom agent TOML) | `agents/` | `config/agents/` (Markdown) |
+| `skill` | `skills/` | `skills/` | `skills/` | `config/skills/` |
+| `file` | Location from `dest` | Location from `dest` | Location from `dest` | Location from `dest` |
+| `statusline` | `settings.json` (merged) | Not supported (skipped) | Not supported (skipped) | `antigravity-cli/settings.json` (merged) |
 
 Codex has no native persona concept, so personas are installed as skills (single-file personas are wrapped as `skills/<name>/SKILL.md`), with a warning per asset. Delegates become Codex custom agents: TOML files in `agents/`, with the delegate's body as the agent's instructions.
 
@@ -41,11 +42,11 @@ OpenCode maps both personas and delegates to `agents/`, using a `mode: subagent`
 
 Adapters provide target-specific variables with the `target_` prefix. These can be used in asset content and `dest` paths to make assets target-aware.
 
-| Variable | Claude | Codex | OpenCode |
-|----------|--------|-------|----------|
-| `target_name` | `claude` | `codex` | `opencode` |
-| `target_name_display` | `Claude` | `Codex` | `OpenCode` |
-| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` |
+| Variable | Claude | Codex | OpenCode | Antigravity |
+|----------|--------|-------|----------| ------------- |
+| `target_name` | `claude` | `codex` | `opencode` | `antigravity` |
+| `target_name_display` | `Claude` | `Codex` | `OpenCode` | `Antigravity` |
+| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` |
 
 For example, a single file asset can install to the right filename for each target:
 
@@ -79,17 +80,22 @@ The adapter determines what frontmatter appears in installed files:
 - Skills: `name`, `description`
 - Files: no transformation (byte-for-byte copy)
 
+**Antigravity** renders `name` and `description` for skills and delegates. It also renders
+supported delegate models and merges fields from `native.antigravity`.
+
 ## Config asset support
 
 Not all targets support all config asset types:
 
-| Config asset | Claude Code | Codex | OpenCode |
-|-------------|------------|-------|----------|
-| `statusline` | Merged into `settings.json` | Not supported (skipped) | Not supported (skipped) |
-| `hook` | Merged into `settings.json` | Merged into `hooks.json` | Not supported (skipped) |
-| `mcp` | Merged into `.mcp.json` or `~/.claude.json` | Merged into `config.toml` (asks first) | Merged into `opencode.json` |
+| Config asset | Claude Code | Codex | OpenCode | Antigravity |
+|-------------|------------|-------|----------| ------------- |
+| `statusline` | Merged into `settings.json` | Not supported (skipped) | Not supported (skipped) | `antigravity-cli/settings.json` |
+| `hook` | Merged into `settings.json` | Merged into `hooks.json` | Not supported (skipped) | `config/hooks.json` or `.agents/hooks.json` |
+| `mcp` | Merged into `.mcp.json` or `~/.claude.json` | Merged into `config.toml` (asks first) | Merged into `opencode.json` | `config/mcp_config.json` or `.agents/mcp_config.json` |
 
-Hooks are portable across Claude and Codex: both structure them the same way. tai names events itself and each adapter translates, so one hook asset works on both. OpenCode has no declarative hooks - only a JS plugin API - so hook assets are skipped there.
+Claude Code, Codex, and Antigravity support declarative hooks. tai translates the same hook
+asset into each target's schema. Hook commands receive target-specific input and return
+target-specific output. OpenCode uses a JS plugin API, so tai skips hook assets there.
 
 An event a target does not have (Codex has no notification event, for instance) skips just that hook, with a warning.
 
@@ -102,3 +108,4 @@ For target-specific details including directory layout, config file paths, and s
 - [Claude Code](/tai/targets/claude-code/)
 - [Codex](/tai/targets/codex/)
 - [OpenCode](/tai/targets/opencode/)
+- [Antigravity](/tai/targets/antigravity/)

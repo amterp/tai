@@ -602,6 +602,8 @@ const (
 	HookEventSessionStart      = "session_start"
 	HookEventSessionEnd        = "session_end"
 	HookEventUserPromptSubmit  = "user_prompt_submit"
+	HookEventPreInvocation     = "pre_invocation"
+	HookEventPostInvocation    = "post_invocation"
 	HookEventPreToolUse        = "pre_tool_use"
 	HookEventPostToolUse       = "post_tool_use"
 	HookEventStop              = "stop"
@@ -618,6 +620,7 @@ func ValidHookEvents() []string {
 	return []string{
 		HookEventSessionStart, HookEventSessionEnd,
 		HookEventUserPromptSubmit, HookEventStop,
+		HookEventPreInvocation, HookEventPostInvocation,
 		HookEventPreToolUse, HookEventPostToolUse,
 		HookEventPermissionRequest,
 		HookEventSubagentStart, HookEventSubagentStop,

@@ -4,7 +4,7 @@
 [![Docs](https://img.shields.io/badge/-Docs-grey)](https://amterp.dev/tai/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-**One config repo for your AI coding agents, installed to Claude Code, Codex and OpenCode.**
+**One config repo for your AI coding agents, installed to Antigravity, Claude Code, Codex, and OpenCode.**
 
 tai keeps your personas, subagents, skills, hooks, MCP servers and settings in a Git repo you own,
 written once in a target-neutral format. `tai install` translates them into each tool's own layout,
@@ -59,8 +59,8 @@ Error: 1 conflict(s) detected:
 
 ## Features
 
-- **Several targets from one source.** Claude Code, Codex and OpenCode, each with an adapter that
-  renders its frontmatter and file layout. A field only one tool understands goes under `native`.
+- **Several targets from one source.** Antigravity, Claude Code, Codex, and OpenCode. Each adapter renders the
+  target's frontmatter and file layout. A field only one tool understands goes under `native`.
 - **Files and config entries.** Personas, delegates, skills and loose files are copied. Hooks, MCP
   servers, status lines, settings and auto-approval policy are merged into the target's config files
   one entry at a time, so entries written by you or other tools survive.

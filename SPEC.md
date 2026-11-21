@@ -5,7 +5,9 @@
 
 ## Overview
 
-tai is a CLI tool for managing AI agent configurations. It provides a framework for organizing, composing, and installing assets (personas, delegates, skills, reference docs) across different AI targets (Claude Code, Codex, OpenCode) while keeping configuration version-controlled and portable.
+tai composes and installs version-controlled AI agent configurations for Antigravity, Claude Code,
+Codex, and OpenCode. Target adapters translate assets such as delegates, skills, instructions, and
+hooks into each tool's format.
 
 ## Core Concepts
 
@@ -13,7 +15,7 @@ tai is a CLI tool for managing AI agent configurations. It provides a framework 
 
 | tai term | What it is | Claude Code equivalent |
 |----------|------------|------------------------|
-| **Target** | The AI tool we install to | Claude Code, Codex, OpenCode |
+| **Target** | The AI tool we install to | Antigravity, Claude Code, Codex, OpenCode |
 | **Persona** | A behavioral style/role | output-style |
 | **Delegate** | A specialized helper for tasks | agents (sub-agents) |
 | **Skill** | A procedural capability | skills |
@@ -104,7 +106,7 @@ This distinction matters because:
                               ▼ installed to (via adapter)
 ┌─────────────────────────────────────────────────────────────┐
 │                    Target Config                             │
-│  ~/.claude/, ~/.codex/, ~/.config/opencode/                  │
+│  ~/.gemini/, ~/.claude/, ~/.codex/, ~/.config/opencode/      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -124,6 +126,7 @@ tai/
 │   │   ├── claude/       # Claude Code adapter
 │   │   ├── codex/        # Codex adapter
 │   │   ├── opencode/     # OpenCode adapter
+│   │   ├── antigravity/  # Antigravity adapter
 │   │   └── shared.go     # Shared adapter helpers
 │   ├── bundle/           # Bundle resolution
 │   ├── profile/          # Profile management
@@ -942,6 +945,9 @@ showModel: true
 | `command: ...` | `command: ...` |
 | `padding: N` | `padding: N` |
 
+Antigravity accepts `level: custom` or a native JSON status line object. tai merges it under
+`statusLine` in `~/.gemini/antigravity-cli/settings.json` at user scope.
+
 #### MCP Definition
 
 ```yaml
@@ -991,7 +997,8 @@ to `native`.
 
 **Environment references** are written `${VAR}` and rewritten per target -
 OpenCode wants `{env:VAR}`. tai never reads the variable, so the secret stays in
-the environment instead of being baked into an installed file.
+the environment instead of being baked into an installed file. Antigravity's standalone
+MCP format has no documented interpolation, so tai warns and writes the references literally.
 
 **The shapes differ even though the protocol does not.** Claude keys servers
 under `mcpServers` and Codex under `[mcp_servers]` in TOML; OpenCode uses
@@ -1005,6 +1012,8 @@ environment `environment`, and requires an explicit `local`/`remote` type. Each 
 | env | `env` | `environment` |
 | cwd | unsupported | `cwd` |
 
+Antigravity stores entries under `mcpServers` and uses `serverUrl` for remote servers.
+
 **Scope** picks the file:
 
 | Target | `user` | `project` | `local` |
@@ -1012,6 +1021,7 @@ environment `environment`, and requires an explicit `local`/`remote` type. Each 
 | Claude | `~/.claude.json` | `.mcp.json` | `~/.claude.json`, under `projects.<path>` |
 | Codex | `~/.codex/config.toml` | `.codex/config.toml` | - |
 | OpenCode | `~/.config/opencode/opencode.json` | `opencode.json` | `opencode.json` |
+| Antigravity | `~/.gemini/config/mcp_config.json` | `.agents/mcp_config.json` | - |
 
 Claude's two project scopes differ in who else sees the server. Project scope
 writes `.mcp.json`, meant to be committed and shared with the repo. Local scope
@@ -1095,20 +1105,22 @@ The hook's identity is its filename with the extension stripped, so
 target's vocabulary, because targets disagree on which events exist and are
 free to name them differently, so one asset cannot use any target's names.
 
-| tai event | When it fires | Claude | Codex |
-|-----------|---------------|--------|-------|
-| `session_start` | A session begins | SessionStart | SessionStart |
-| `session_end` | A session ends | SessionEnd | - |
-| `user_prompt_submit` | A prompt is submitted | UserPromptSubmit | UserPromptSubmit |
-| `stop` | The agent finishes responding | Stop | Stop |
-| `pre_tool_use` | Before a tool runs | PreToolUse | PreToolUse |
-| `post_tool_use` | After a tool runs | PostToolUse | PostToolUse |
-| `permission_request` | A permission is requested | PermissionRequest | PermissionRequest |
-| `subagent_start` | A subagent starts | SubagentStart | SubagentStart |
-| `subagent_stop` | A subagent finishes | SubagentStop | SubagentStop |
-| `pre_compact` | Before context is compacted | PreCompact | PreCompact |
-| `post_compact` | After context is compacted | PostCompact | PostCompact |
-| `notification` | The target sends a notification | Notification | - |
+| tai event | When it fires | Claude | Codex | Antigravity |
+|-----------|---------------|--------|-------| ------------- |
+| `session_start` | A session begins | SessionStart | SessionStart | SessionStart |
+| `session_end` | A session ends | SessionEnd | - | - |
+| `user_prompt_submit` | A prompt is submitted | UserPromptSubmit | UserPromptSubmit | - |
+| `stop` | The agent finishes responding | Stop | Stop | Stop |
+| `pre_invocation` | Before each model call | - | - | PreInvocation |
+| `post_invocation` | After each model call | - | - | PostInvocation |
+| `pre_tool_use` | Before a tool runs | PreToolUse | PreToolUse | PreToolUse |
+| `post_tool_use` | After a tool runs | PostToolUse | PostToolUse | PostToolUse |
+| `permission_request` | A permission is requested | PermissionRequest | PermissionRequest | - |
+| `subagent_start` | A subagent starts | SubagentStart | SubagentStart | - |
+| `subagent_stop` | A subagent finishes | SubagentStop | SubagentStop | - |
+| `pre_compact` | Before context is compacted | PreCompact | PreCompact | - |
+| `post_compact` | After context is compacted | PostCompact | PostCompact | - |
+| `notification` | The target sends a notification | Notification | - | - |
 
 A `-` means the target has no equivalent. A hook using such an event is skipped
 on that target with a warning, so one asset can be shared by a profile that
@@ -1132,10 +1144,8 @@ native:
   claude: { async: true }       # merged into Claude's handler object
 ```
 
-**Timeouts** are written as durations and converted per target. Claude and
-Codex both expect seconds, but the unit is the adapter's to declare because
-targets differ (the removed Gemini CLI wanted milliseconds), and getting it wrong
-by hand fails silently - a 30-second timeout becomes 30 milliseconds.
+**Timeouts** are written as durations. Each adapter declares its unit. Claude, Codex, and
+Antigravity take seconds.
 
 **Target notes.**
 
@@ -1147,6 +1157,11 @@ by hand fails silently - a 30-second timeout becomes 30 milliseconds.
   installing; run `/hooks` in Codex to review them.
 - **Codex hooks** go to a dedicated `hooks.json`, never `config.toml`, so tai
   never rewrites the file holding model settings and project trust decisions.
+- **Antigravity** uses one named group per asset at the root of `~/.gemini/config/hooks.json`
+  or `.agents/hooks.json` at project scope. Tool events use regex matcher groups, and the other
+  events hold command handlers directly. A command runs from the directory containing
+  `hooks.json`. Its `PreToolUse` response must contain a decision. Missing stdout or `{}` denies
+  the call.
 
 #### Settings Definition
 
@@ -1170,7 +1185,7 @@ native:
 Every field is target-specific, so the only top-level key is `native`, keyed by
 target (design decision 14). Any other top-level key is a parse error: it is a
 typo or a field missing its `native.<target>` nesting, and ignoring it would
-install nothing while reporting success. Only Claude supports the type. An asset
+install nothing while reporting success. Claude and Antigravity support the type. An asset
 with no block for a target installs nothing there and does not warn; one with a
 block for a target that lacks the type is skipped with a warning.
 
@@ -1329,6 +1344,7 @@ tai status [target]             # Show what's currently installed
 # Running (convenience wrapper)
 tai run claude [args...]        # Run claude with tai config applied
 tai run opencode [args...]      # Run opencode with tai config applied
+tai run antigravity [args...]   # Run agy with tai config applied
                                 # args go to the target as written, flags
                                 # included (--help, --config); a "--" right
                                 # after the target is optional and dropped
@@ -1551,6 +1567,27 @@ The OpenCode adapter:
   }
 }
 ```
+
+### Antigravity Adapter Specifics
+
+The Antigravity adapter runs the `agy` binary and uses `~/.gemini` as its file asset root.
+
+| Asset | User scope | Project scope |
+|-------|------------|---------------|
+| Skill | `config/skills/<name>/SKILL.md` | User scope only |
+| Delegate | `config/agents/<name>.md` or `config/agents/<name>/agent.md` | User scope only |
+| Loose file | `dest` relative to the target root | User scope only |
+| Hook | `config/hooks.json` | `.agents/hooks.json` |
+| MCP | `config/mcp_config.json` | `.agents/mcp_config.json` |
+| Status line and settings | `antigravity-cli/settings.json` | Unsupported |
+| Persona and approval | Unsupported | Unsupported |
+
+The global instruction file is `AGENTS.md` at the target root. Project hook and MCP paths resolve
+against the working directory. Antigravity has no `local` scope in tai.
+
+Delegates and skills render `name` and `description`. Delegates also accept `inherit`, `flash`, and
+`pro` as model values. Set Antigravity tool restrictions under `native.antigravity.tools` using
+a YAML list. Native fields override generated fields.
 
 ## Installation Manifest
 
@@ -1918,11 +1955,11 @@ Missing environment variables render as empty string (standard `os.Getenv` behav
 
 Adapters provide target-specific variables with the `target_` prefix:
 
-| Variable | Claude | Codex | OpenCode |
-|----------|--------|-------|----------|
-| `target_name` | `claude` | `codex` | `opencode` |
-| `target_name_display` | `Claude` | `Codex` | `OpenCode` |
-| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` |
+| Variable | Claude | Codex | OpenCode | Antigravity |
+|----------|--------|-------|----------| ------------- |
+| `target_name` | `claude` | `codex` | `opencode` | `antigravity` |
+| `target_name_display` | `Claude` | `Codex` | `OpenCode` | `Antigravity` |
+| `target_agents_file` | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` |
 
 These variables enable target-aware assets. For example, a single "global instructions" file can be named appropriately per target:
 
@@ -2197,7 +2234,7 @@ rules don't matter.
 | `TAI_DEST_DIR` | Absolute path to the staging directory the script must write into |
 | `TAI_ASSET_TYPE` | The asset type (`skill` today) |
 | `TAI_ASSET_NAME` | The asset's name |
-| `TAI_TARGET` | The install target (`claude`, `codex`, `opencode`) |
+| `TAI_TARGET` | The install target (`antigravity`, `claude`, `codex`, `opencode`) |
 | `TAI_MANIFEST_DIR` | Absolute path to the skill source directory (use this to read sibling helper files) |
 | `TAI_VERSION` | tai's version string |
 
